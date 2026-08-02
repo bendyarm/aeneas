@@ -1,0 +1,154 @@
+(* DRAFT — not yet compiled (named .ml.draft so dune ignores it).
+   Written against src/pure/Pure.ml @ daa85d7; the binder-handling seams
+   are marked TODO(binders) and should be filled by mirroring
+   PrintPure.ml's environment plumbing (FVar/BVar + db scopes).
+
+   Design encoded here (see the ACL2 backend plan, §3.2/§3.5):
+   - one generated book per crate: <crate>.lisp (+ package file later);
+   - sexp printing via Format hov boxes — no precedence, no infix;
+   - names: snake_case/CamelCase -> UPPER-HYPHEN, crate-prefixed,
+     deterministic -N suffixes on collision; FTY :xvar always emitted
+     (Rust fields named x/y collide with FTY defaults — Stage-0 lesson);
+   - scalar ops -> the backends/acl2 primitives (u32-add etc.);
+   - fuel is mandatory (checked in Main.ml); recursive groups emit
+     mutual-recursion with :measure (nfix fuel);
+   - REJECTIONS (clean errors, not mistranslation): TArrow in a
+     positive position of a signature (backward lambdas — until the
+     defunctionalization micro-pass), TDynTrait, trait decls/refs
+     surviving to extraction (run charon with --monomorphize),
+     closures, TError. *)
+
+open Pure
+open Config
+
+let log = Logging.extract_log
+
+(* ---------------------------------------------------------------- names *)
+
+(* ACL2/CL symbols we must not collide with (seed list; extend as hit).
+   Everything is emitted into a dedicated package eventually; until then
+   we crate-prefix, which already avoids most of these. *)
+let acl2_keywords =
+  [ "T"; "NIL"; "IF"; "LET"; "LET*"; "COND"; "CASE"; "STATE"; "LIST";
+    "LENGTH"; "APPEND"; "MEMBER"; "ASSOC"; "REVERSE"; "SEARCH";
+    "OK"; "FAIL"; "UNIT"; "RESULT"; "ERROR" ]
+
+(* snake_case | CamelCase -> UPPER-HYPHEN; non-alphanumerics -> '-';
+   collisions resolved by a deterministic numeric suffix via the map in
+   the extraction context. *)
+let mangle_base (s : string) : string =
+  let buf = Buffer.create (String.length s + 8) in
+  String.iteri
+    (fun i c ->
+      match c with
+      | 'A' .. 'Z' ->
+          if
+            i > 0
+            && match s.[i - 1] with
+               | 'a' .. 'z' | '0' .. '9' -> true
+               | _ -> false
+          then Buffer.add_char buf '-';
+          Buffer.add_char buf c
+      | 'a' .. 'z' -> Buffer.add_char buf (Char.uppercase_ascii c)
+      | '0' .. '9' -> Buffer.add_char buf c
+      | '_' | ':' | '.' | ' ' -> Buffer.add_char buf '-'
+      | _ -> Buffer.add_char buf '-')
+    s;
+  Buffer.contents buf
+
+(* TODO(ctx): a small context record: crate name; TypeDeclId/FunDeclId ->
+   mangled-name maps (deterministic, collision-suffixed); local var
+   environment for TODO(binders). *)
+
+(* ---------------------------------------------------------------- sexps *)
+
+(* Print via a tiny sexp layer so layout is uniform and correct by
+   construction. Atoms are pre-rendered strings. *)
+type sexp = Atom of string | L of sexp list
+
+let rec pp_sexp (fmt : Format.formatter) (s : sexp) : unit =
+  match s with
+  | Atom a -> Format.pp_print_string fmt a
+  | L items ->
+      Format.pp_open_hovbox fmt 2;
+      Format.pp_print_string fmt "(";
+      List.iteri
+        (fun i it ->
+          if i > 0 then Format.pp_print_space fmt ();
+          pp_sexp fmt it)
+        items;
+      Format.pp_print_string fmt ")";
+      Format.pp_close_box fmt ()
+
+(* ------------------------------------------------------------- builtins *)
+
+(* Scalar binops -> primitives-book function names. Overflow-mode
+   distinctions (OPanic vs wrapping) map to different primitives. *)
+let scalar_fun_name (op : string) (int_ty : string) : string =
+  (* e.g. op="add", int_ty="U32" -> "U32-ADD" *)
+  String.uppercase_ascii int_ty ^ "-" ^ String.uppercase_ascii op
+
+(* Pure comparisons (Lt/Le/Gt/Ge/Eq/Ne on scalars) print as ACL2's
+   <, <=, >, >=, EQUAL, (NOT (EQUAL _ _)) directly — they are pure in
+   the pure AST, no result wrapping. *)
+
+(* ---------------------------------------------------------------- types *)
+
+(* Type declarations:
+   - struct  -> (fty::defprod NAME ((FIELD ACL2::ANY-P) ...) :xvar THE-NAME)
+     [any-p because type params are erased; refined field types for
+      monomorphic fields come later]
+   - enum    -> (fty::deftagsum NAME (:VARIANT ((FIELD ACL2::ANY-P) ...)) ...
+                  :xvar THE-NAME)
+   - recursive groups -> fty::deftypes
+   - tuples never declare anything (conses); unit type is :UNIT.
+   TODO(impl): walk TranslateCore type_decls; mirror
+   ExtractTypes.extract_type_decl's traversal, minus all formatting. *)
+
+(* ----------------------------------------------------------------- funs *)
+
+(* Function declarations:
+
+   (defun NAME (FUEL x1 ... xn)
+     (declare (xargs :measure (nfix FUEL)))   ; only if recursive
+     BODY)
+
+   Body translation (expr -> sexp), the core recursion:
+   - FVar/BVar        -> variable atom            TODO(binders)
+   - Const literal    -> integer / T / NIL / :UNIT / char code
+   - App chain        -> flatten to (f a1 ... an); f from qualif:
+                         FunId -> mangled name (+ FUEL first arg iff callee
+                         recursive); Binop -> scalar_fun_name or pure
+                         comparison; AdtCons -> constructor call;
+                         Proj -> accessor call
+   - Let(monadic=false, PatVar, e1, e2)  -> (b* ((X E1)) E2)   [b* chains
+       are coalesced so consecutive lets share one b*]
+   - Let(monadic=true, PatVar, e1, e2)   -> (b* (((ok X) E1)) E2)
+   - Let with tuple pat (decomposition is forced off by Main.ml flags,
+       but tuples of size 2 may remain)  -> car/cdr projections
+   - Switch(If)       -> (if C E1 E2)
+   - Switch(Match)    -> (<type>-case SCRUT (:variant BODY) ...) with
+       field variables bound via accessors first  TODO(binders)
+   - StructUpdate     -> (change-<type> X :field V ...) / constructor
+   - Loop             -> should not reach extraction (loops become
+                         functions upstream); internal error
+   - Lambda           -> REJECT (backward function reached the printer;
+                         error message points at the plan's §3.5 and the
+                         -mono requirement)
+   - Meta(_, e)       -> recurse
+   - EError           -> REJECT with span
+
+   Recursive groups: (mutual-recursion (defun ...) (defun ...)) with the
+   shared (nfix FUEL) measure; fuel decrement at self/mutual calls is
+   (1- FUEL), matching SymbolicToPure's fuel threading.
+
+   TODO(impl): entry point mirroring Extract.extract_fun_decl, called
+   from Translate.ml behind [backend () = Acl2]. *)
+
+(* ---------------------------------------------------------------- crate *)
+
+(* Crate emission order: type decls in dependency order (ReorderDecls),
+   then functions; one file <crate>.lisp with:
+     (in-package "ACL2")   ; package story: plan §3.2, later slice
+     (include-book "<backends/acl2 primitives>" :dir ...)
+   Golden-file tests then certify the result (tests/acl2/<crate>/). *)

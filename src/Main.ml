@@ -524,7 +524,18 @@ let () =
             (* We don't support fuel for the HOL4 backend *)
             if !use_fuel then (
               log#error "The HOL4 backend doesn't support the -use-fuel option";
-              fail true))
+              fail true)
+        | Acl2 ->
+            (* Dual of HOL4/Lean: ACL2 (a logic of total first-order
+               functions) *requires* fuel for recursive definitions, at
+               least until a defunctionalization/termination story lands. *)
+            if not !use_fuel then (
+              log#error "The ACL2 backend requires the -use-fuel option";
+              fail true);
+            (* Keep the emitted b* forms simple (same motivation as Coq:
+               limited patterns in the target syntax) *)
+            decompose_monadic_let_bindings := true;
+            decompose_nested_let_patterns := true)
   in
 
   (* If running in parallel mode there can be racing conditions on the memoized

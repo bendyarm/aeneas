@@ -5,12 +5,16 @@ type t =
   | Lean
   | FStar
   | HOL4
+  | Acl2
   | BorrowCheck
       (** Borrow check: no backend. We use this when we only want to
           borrow-check the program *)
 [@@deriving ord, sexp]
 
 (* TODO: reactivate HOL4 once traits are parameterized by their associated types *)
+(* Acl2 is deliberately NOT in [all] yet: it is driven by an explicit
+   allowlist (`make test-acl2`) until coverage warrants running the whole
+   suite (see the ACL2 backend plan, Stage 2/5). *)
 let all = [ Coq; Lean; FStar; BorrowCheck ]
 
 let of_string = function
@@ -18,6 +22,7 @@ let of_string = function
   | "lean" -> Lean
   | "fstar" -> FStar
   | "hol4" -> HOL4
+  | "acl2" -> Acl2
   | "borrow-check" -> BorrowCheck
   | backend -> failwith ("Unknown backend: `" ^ backend ^ "`")
 
@@ -26,6 +31,7 @@ let to_string = function
   | Lean -> "lean"
   | FStar -> "fstar"
   | HOL4 -> "hol4"
+  | Acl2 -> "acl2"
   | BorrowCheck -> "borrow-check"
 
 let to_command = function

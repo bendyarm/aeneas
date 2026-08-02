@@ -3,9 +3,9 @@
 (** {1 Backend choice} *)
 
 (** The choice of backend *)
-type backend = FStar | Coq | Lean | HOL4 [@@deriving show]
+type backend = FStar | Coq | Lean | HOL4 | Acl2 [@@deriving show]
 
-let backend_names = [ "fstar"; "coq"; "rocq"; "lean"; "hol4" ]
+let backend_names = [ "fstar"; "coq"; "rocq"; "lean"; "hol4"; "acl2" ]
 
 (** Utility to compute the backend from an input parameter *)
 let backend_of_string (b : string) : backend option =
@@ -14,6 +14,7 @@ let backend_of_string (b : string) : backend option =
   | "coq" | "Coq" | "rocq" | "Rocq" -> Some Coq
   | "lean" | "Lean" -> Some Lean
   | "hol4" | "HOL4" -> Some HOL4
+  | "acl2" | "ACL2" | "Acl2" -> Some Acl2
   | _ -> None
 
 let opt_backend : backend option ref = ref None
