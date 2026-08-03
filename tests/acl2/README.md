@@ -20,9 +20,20 @@ Rust sources in `../src`, plus handwritten proof books about them. The
 | `tea-equiv.lisp` | handwritten | scalar TEA == Kestrel spec; decrypt∘encrypt=id |
 | `tea-arr-equiv.lisp` | handwritten | array TEA == Kestrel spec; decrypt∘encrypt=id |
 | `tea-vectors,tea_arr-vectors.lisp` | handwritten | executable known-answer vectors |
+| `aes_probe.lisp` | generated | AES construct probe (`aes_probe.rs`): S-box lookup with `byte as usize`, in-place `&mut` state xor, `rotate_left`, functional round, `xtime`, GF(2⁸) multiply |
+| `aes_probe-proofs.lisp` | handwritten | FIPS-197 GF vectors; `sub`==S-box lookup (cast transparent, never panics); `xtime`==`AES::xtime` and `gmul`==`AES::gf256mult` for **all** bytes |
+
+The AES probe establishes empirically that AES's computational core is
+first-order (no backward functions): the in-place block mutation, S-box
+indexing, rotations, and the entire GF(2⁸) field arithmetic all extract to
+plain fuel-recursive ACL2. The gaps it drove out were integer `as` casts and
+`rotate_left/right`, now supported (`rust-primitives`: `<ty>-cast`,
+`<ty>-cast-bool`, `<ty>-rotate-left/right`, mirroring the F*/Coq
+`scalar_cast`/`scalar_cast_bool` semantics).
 
 ## Dependencies
 
 `verify` needs an ACL2 with the community books certified, including
-`kestrel/crypto/tea` (+ `kestrel/bv`, `kestrel/bv-arrays`, `centaur/fty`,
-`std`, `arithmetic-5`) for the equivalence books.
+`kestrel/crypto/tea` and `kestrel/crypto/aes` (+ `kestrel/bv`,
+`kestrel/bv-arrays`, `centaur/fty`, `std`, `arithmetic-5`) for the
+equivalence books.

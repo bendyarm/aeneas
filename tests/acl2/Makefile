@@ -46,6 +46,12 @@ regen:
 	  --monomorphize -- $(SRC)/vec_sum.rs --crate-name=vec_sum \
 	  --crate-type=rlib --allow=unused --allow=non_snake_case >/dev/null 2>&1
 	@$(AENEAS) $(AENEAS_FLAGS) -dest . $(LLBC)/vec_sum.llbc || true
+	@# AES probe: S-box lookup (byte-as-usize cast), in-place state xor,
+	@# rotate_left, functional round, xtime and GF(2^8) multiply.
+	@$(CHARON) rustc --dest-file $(LLBC)/aes_probe.llbc --preset=aeneas \
+	  --monomorphize -- $(SRC)/aes_probe.rs --crate-name=aes_probe \
+	  --crate-type=rlib --allow=unused --allow=non_snake_case >/dev/null 2>&1
+	@$(AENEAS) $(AENEAS_FLAGS) -dest . $(LLBC)/aes_probe.llbc || true
 
 # Certify every book in the directory (generated + handwritten).
 verify:
@@ -53,7 +59,8 @@ verify:
 	  rust-primitives demo loops no_nested_borrows proofs \
 	  rust_tea tea-bridges tea-equiv tea-vectors \
 	  rust_tea_arr tea_arr-vectors tea-arr-equiv \
-	  vec_demo vec_demo-proofs vec_sum vec_sum-proofs
+	  vec_demo vec_demo-proofs vec_sum vec_sum-proofs \
+	  aes_probe aes_probe-proofs
 
 clean:
 	rm -f *.cert *.cert.out *.fasl *.port Makefile-tmp

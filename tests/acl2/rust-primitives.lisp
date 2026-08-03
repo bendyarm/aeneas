@@ -88,6 +88,13 @@
       (fail (err-failure))
     (let ((r (truncate x y))) (if (i32p r) (ok r) (fail (err-failure))))))
 
+;; Casts for the hand-written u32/i32 (the macro supplies the rest).
+;; `x as u32` = mk_scalar u32 x, etc. -- see the macro comment above.
+(defun u32-cast (x) (if (u32p x) (ok x) (fail (err-failure))))
+(defun u32-cast-bool (x) (ok (if x 1 0)))
+(defun i32-cast (x) (if (i32p x) (ok x) (fail (err-failure))))
+(defun i32-cast-bool (x) (ok (if x 1 0)))
+
 ;; ---------------------------------------------------------------- misc
 ;; Rust unit value, and Aeneas's massert (used by extracted unit tests).
 
@@ -111,11 +118,14 @@
           (mul (intern$ (concatenate 'string s "-MUL") "ACL2"))
           (dv (intern$ (concatenate 'string s "-DIV") "ACL2"))
           (rm (intern$ (concatenate 'string s "-REM") "ACL2"))
+          (cast (intern$ (concatenate 'string s "-CAST") "ACL2"))
+          (castb (intern$ (concatenate 'string s "-CAST-BOOL") "ACL2"))
           (add-ok (intern$ (concatenate 'string s "-ADD-OK") "ACL2"))
           (add-fail (intern$ (concatenate 'string s "-ADD-FAIL") "ACL2"))
           (sub-ok (intern$ (concatenate 'string s "-SUB-OK") "ACL2"))
           (sub-fail (intern$ (concatenate 'string s "-SUB-FAIL") "ACL2"))
-          (mul-ok (intern$ (concatenate 'string s "-MUL-OK") "ACL2")))
+          (mul-ok (intern$ (concatenate 'string s "-MUL-OK") "ACL2"))
+          (cast-ok (intern$ (concatenate 'string s "-CAST-OK") "ACL2")))
       `(progn
          (defun ,pred (x)
            (declare (xargs :guard t))
@@ -134,6 +144,12 @@
            (if (eql y 0) (fail (err-failure))
              (let ((r (rem x y)))
                (if (,pred r) (ok r) (fail (err-failure))))))
+         ;; `x as <name>`: mirrors Primitives.scalar_cast = mk_scalar name x
+         ;; (ok x when x fits the target, else a checked panic).
+         (defun ,cast (x) (if (,pred x) (ok x) (fail (err-failure))))
+         ;; `b as <name>` for a bool b: mk_scalar name (if b 1 0); 0 and 1
+         ;; are in range for every integer type, so it never fails.
+         (defun ,castb (x) (ok (if x 1 0)))
          (defthm ,add-ok
            (implies (and (,pred x) (,pred y) (,pred (+ x y)))
                     (equal (,add x y) (ok (+ x y)))))
@@ -148,7 +164,12 @@
                     (equal (,sub x y) (fail (err-failure)))))
          (defthm ,mul-ok
            (implies (and (,pred x) (,pred y) (,pred (* x y)))
-                    (equal (,mul x y) (ok (* x y)))))))))
+                    (equal (,mul x y) (ok (* x y)))))
+         ;; Widening / in-range cast is the identity (the AES S-box index
+         ;; case: a byte cast to usize). Fires on the target recognizer so
+         ;; proofs never open the cast definition.
+         (defthm ,cast-ok
+           (implies (,pred x) (equal (,cast x) (ok x))))))))
 
 ;; Bitwise, shift and wrapping ops for UNSIGNED Rust integer types.
 ;; - xor/and/or: total, plain value (bit width preserved).
@@ -184,6 +205,25 @@
          (defun ,wsub (x y) (ok (mod (- x y) ,m)))
          (defun ,wmul (x y) (ok (mod (* x y) ,m)))))))
 
+;; rotate_left / rotate_right (the AES key-schedule RotWord, and rotations
+;; in several ciphers). Total -- they never panic -- but Aeneas models the
+;; core::num methods monadically, so like the wrapping ops we return (ok).
+;; rotate_left(x,n) = ((x << k) | (x >> (w-k))) mod 2^w, with k = n mod w;
+;; rotate_right is the mirror. ACL2's ash is a total arithmetic shift, so
+;; the (w-k) right shift needs no undefined-behavior special-casing at k=0.
+(defmacro def-rust-uint-rotate (name width)
+  (let* ((s (symbol-name name))
+         (m `(expt 2 ,width)))
+    (let ((rotl (intern$ (concatenate 'string s "-ROTATE-LEFT") "ACL2"))
+          (rotr (intern$ (concatenate 'string s "-ROTATE-RIGHT") "ACL2")))
+      `(progn
+         (defun ,rotl (x n)
+           (let ((k (mod (nfix n) ,width)))
+             (ok (mod (logior (ash x k) (ash x (- k ,width))) ,m))))
+         (defun ,rotr (x n)
+           (let ((k (mod (nfix n) ,width)))
+             (ok (mod (logior (ash x (- k)) (ash x (- ,width k))) ,m))))))))
+
 
 (def-rust-int-type u8 0 255)
 (def-rust-int-type u16 0 65535)
@@ -203,6 +243,13 @@
 (def-rust-uint-bitops u64 64)
 (def-rust-uint-bitops u128 128)
 (def-rust-uint-bitops usize 64)
+
+(def-rust-uint-rotate u8 8)
+(def-rust-uint-rotate u16 16)
+(def-rust-uint-rotate u32 32)
+(def-rust-uint-rotate u64 64)
+(def-rust-uint-rotate u128 128)
+(def-rust-uint-rotate usize 64)
 
 ;; ---------------------------------------------------------------- arrays
 ;; Rust arrays [T; N] and slices &[T] are both modeled as true lists (the
@@ -300,6 +347,12 @@
   (implies (and (i32p x) (i32p y) (<= *i32-min* (- x y)) (<= (- x y) *i32-max*))
            (equal (i32-sub x y) (ok (- x y)))))
 
+(defthm u32-cast-ok
+  (implies (u32p x) (equal (u32-cast x) (ok x))))
+
+(defthm i32-cast-ok
+  (implies (i32p x) (equal (i32-cast x) (ok x))))
+
 ;; Sanity checks (concrete execution, incl. panic edges).
 (assert-event (equal (u32-add 1 2) (ok 3)))
 (assert-event (equal (u32-add *u32-max* 1) (fail (err-failure))))
@@ -309,3 +362,16 @@
 (assert-event (equal (u32-div 7 0) (fail (err-failure))))
 (assert-event (equal (i32-div -7 2) (ok -3)))     ; truncation toward zero
 (assert-event (equal (i32-div *i32-min* -1) (fail (err-failure)))) ; MIN / -1
+;; Casts: widening is identity-ok; narrowing out-of-range panics; bool->int.
+(assert-event (equal (usize-cast 200) (ok 200)))        ; u8 value as usize
+(assert-event (equal (u8-cast 300) (fail (err-failure)))) ; 300 doesn't fit u8
+(assert-event (equal (u8-cast 255) (ok 255)))
+(assert-event (equal (u32-cast 7) (ok 7)))
+(assert-event (equal (u8-cast-bool t) (ok 1)))
+(assert-event (equal (u8-cast-bool nil) (ok 0)))
+;; Rotations (RotWord and friends): wrap-around at the word boundary.
+(assert-event (equal (u32-rotate-left 1 1) (ok 2)))
+(assert-event (equal (u32-rotate-left #x80000000 1) (ok 1)))
+(assert-event (equal (u32-rotate-right 1 1) (ok #x80000000)))
+(assert-event (equal (u32-rotate-left 7 0) (ok 7)))
+(assert-event (equal (u8-rotate-left #x80 1) (ok 1)))

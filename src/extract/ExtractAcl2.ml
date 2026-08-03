@@ -172,6 +172,14 @@ let std_fun_mapping (mangled : string) : string option =
         else None)
       ok_types
   in
+  let try_rot dir =
+    List.find_map
+      (fun t ->
+        if mangled = "core-num-" ^ t ^ "-rotate-" ^ dir then
+          Some (t ^ "-rotate-" ^ dir)
+        else None)
+      ok_types
+  in
   let has sub =
     try
       ignore (Str.search_forward (Str.regexp_string sub) mangled 0);
@@ -184,7 +192,10 @@ let std_fun_mapping (mangled : string) : string option =
   in
   match List.find_map try_wrap [ "add"; "sub"; "mul" ] with
   | Some s -> Some s
-  | None ->
+  | None -> (
+      match List.find_map try_rot [ "left"; "right" ] with
+      | Some s -> Some s
+      | None ->
       (* alloc::vec::Vec ops. The mangled name carries an [alloc-vec]
          prefix in both the generic and monomorphized forms; we key off
          that plus the method substring. v0 requires --monomorphize for
@@ -195,7 +206,7 @@ let std_fun_mapping (mangled : string) : string option =
       else if starts "alloc-vec" && has "-with-capacity" then Some "vec-new"
       else if starts "alloc-vec" && has "-len" then Some "vec-len"
       else if starts "alloc-vec" && has "-index" then Some "array-index"
-      else None
+      else None)
 
 let fun_name (span : Meta.span) (ctx : actx) (id : FunDeclId.id) : string =
   if FunDeclId.Set.mem id ctx.opaque_funs then
@@ -366,7 +377,26 @@ and qualif_app_to_acl2 (span : Meta.span) (ctx : actx) (_env : venv)
   | FunOrOp (Fun (Pure _)) ->
       [%craise] span "ACL2: unsupported pure builtin function"
   | FunOrOp (Unop (Not None)) -> sexp ("not" :: args_s)
-  | FunOrOp (Unop _) -> [%craise] span "ACL2: unsupported unop (neg/cast)"
+  | FunOrOp (Unop (Cast (CastLit (src, tgt)))) -> (
+      (* Mirror the F*/Coq reference semantics (Primitives.scalar_cast /
+         scalar_cast_bool = mk_scalar tgt x): the cast yields (ok x) when x
+         is in range for the target integer type, else (fail). Widening
+         casts (byte -> index/word, the AES S-box case) are the identity;
+         narrowing an out-of-range value is a checked panic, exactly as in
+         the reference backends. *)
+      match src with
+      | _ when literal_type_is_integer src && literal_type_is_integer tgt ->
+          sexp ((int_ty_name (literal_as_integer tgt) ^ "-cast") :: args_s)
+      | TBool when literal_type_is_integer tgt ->
+          sexp ((int_ty_name (literal_as_integer tgt) ^ "-cast-bool") :: args_s)
+      | _ ->
+          [%craise] span
+            "ACL2: only integer and bool->integer casts are supported")
+  | FunOrOp (Unop (Cast (CastRawPtr _))) ->
+      [%craise] span "ACL2: raw-pointer casts not supported"
+  | FunOrOp (Unop _) ->
+      [%craise] span
+        "ACL2: unsupported unop (neg / bitwise-not / array-to-slice)"
   | FunOrOp (Binop b) -> (
       match binop_to_acl2 span b with
       | "acl2::nequal" -> sexp [ "not"; sexp ("equal" :: args_s) ]

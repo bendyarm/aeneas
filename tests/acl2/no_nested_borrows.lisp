@@ -40,9 +40,11 @@
   (:right ((f0 acl2::any-p)))
   :xvar the-no-nested-borrows-sum)
 
-;; SKIPPED function no-nested-borrows-cast-u32-to-i32: ACL2: unsupported unop (neg/cast)
+(defun no-nested-borrows-cast-u32-to-i32 (x)
+  (i32-cast x))
 
-;; SKIPPED function no-nested-borrows-cast-bool-to-i32: ACL2: unsupported unop (neg/cast)
+(defun no-nested-borrows-cast-bool-to-i32 (x)
+  (i32-cast-bool x))
 
 (defun no-nested-borrows-cast-bool-to-bool (x)
   (ok x))
@@ -60,7 +62,7 @@
   (b* (((ok z_3) (u32-add x_1 y_2)))
   (massert (equal z_3 15))))))
 
-;; SKIPPED function no-nested-borrows-test-neg1: ACL2: unsupported unop (neg/cast)
+;; SKIPPED function no-nested-borrows-test-neg1: ACL2: unsupported unop (neg / bitwise-not / array-to-slice)
 
 (defun no-nested-borrows-refs-test1 ()
   (massert (equal 1 1)))
@@ -269,9 +271,9 @@
 (defun no-nested-borrows-not-bool (x)
   (ok (not x)))
 
-;; SKIPPED function no-nested-borrows-not-u32: ACL2: unsupported unop (neg/cast)
+;; SKIPPED function no-nested-borrows-not-u32: ACL2: unsupported unop (neg / bitwise-not / array-to-slice)
 
-;; SKIPPED function no-nested-borrows-not-i32: ACL2: unsupported unop (neg/cast)
+;; SKIPPED function no-nested-borrows-not-i32: ACL2: unsupported unop (neg / bitwise-not / array-to-slice)
 
 ;; SKIPPED function no-nested-borrows-borrow-mut-tuple: ACL2: lambda in output (backward function or closure); not supported in v0 -- see the defunctionalization plan
 
