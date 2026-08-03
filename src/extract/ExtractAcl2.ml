@@ -69,6 +69,8 @@ type actx = {
   trans_ctx : trans_ctx;
   fun_names : string FunDeclId.Map.t;
   opaque_funs : FunDeclId.Set.t;
+  global_names : string GlobalDeclId.Map.t;
+  trans_funs : pure_fun_translation FunDeclId.Map.t;
   type_names : string TypeDeclId.Map.t;
   types : Pure.type_decl TypeDeclId.Map.t;
   mutable gensym : int;
@@ -104,19 +106,30 @@ let clean_var_name (basename : string option) (i : int) : string =
    indices are assigned by depth-first search). Returns the names in DFS
    order and, separately, one "surface name" per top-level pattern
    ("&" for ignored patterns). *)
-let bind_tpats (env : venv) (pats : tpat list) : venv * string list =
-  let counter = ref 0 in
+let bind_tpats ?(toplevel = false) (ctx : actx) (env : venv)
+    (pats : tpat list) : venv * string list =
+  let idx = ref 0 in
   let group = ref BVarId.Map.empty in
   let names = ref [] in
   let rec walk (p : tpat) : string =
     match p.pat with
     | PBound (v, _) ->
-        let i = !counter in
-        counter := i + 1;
-        let name = clean_var_name v.basename i in
-        (* defun formals (and b* group bindings) must be distinct *)
+        let i = !idx in
+        idx := i + 1;
         let name =
-          if List.mem name !names then name ^ "-" ^ string_of_int i else name
+          if toplevel then (
+            (* Function formals are a single binder group: per-index clean
+               names, distinct within the group. Kept readable for proofs. *)
+            let n = clean_var_name v.basename i in
+            if List.mem n !names then n ^ "-" ^ string_of_int i else n)
+          else (
+            (* Internal bindings must be globally unique within the
+               function: nested single-binding b* groups otherwise reuse a
+               name and an expression referencing two distinct earlier
+               temporaries would collapse them (e.g. (xor v0 v0)). *)
+            ctx.gensym <- ctx.gensym + 1;
+            let uniq = ctx.gensym in
+            clean_var_name v.basename uniq ^ "_" ^ string_of_int uniq)
         in
         group := BVarId.Map.add (BVarId.of_int i) name !group;
         names := name :: !names;
@@ -144,6 +157,24 @@ let venv_bvar (env : venv) (v : bvar) : string =
 let fresh_tmp (ctx : actx) : string =
   ctx.gensym <- ctx.gensym + 1;
   "acl2tmp" ^ string_of_int ctx.gensym
+
+(* Known opaque std functions we map to primitives-book operations.
+   Matches the mangled name; returns the ACL2 primitive name (a function
+   returning result). Extend as coverage grows -- the systematic home for
+   this is ExtractBuiltin, but a table here keeps v0 self-contained. *)
+let std_fun_mapping (mangled : string) : string option =
+  let ok_types = [ "u8"; "u16"; "u32"; "u64"; "u128"; "usize" ] in
+  let try_wrap op =
+    List.find_map
+      (fun t ->
+        if mangled = "core-num-" ^ t ^ "-wrapping-" ^ op then
+          Some (t ^ "-wrapping-" ^ op)
+        else None)
+      ok_types
+  in
+  match List.find_map try_wrap [ "add"; "sub"; "mul" ] with
+  | Some s -> Some s
+  | None -> None
 
 let fun_name (span : Meta.span) (ctx : actx) (id : FunDeclId.id) : string =
   if FunDeclId.Set.mem id ctx.opaque_funs then
@@ -195,7 +226,12 @@ let binop_to_acl2 (span : Meta.span) (b : binop) : string =
   | Ge _ -> ">="
   | Eq _ -> "equal"
   | Ne _ -> "acl2::nequal" (* printed specially below *)
-  | _ -> [%craise] span "ACL2: unsupported binop (bitwise/wrapping/shift)"
+  | BitXor it -> int_ty_name it ^ "-xor"
+  | BitAnd it -> int_ty_name it ^ "-and"
+  | BitOr it -> int_ty_name it ^ "-or"
+  | Shl (Expressions.OPanic, it, _) -> int_ty_name it ^ "-shl"
+  | Shr (Expressions.OPanic, it, _) -> int_ty_name it ^ "-shr"
+  | _ -> [%craise] span "ACL2: unsupported binop (wrapping/checked-shift)"
 
 (* An application in sexp form *)
 let sexp (parts : string list) : string = "(" ^ String.concat " " parts ^ ")"
@@ -245,7 +281,13 @@ and app_to_acl2 (span : Meta.span) (ctx : actx) (env : venv) (e : texpr) :
 and qualif_app_to_acl2 (span : Meta.span) (ctx : actx) (_env : venv)
     (q : qualif) (args : texpr list) (args_s : string list) : string =
   match q.id with
-  | FunOrOp (Fun (FromLlbc (FunId (FRegular id), lp))) ->
+  | FunOrOp (Fun (FromLlbc (FunId (FRegular id), lp))) -> (
+      (* opaque std function with a known primitive mapping wins first *)
+      match
+        Option.bind (FunDeclId.Map.find_opt id ctx.fun_names) std_fun_mapping
+      with
+      | Some prim -> sexp (prim :: args_s)
+      | None ->
       if List.mem (id, lp) ctx.skipped then
         [%craise] span "ACL2: call to a function that was itself skipped"
       else
@@ -257,7 +299,7 @@ and qualif_app_to_acl2 (span : Meta.span) (ctx : actx) (_env : venv)
               base ^ "-loop" ^ LoopId.to_string lp_id
               ^ if is_body then "-body" else ""
         in
-        sexp (name :: args_s)
+        sexp (name :: args_s))
   | FunOrOp (Fun (FromLlbc (FunId (FBuiltin _), _))) ->
       [%craise] span "ACL2: builtin (std) function not mapped in v0"
   | FunOrOp (Fun (FromLlbc (TraitMethod _, _))) ->
@@ -275,7 +317,10 @@ and qualif_app_to_acl2 (span : Meta.span) (ctx : actx) (_env : venv)
       match binop_to_acl2 span b with
       | "acl2::nequal" -> sexp [ "not"; sexp ("equal" :: args_s) ]
       | s -> sexp (s :: args_s))
-  | Global _ -> [%craise] span "ACL2: globals not supported in v0"
+  | Global gid -> (
+      match GlobalDeclId.Map.find_opt gid ctx.global_names with
+      | Some n -> n
+      | None -> [%craise] span "ACL2: reference to an unsupported global")
   | AdtCons { adt_id; variant_id } ->
       adt_cons_to_acl2 span ctx adt_id variant_id args args_s
   | Proj { adt_id; field_id } -> proj_to_acl2 span ctx adt_id field_id args_s
@@ -352,7 +397,7 @@ and let_to_acl2 (span : Meta.span) (ctx : actx) (env : venv) (monadic : bool)
   (* Bind the pattern's variables (one binder group) *)
   match pat.pat with
   | PBound (_, _) | PIgnored ->
-      let env', surface = bind_tpats env [ pat ] in
+      let env', surface = bind_tpats ctx env [ pat ] in
       let name_s = List.hd surface in
       let body = texpr_to_acl2 span ctx env' e2 in
       let bind_s =
@@ -365,7 +410,7 @@ and let_to_acl2 (span : Meta.span) (ctx : actx) (env : venv) (monadic : bool)
   | PAdt { variant_id = None; fields } ->
       (* Tuple destructuring let: bind a temp, project fields *)
       let tmp = fresh_tmp ctx in
-      let env', fnames = bind_tpats env fields in
+      let env', fnames = bind_tpats ctx env fields in
       let accessors =
         match fields with
         | [ _; _ ] -> [ "(car " ^ tmp ^ ")"; "(cdr " ^ tmp ^ ")" ]
@@ -417,7 +462,7 @@ and match_to_acl2 (span : Meta.span) (ctx : actx) (env : venv) (scrut : texpr)
           tname ^ "-" ^ collapse_dashes (mangle_string v.variant_name)
         in
         let fnames_decl = field_names v.fields in
-        let env', pnames = bind_tpats env fields in
+        let env', pnames = bind_tpats ctx env fields in
         let binds =
           List.filter_map
             (fun (n, fdecl) ->
@@ -598,7 +643,7 @@ let fun_decl_to_acl2 (ctx : actx) (is_rec : bool) (decl : Pure.fun_decl) :
   match decl.body with
   | None -> ";; opaque function " ^ name ^ " (skipped)"
   | Some body ->
-      let env, input_names = bind_tpats empty_venv body.inputs in
+      let env, input_names = bind_tpats ~toplevel:true ctx empty_venv body.inputs in
       List.iter
         (fun n ->
           if n = "&" then
@@ -629,6 +674,36 @@ let fun_decl_to_acl2 (ctx : actx) (is_rec : bool) (decl : Pure.fun_decl) :
 
 (* ----------------------------------------------------------------- crate *)
 
+(* Emit a global as (defconst *name* value). v0 only supports globals
+   whose initializer is a single constant expression (after stripping the
+   monadic return) -- the crypto case (round constants like DELTA). *)
+let global_decl_to_acl2 (ctx : actx) (gid : GlobalDeclId.id) : string =
+  let g = GlobalDeclId.Map.find gid ctx.trans_ctx.crate.global_decls in
+  let span = g.item_meta.span in
+  let name = GlobalDeclId.Map.find gid ctx.global_names in
+  match Charon.GAstUtils.init_fun_id_of_global g with
+  | None -> [%craise] span "ACL2: global without an initializer"
+  | Some init_id -> (
+      match FunDeclId.Map.find_opt init_id ctx.trans_funs with
+      | None -> [%craise] span "ACL2: global initializer not found"
+      | Some t -> (
+          match t.f.body with
+          | None -> [%craise] span "ACL2: opaque global"
+          | Some body ->
+              (* strip a leading monadic return: `ok e` -> `e` *)
+              let e = body.body in
+              let e =
+                match opt_destruct_qualif_apps e with
+                | Some (q, [ arg ]) -> (
+                    match q.id with
+                    | FunOrOp (Fun (Pure Return)) -> arg
+                    | _ -> e)
+                | _ -> e
+              in
+              let env, _ = bind_tpats ctx empty_venv body.inputs in
+              let v = texpr_to_acl2 span ctx env e in
+              "(defconst " ^ name ^ " " ^ v ^ ")"))
+
 let extract_crate (out : out_channel) (rust_module_name : string)
     (ctx : ExtractBase.extraction_ctx) : unit =
   let trans_ctx = ctx.trans_ctx in
@@ -656,11 +731,22 @@ let extract_crate (out : out_channel) (rust_module_name : string)
         if t.f.body = None then FunDeclId.Set.add id s else s)
       ctx.trans_funs FunDeclId.Set.empty
   in
+  (* Globals: name each as a defconst symbol *<mangled>*, and remember its
+     initializer function id so we can emit its value. *)
+  let global_names =
+    GlobalDeclId.Map.fold
+      (fun id (g : LlbcAst.global_decl) m ->
+        let n = "*" ^ mangle_name trans_ctx g.item_meta.name ^ "*" in
+        GlobalDeclId.Map.add id n m)
+      ctx.trans_ctx.crate.global_decls GlobalDeclId.Map.empty
+  in
   let actx =
     {
       trans_ctx;
       fun_names;
       opaque_funs;
+      global_names;
+      trans_funs = ctx.trans_funs;
       type_names;
       types = ctx.trans_types;
       gensym = 0;
@@ -715,6 +801,13 @@ let extract_crate (out : out_channel) (rust_module_name : string)
                 match FunDeclId.Map.find_opt id ctx.trans_funs with
                 | Some t ->
                     if t.f.is_global_decl_body then None
+                    else if
+                      t.f.body = None
+                      && Option.is_some
+                           (Option.bind
+                              (FunDeclId.Map.find_opt id fun_names)
+                              std_fun_mapping)
+                    then None (* provided by the primitives book *)
                     else Some ((t.f :: t.loops) @ t.bodies)
                 | None -> None)
               ids
@@ -752,8 +845,17 @@ let extract_crate (out : out_channel) (rust_module_name : string)
                     if not ok then
                       actx.skipped <- List.map decl_key ds @ actx.skipped)
               sccs
-      | LlbcAst.GlobalGroup _ ->
-          Printf.fprintf out ";; SKIPPED global (not supported in v0)\n\n"
+      | LlbcAst.GlobalGroup g ->
+          let gids =
+            match g with NonRecGroup id -> [ id ] | RecGroup ids -> ids
+          in
+          List.iter
+            (fun gid ->
+              ignore
+                (emit_decl "global"
+                   (GlobalDeclId.Map.find gid global_names)
+                   (fun () -> global_decl_to_acl2 actx gid)))
+            gids
       | LlbcAst.TraitDeclGroup _ | LlbcAst.MixedGroup _ ->
           Printf.fprintf out
             ";; SKIPPED trait/mixed declaration group (run with \

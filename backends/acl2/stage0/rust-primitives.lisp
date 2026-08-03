@@ -150,6 +150,41 @@
            (implies (and (,pred x) (,pred y) (,pred (* x y)))
                     (equal (,mul x y) (ok (* x y)))))))))
 
+;; Bitwise, shift and wrapping ops for UNSIGNED Rust integer types.
+;; - xor/and/or: total, plain value (bit width preserved).
+;; - shl/shr: return result -- Rust panics if the shift amount is >= the
+;;   bit width; the value shift itself is modulo 2^width (shl) or a
+;;   logical right shift (shr, valid since the value is non-negative).
+;; - wrapping_{add,sub,mul}: total, result-wrapped to match how Aeneas
+;;   models the std methods (monadic, but never actually fail).
+(defmacro def-rust-uint-bitops (name width)
+  (let* ((s (symbol-name name))
+         (m `(expt 2 ,width)))
+    (let ((xor (intern$ (concatenate 'string s "-XOR") "ACL2"))
+          (band (intern$ (concatenate 'string s "-AND") "ACL2"))
+          (bor (intern$ (concatenate 'string s "-OR") "ACL2"))
+          (shl (intern$ (concatenate 'string s "-SHL") "ACL2"))
+          (shr (intern$ (concatenate 'string s "-SHR") "ACL2"))
+          (wadd (intern$ (concatenate 'string s "-WRAPPING-ADD") "ACL2"))
+          (wsub (intern$ (concatenate 'string s "-WRAPPING-SUB") "ACL2"))
+          (wmul (intern$ (concatenate 'string s "-WRAPPING-MUL") "ACL2")))
+      `(progn
+         (defun ,xor (x y) (logxor x y))
+         (defun ,band (x y) (logand x y))
+         (defun ,bor (x y) (logior x y))
+         (defun ,shl (x n)
+           (if (< (nfix n) ,width)
+               (ok (mod (ash x (nfix n)) ,m))
+             (fail (err-failure))))
+         (defun ,shr (x n)
+           (if (< (nfix n) ,width)
+               (ok (ash x (- (nfix n))))
+             (fail (err-failure))))
+         (defun ,wadd (x y) (ok (mod (+ x y) ,m)))
+         (defun ,wsub (x y) (ok (mod (- x y) ,m)))
+         (defun ,wmul (x y) (ok (mod (* x y) ,m)))))))
+
+
 (def-rust-int-type u8 0 255)
 (def-rust-int-type u16 0 65535)
 (def-rust-int-type u64 0 18446744073709551615)
@@ -161,6 +196,13 @@
 (def-rust-int-type i128 -170141183460469231731687303715884105728
                         170141183460469231731687303715884105727)
 (def-rust-int-type isize -9223372036854775808 9223372036854775807)
+
+(def-rust-uint-bitops u8 8)
+(def-rust-uint-bitops u16 16)
+(def-rust-uint-bitops u32 32)
+(def-rust-uint-bitops u64 64)
+(def-rust-uint-bitops u128 128)
+(def-rust-uint-bitops usize 64)
 
 ;; ------------------------------------------------- characterization rules
 ;; The seed of the Stage-1 rule library: rewrite checked ops to ok/fail

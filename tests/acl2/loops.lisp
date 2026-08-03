@@ -46,45 +46,45 @@
 
 (defun loops-iter-loop0 (n max i)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (if (< i max) (b* (((ok i) (u32-add i 1)))
-  (loops-iter-loop0 n max i)) (ok i)))))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_1 (1- n)))
+  (if (< i max) (b* (((ok i_2) (u32-add i 1)))
+  (loops-iter-loop0 n_1 max i_2)) (ok i)))))
 
 (defun loops-iter (n max)
   (loops-iter-loop0 n max 0))
 
 (defun loops-sum-loop0 (n max i s)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (if (< i max) (b* (((ok s) (u32-add s i)))
-  (b* (((ok i) (u32-add i 1)))
-  (loops-sum-loop0 n max i s))) (ok s)))))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_3 (1- n)))
+  (if (< i max) (b* (((ok s_4) (u32-add s i)))
+  (b* (((ok i_5) (u32-add i 1)))
+  (loops-sum-loop0 n_3 max i_5 s_4))) (ok s)))))
 
 (defun loops-sum (n max)
-  (b* (((ok s) (loops-sum-loop0 n max 0 0)))
-  (u32-mul s 2)))
+  (b* (((ok s_6) (loops-sum-loop0 n max 0 0)))
+  (u32-mul s_6 2)))
 
 (defun loops-sum-with-mut-borrows-loop0 (n max i s)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (if (< i max) (b* (((ok ms) (u32-add s i)))
-  (b* (((ok mi) (u32-add i 1)))
-  (loops-sum-with-mut-borrows-loop0 n max mi ms))) (ok s)))))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_7 (1- n)))
+  (if (< i max) (b* (((ok ms_8) (u32-add s i)))
+  (b* (((ok mi_9) (u32-add i 1)))
+  (loops-sum-with-mut-borrows-loop0 n_7 max mi_9 ms_8))) (ok s)))))
 
 (defun loops-sum-with-mut-borrows (n max)
-  (b* (((ok s) (loops-sum-with-mut-borrows-loop0 n max 0 0)))
-  (u32-mul s 2)))
+  (b* (((ok s_10) (loops-sum-with-mut-borrows-loop0 n max 0 0)))
+  (u32-mul s_10 2)))
 
 (defun loops-sum-with-shared-borrows-loop0 (n max i s)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (if (< i max) (b* (((ok i) (u32-add i 1)))
-  (b* (((ok s) (u32-add s i)))
-  (loops-sum-with-shared-borrows-loop0 n max i s))) (ok s)))))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_11 (1- n)))
+  (if (< i max) (b* (((ok i_12) (u32-add i 1)))
+  (b* (((ok s_13) (u32-add s i_12)))
+  (loops-sum-with-shared-borrows-loop0 n_11 max i_12 s_13))) (ok s)))))
 
 (defun loops-sum-with-shared-borrows (n max)
-  (b* (((ok s) (loops-sum-with-shared-borrows-loop0 n max 0 0)))
-  (u32-mul s 2)))
+  (b* (((ok s_14) (loops-sum-with-shared-borrows-loop0 n max 0 0)))
+  (u32-mul s_14 2)))
 
 ;; SKIPPED function loops-sum-array: ACL2: builtin (std) function not mapped in v0
 
@@ -101,10 +101,10 @@
 
 (defun loops-list-mem-loop0 (n x ls)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (b* ((acl2tmp1 ls))
-  (loops-list-case acl2tmp1
-    :cons (b* ((y (loops-list-cons->f0 acl2tmp1)) (tl (loops-list-cons->f1 acl2tmp1))) (if (equal y x) (ok t) (loops-list-mem-loop0 n x tl)))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_17 (1- n)))
+  (b* ((acl2tmp18 ls))
+  (loops-list-case acl2tmp18
+    :cons (b* ((y_19 (loops-list-cons->f0 acl2tmp18)) (tl_20 (loops-list-cons->f1 acl2tmp18))) (if (equal y_19 x) (ok t) (loops-list-mem-loop0 n_17 x tl_20)))
     :nil (ok nil))))))
 
 (defun loops-list-mem (n x ls)
@@ -116,11 +116,11 @@
 
 (defun loops-list-nth-shared-loop0 (n ls i)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (b* ((acl2tmp4 ls))
-  (loops-list-case acl2tmp4
-    :cons (b* ((x (loops-list-cons->f0 acl2tmp4)) (tl (loops-list-cons->f1 acl2tmp4))) (if (equal i 0) (ok x) (b* (((ok i) (u32-sub i 1)))
-  (loops-list-nth-shared-loop0 n tl i))))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_30 (1- n)))
+  (b* ((acl2tmp31 ls))
+  (loops-list-case acl2tmp31
+    :cons (b* ((x_32 (loops-list-cons->f0 acl2tmp31)) (tl_33 (loops-list-cons->f1 acl2tmp31))) (if (equal i 0) (ok x_32) (b* (((ok i_34) (u32-sub i 1)))
+  (loops-list-nth-shared-loop0 n_30 tl_33 i_34))))
     :nil (fail (err-failure)))))))
 
 (defun loops-list-nth-shared (n ls i)
@@ -132,10 +132,10 @@
 
 (defun loops-get-elem-shared-loop0 (n x ls)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (b* ((acl2tmp7 ls))
-  (loops-list-case acl2tmp7
-    :cons (b* ((y (loops-list-cons->f0 acl2tmp7)) (tl (loops-list-cons->f1 acl2tmp7))) (if (equal y x) (ok y) (loops-get-elem-shared-loop0 n x tl)))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_43 (1- n)))
+  (b* ((acl2tmp44 ls))
+  (loops-list-case acl2tmp44
+    :cons (b* ((y_45 (loops-list-cons->f0 acl2tmp44)) (tl_46 (loops-list-cons->f1 acl2tmp44))) (if (equal y_45 x) (ok y_45) (loops-get-elem-shared-loop0 n_43 x tl_46)))
     :nil (fail (err-failure)))))))
 
 ;; SKIPPED function loops-get-elem-shared: ACL2: call to a function that was itself skipped
@@ -151,16 +151,16 @@
 
 (defun loops-list-nth-shared-with-id-loop0 (n i ls)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (b* ((acl2tmp10 ls))
-  (loops-list-case acl2tmp10
-    :cons (b* ((x (loops-list-cons->f0 acl2tmp10)) (tl (loops-list-cons->f1 acl2tmp10))) (if (equal i 0) (ok x) (b* (((ok i) (u32-sub i 1)))
-  (loops-list-nth-shared-with-id-loop0 n i tl))))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_56 (1- n)))
+  (b* ((acl2tmp57 ls))
+  (loops-list-case acl2tmp57
+    :cons (b* ((x_58 (loops-list-cons->f0 acl2tmp57)) (tl_59 (loops-list-cons->f1 acl2tmp57))) (if (equal i 0) (ok x_58) (b* (((ok i_60) (u32-sub i 1)))
+  (loops-list-nth-shared-with-id-loop0 n_56 i_60 tl_59))))
     :nil (fail (err-failure)))))))
 
 (defun loops-list-nth-shared-with-id (n ls i)
-  (b* (((ok ls) (loops-id-shared ls)))
-  (loops-list-nth-shared-with-id-loop0 n i ls)))
+  (b* (((ok ls_61) (loops-id-shared ls)))
+  (loops-list-nth-shared-with-id-loop0 n i ls_61)))
 
 ;; SKIPPED function loops-list-nth-mut-pair: ACL2: destructuring let arity <> 2
 
@@ -168,13 +168,13 @@
 
 (defun loops-list-nth-shared-pair-loop0 (n ls0 ls1 i)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (b* ((acl2tmp14 ls0))
-  (loops-list-case acl2tmp14
-    :cons (b* ((x0 (loops-list-cons->f0 acl2tmp14)) (tl0 (loops-list-cons->f1 acl2tmp14))) (b* ((acl2tmp15 ls1))
-  (loops-list-case acl2tmp15
-    :cons (b* ((x1 (loops-list-cons->f0 acl2tmp15)) (tl1 (loops-list-cons->f1 acl2tmp15))) (if (equal i 0) (ok (cons x0 x1)) (b* (((ok i) (u32-sub i 1)))
-  (loops-list-nth-shared-pair-loop0 n tl0 tl1 i))))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_76 (1- n)))
+  (b* ((acl2tmp77 ls0))
+  (loops-list-case acl2tmp77
+    :cons (b* ((x0_78 (loops-list-cons->f0 acl2tmp77)) (tl0_79 (loops-list-cons->f1 acl2tmp77))) (b* ((acl2tmp80 ls1))
+  (loops-list-case acl2tmp80
+    :cons (b* ((x1_81 (loops-list-cons->f0 acl2tmp80)) (tl1_82 (loops-list-cons->f1 acl2tmp80))) (if (equal i 0) (ok (cons x0_78 x1_81)) (b* (((ok i_83) (u32-sub i 1)))
+  (loops-list-nth-shared-pair-loop0 n_76 tl0_79 tl1_82 i_83))))
     :nil (fail (err-failure)))))
     :nil (fail (err-failure)))))))
 
@@ -187,13 +187,13 @@
 
 (defun loops-list-nth-shared-pair-merge-loop0 (n ls0 ls1 i)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (b* ((acl2tmp19 ls0))
-  (loops-list-case acl2tmp19
-    :cons (b* ((x0 (loops-list-cons->f0 acl2tmp19)) (tl0 (loops-list-cons->f1 acl2tmp19))) (b* ((acl2tmp20 ls1))
-  (loops-list-case acl2tmp20
-    :cons (b* ((x1 (loops-list-cons->f0 acl2tmp20)) (tl1 (loops-list-cons->f1 acl2tmp20))) (if (equal i 0) (ok (cons x0 x1)) (b* (((ok i) (u32-sub i 1)))
-  (loops-list-nth-shared-pair-merge-loop0 n tl0 tl1 i))))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_98 (1- n)))
+  (b* ((acl2tmp99 ls0))
+  (loops-list-case acl2tmp99
+    :cons (b* ((x0_100 (loops-list-cons->f0 acl2tmp99)) (tl0_101 (loops-list-cons->f1 acl2tmp99))) (b* ((acl2tmp102 ls1))
+  (loops-list-case acl2tmp102
+    :cons (b* ((x1_103 (loops-list-cons->f0 acl2tmp102)) (tl1_104 (loops-list-cons->f1 acl2tmp102))) (if (equal i 0) (ok (cons x0_100 x1_103)) (b* (((ok i_105) (u32-sub i 1)))
+  (loops-list-nth-shared-pair-merge-loop0 n_98 tl0_101 tl1_104 i_105))))
     :nil (fail (err-failure)))))
     :nil (fail (err-failure)))))))
 
@@ -218,9 +218,9 @@
 
 (defun loops-ignore-input-mut-borrow-loop0 (n i)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (if (> i 0) (b* (((ok i) (u32-sub i 1)))
-  (loops-ignore-input-mut-borrow-loop0 n i)) (ok (unit))))))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_158 (1- n)))
+  (if (> i 0) (b* (((ok i_159) (u32-sub i 1)))
+  (loops-ignore-input-mut-borrow-loop0 n_158 i_159)) (ok (unit))))))
 
 (defun loops-ignore-input-mut-borrow (n -a i)
   (b* (((ok &) (loops-ignore-input-mut-borrow-loop0 n i)))
@@ -228,20 +228,20 @@
 
 (defun loops-incr-ignore-input-mut-borrow-loop0 (n i)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (if (> i 0) (b* (((ok i) (u32-sub i 1)))
-  (loops-incr-ignore-input-mut-borrow-loop0 n i)) (ok (unit))))))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_160 (1- n)))
+  (if (> i 0) (b* (((ok i_161) (u32-sub i 1)))
+  (loops-incr-ignore-input-mut-borrow-loop0 n_160 i_161)) (ok (unit))))))
 
 (defun loops-incr-ignore-input-mut-borrow (n a i)
-  (b* (((ok a) (u32-add a 1)))
+  (b* (((ok a_162) (u32-add a 1)))
   (b* (((ok &) (loops-incr-ignore-input-mut-borrow-loop0 n i)))
-  (ok a))))
+  (ok a_162))))
 
 (defun loops-ignore-input-shared-borrow-loop0 (n i)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (if (> i 0) (b* (((ok i) (u32-sub i 1)))
-  (loops-ignore-input-shared-borrow-loop0 n i)) (ok (unit))))))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_163 (1- n)))
+  (if (> i 0) (b* (((ok i_164) (u32-sub i 1)))
+  (loops-ignore-input-shared-borrow-loop0 n_163 i_164)) (ok (unit))))))
 
 (defun loops-ignore-input-shared-borrow (n -a i)
   (b* (((ok &) (loops-ignore-input-shared-borrow-loop0 n i)))
@@ -252,9 +252,9 @@
 
 (defun loops-issue500-1-loop0 (n a)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (if (< 0 0) (b* (((ok a) (loops-issue500-1-bar a)))
-  (loops-issue500-1-loop0 n a)) (ok a)))))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_165 (1- n)))
+  (if (< 0 0) (b* (((ok a_166) (loops-issue500-1-bar a)))
+  (loops-issue500-1-loop0 n_165 a_166)) (ok a)))))
 
 (defun loops-issue500-1 (n s)
   (loops-issue500-1-loop0 n s))
@@ -267,7 +267,7 @@
   :xvar the-loops-issue500-2-a)
 
 (defun loops-issue500-2-loop0 (n)
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_167 (1- n)))
   (ok (unit)))))
 
 (defun loops-issue500-2 (n s)
@@ -280,8 +280,8 @@
 
 (defun loops-issue500-3-loop0 (n)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (if (< 0 0) (loops-issue500-3-loop0 n) (ok (unit))))))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_168 (1- n)))
+  (if (< 0 0) (loops-issue500-3-loop0 n_168) (ok (unit))))))
 
 (defun loops-issue500-3 (n s)
   (b* (((ok &) (loops-issue500-3-loop0 n)))
@@ -289,10 +289,10 @@
 
 (defun loops-issue351-loop0 (n t-var last)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (b* ((acl2tmp33 t-var))
-  (loops-list-case acl2tmp33
-    :cons (b* ((ht (loops-list-cons->f0 acl2tmp33)) (tt (loops-list-cons->f1 acl2tmp33))) (loops-issue351-loop0 n tt ht))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_169 (1- n)))
+  (b* ((acl2tmp170 t-var))
+  (loops-list-case acl2tmp170
+    :cons (b* ((ht_171 (loops-list-cons->f0 acl2tmp170)) (tt_172 (loops-list-cons->f1 acl2tmp170))) (loops-issue351-loop0 n_169 tt_172 ht_171))
     :nil (ok last))))))
 
 (defun loops-issue351 (n h t-var)
@@ -303,19 +303,19 @@
 
 (defun loops-issue270-loop0 (n t-var last)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (b* ((acl2tmp34 t-var))
-  (loops-list-case acl2tmp34
-    :cons (b* ((ht (loops-list-cons->f0 acl2tmp34)) (tt (loops-list-cons->f1 acl2tmp34))) (b* (((ok t-var) (loops-issue270-box-get-borrow tt)))
-  (loops-issue270-loop0 n t-var ht)))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_173 (1- n)))
+  (b* ((acl2tmp174 t-var))
+  (loops-list-case acl2tmp174
+    :cons (b* ((ht_175 (loops-list-cons->f0 acl2tmp174)) (tt_176 (loops-list-cons->f1 acl2tmp174))) (b* (((ok t-var_177) (loops-issue270-box-get-borrow tt_176)))
+  (loops-issue270-loop0 n_173 t-var_177 ht_175)))
     :nil (ok last))))))
 
 (defun loops-issue270 (n v)
-  (b* ((acl2tmp35 v))
-  (loops-list-case acl2tmp35
-    :cons (b* ((h (loops-list-cons->f0 acl2tmp35)) (t-var (loops-list-cons->f1 acl2tmp35))) (b* (((ok t-var) (loops-issue270-box-get-borrow t-var)))
-  (b* (((ok last) (loops-issue270-loop0 n t-var h)))
-  (ok (core-option-option-some last)))))
+  (b* ((acl2tmp178 v))
+  (loops-list-case acl2tmp178
+    :cons (b* ((h_179 (loops-list-cons->f0 acl2tmp178)) (t-var_180 (loops-list-cons->f1 acl2tmp178))) (b* (((ok t-var_181) (loops-issue270-box-get-borrow t-var_180)))
+  (b* (((ok last_182) (loops-issue270-loop0 n t-var_181 h_179)))
+  (ok (core-option-option-some last_182)))))
     :nil (ok (core-option-option-none)))))
 
 ;; SKIPPED function loops-issue400-1: ACL2: application of a function-typed variable (HO)
@@ -326,25 +326,25 @@
 
 ;; SKIPPED function loops-issue400-2: ACL2: lambda in output (backward function or closure); not supported in v0 -- see the defunctionalization plan
 
-;; SKIPPED global (not supported in v0)
+;; SKIPPED global *loops-copy-carray-carray*: ACL2: struct update not supported in v0
 
-;; SKIPPED function loops-copy-carray: ACL2: globals not supported in v0
+;; SKIPPED function loops-copy-carray: ACL2: builtin (std) function not mapped in v0
 
 ;; SKIPPED function loops-copy-carray: ACL2: call to a function that was itself skipped
 
 (defun loops-iter-local-mut-borrow-loop0 (n p)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (b* (((ok p) (i32-add p 1)))
-  (if (equal p 10) (ok (unit)) (loops-iter-local-mut-borrow-loop0 n p))))))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_186 (1- n)))
+  (b* (((ok p_187) (i32-add p 1)))
+  (if (equal p_187 10) (ok (unit)) (loops-iter-local-mut-borrow-loop0 n_186 p_187))))))
 
 (defun loops-iter-local-mut-borrow (n)
   (loops-iter-local-mut-borrow-loop0 n 0))
 
 (defun loops-iter-local-shared-borrow-loop0 (n)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (if (equal 0 0) (ok (unit)) (loops-iter-local-shared-borrow-loop0 n)))))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_188 (1- n)))
+  (if (equal 0 0) (ok (unit)) (loops-iter-local-shared-borrow-loop0 n_188)))))
 
 (defun loops-iter-local-shared-borrow (n)
   (loops-iter-local-shared-borrow-loop0 n))
@@ -356,15 +356,15 @@
 
 (defun loops-insert-in-list-loop0 (n key value ls)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (b* ((acl2tmp36 ls))
-  (loops-alist-case acl2tmp36
-    :cons (b* ((ckey (loops-alist-cons->f0 acl2tmp36)) (cvalue (loops-alist-cons->f1 acl2tmp36)) (tl (loops-alist-cons->f2 acl2tmp36))) (if (equal ckey key) (ok (cons nil (loops-alist-cons ckey value tl))) (b* (((ok v0) (loops-insert-in-list-loop0 n key value tl)))
-  (b* ((acl2tmp37 v0)
-     (v0 (car acl2tmp37))
-     (back (cdr acl2tmp37)))
-  (b* ((back (loops-alist-cons ckey cvalue back)))
-  (ok (cons v0 back)))))))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_189 (1- n)))
+  (b* ((acl2tmp190 ls))
+  (loops-alist-case acl2tmp190
+    :cons (b* ((ckey_191 (loops-alist-cons->f0 acl2tmp190)) (cvalue_192 (loops-alist-cons->f1 acl2tmp190)) (tl_193 (loops-alist-cons->f2 acl2tmp190))) (if (equal ckey_191 key) (ok (cons nil (loops-alist-cons ckey_191 value tl_193))) (b* (((ok v194_194) (loops-insert-in-list-loop0 n_189 key value tl_193)))
+  (b* ((acl2tmp195 v194_194)
+     (v196_196 (car acl2tmp195))
+     (back_197 (cdr acl2tmp195)))
+  (b* ((back_198 (loops-alist-cons ckey_191 cvalue_192 back_197)))
+  (ok (cons v196_196 back_198)))))))
     :nil (ok (cons t (loops-alist-cons key value (loops-alist-nil)))))))))
 
 (defun loops-insert-in-list (n key value ls)
@@ -375,17 +375,17 @@
 
 (defun loops-reborrow-const-loop0 (n)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_199 (1- n)))
   (if (< 0 5) (b* (((ok &) (loops-reborrow-const-reborrow 0)))
-  (loops-reborrow-const-loop0 n)) (ok (unit))))))
+  (loops-reborrow-const-loop0 n_199)) (ok (unit))))))
 
 (defun loops-reborrow-const (n)
   (loops-reborrow-const-loop0 n))
 
 (defun loops-decode-loop1 (n dst-coeff)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (if (> dst-coeff 32) (loops-decode-loop1 n dst-coeff) (ok (unit))))))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_200 (1- n)))
+  (if (> dst-coeff 32) (loops-decode-loop1 n_200 dst-coeff) (ok (unit))))))
 
 ;; SKIPPED function loops-decode: ACL2: builtin (std) function not mapped in v0
 

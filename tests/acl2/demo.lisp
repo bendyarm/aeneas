@@ -7,27 +7,23 @@
 (set-ignore-ok t)
 (set-irrelevant-formals-ok t)
 
-;; SKIPPED function core-num-u32-wrapping-add: ACL2: call to an opaque/std function with no ACL2 mapping yet
-
-;; SKIPPED function core-num-u32-wrapping-sub: ACL2: call to an opaque/std function with no ACL2 mapping yet
-
 ;; SKIPPED function demo-choose: ACL2: lambda in output (backward function or closure); not supported in v0 -- see the defunctionalization plan
 
 (defun demo-mul2-add1 (x)
-  (b* (((ok v0) (u32-add x x)))
-  (u32-add v0 1)))
+  (b* (((ok v1_1) (u32-add x x)))
+  (u32-add v1_1 1)))
 
 (defun demo-use-mul2-add1 (x y)
-  (b* (((ok v0) (demo-mul2-add1 x)))
-  (u32-add v0 y)))
+  (b* (((ok v2_2) (demo-mul2-add1 x)))
+  (u32-add v2_2 y)))
 
 (defun demo-incr (x)
   (u32-add x 1))
 
 (defun demo-use-incr ()
-  (b* (((ok x) (demo-incr 0)))
-  (b* (((ok x) (demo-incr x)))
-  (b* (((ok &) (demo-incr x)))
+  (b* (((ok x_3) (demo-incr 0)))
+  (b* (((ok x_4) (demo-incr x_3)))
+  (b* (((ok &) (demo-incr x_4)))
   (ok (unit))))))
 
 (fty::deftagsum demo-clist
@@ -37,20 +33,20 @@
 
 (defun demo-list-nth (n l i)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (b* ((acl2tmp1 l))
-  (demo-clist-case acl2tmp1
-    :ccons (b* ((x (demo-clist-ccons->f0 acl2tmp1)) (tl (demo-clist-ccons->f1 acl2tmp1))) (if (equal i 0) (ok x) (b* (((ok v0) (u32-sub i 1)))
-  (demo-list-nth n tl v0))))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_5 (1- n)))
+  (b* ((acl2tmp6 l))
+  (demo-clist-case acl2tmp6
+    :ccons (b* ((x_7 (demo-clist-ccons->f0 acl2tmp6)) (tl_8 (demo-clist-ccons->f1 acl2tmp6))) (if (equal i 0) (ok x_7) (b* (((ok v9_9) (u32-sub i 1)))
+  (demo-list-nth n_5 tl_8 v9_9))))
     :cnil (fail (err-failure)))))))
 
 (defun demo-list-nth1-loop0 (n l i)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (b* ((acl2tmp2 l))
-  (demo-clist-case acl2tmp2
-    :ccons (b* ((x (demo-clist-ccons->f0 acl2tmp2)) (tl (demo-clist-ccons->f1 acl2tmp2))) (if (equal i 0) (ok x) (b* (((ok i) (u32-sub i 1)))
-  (demo-list-nth1-loop0 n tl i))))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_10 (1- n)))
+  (b* ((acl2tmp11 l))
+  (demo-clist-case acl2tmp11
+    :ccons (b* ((x_12 (demo-clist-ccons->f0 acl2tmp11)) (tl_13 (demo-clist-ccons->f1 acl2tmp11))) (if (equal i 0) (ok x_12) (b* (((ok i_14) (u32-sub i 1)))
+  (demo-list-nth1-loop0 n_10 tl_13 i_14))))
     :cnil (fail (err-failure)))))))
 
 (defun demo-list-nth1 (n l i)
@@ -60,23 +56,30 @@
 
 (defun demo-i32-id (n i)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (if (equal i 0) (ok 0) (b* (((ok v0) (i32-sub i 1)))
-  (b* (((ok v0) (demo-i32-id n v0)))
-  (i32-add v0 1)))))))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_24 (1- n)))
+  (if (equal i 0) (ok 0) (b* (((ok v25_25) (i32-sub i 1)))
+  (b* (((ok v26_26) (demo-i32-id n_24 v25_25)))
+  (i32-add v26_26 1)))))))
 
 ;; SKIPPED function demo-list-tail: ACL2: lambda in output (backward function or closure); not supported in v0 -- see the defunctionalization plan
 
 ;; SKIPPED trait/mixed declaration group (run with --monomorphize)
 
 (defun demo-impl-demo-counter-for-usize-incr (self)
-  (b* (((ok self) (usize-add self 1)))
-  (ok (cons self self))))
+  (b* (((ok self_35) (usize-add self 1)))
+  (ok (cons self self_35))))
 
 ;; SKIPPED trait impl (run with --monomorphize)
 
 ;; SKIPPED function demo-use-counter: ACL2: trait method call; run charon with --monomorphize
 
-;; SKIPPED function demo-mod-add: ACL2: call to a function that was itself skipped
+(defun demo-mod-add (a b)
+  (b* (((ok &) (massert (< a 3329))))
+  (b* (((ok &) (massert (< b 3329))))
+  (b* (((ok sum_36) (u32-add a b)))
+  (b* (((ok res_37) (u32-wrapping-sub sum_36 3329)))
+  (b* (((ok mask_38) (u32-shr res_37 16)))
+  (b* ((q_39 (u32-and 3329 mask_38)))
+  (u32-wrapping-add res_37 q_39))))))))
 
 ;; END OF GENERATED FILE

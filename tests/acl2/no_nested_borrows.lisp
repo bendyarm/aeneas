@@ -55,10 +55,10 @@
   (if (>= x y) (ok x) (ok y)))
 
 (defun no-nested-borrows-test3 ()
-  (b* (((ok x) (no-nested-borrows-get-max 4 3)))
-  (b* (((ok y) (no-nested-borrows-get-max 10 11)))
-  (b* (((ok z) (u32-add x y)))
-  (massert (equal z 15))))))
+  (b* (((ok x_1) (no-nested-borrows-get-max 4 3)))
+  (b* (((ok y_2) (no-nested-borrows-get-max 10 11)))
+  (b* (((ok z_3) (u32-add x_1 y_2)))
+  (massert (equal z_3 15))))))
 
 ;; SKIPPED function no-nested-borrows-test-neg1: ACL2: unsupported unop (neg/cast)
 
@@ -87,30 +87,30 @@
   (massert (not b)))
 
 (defun no-nested-borrows-test-copy-int ()
-  (b* (((ok y) (no-nested-borrows-copy-int 0)))
-  (massert (equal 0 y))))
+  (b* (((ok y_4) (no-nested-borrows-copy-int 0)))
+  (massert (equal 0 y_4))))
 
 (defun no-nested-borrows-is-cons (l)
-  (b* ((acl2tmp1 l))
-  (no-nested-borrows-list-case acl2tmp1
+  (b* ((acl2tmp5 l))
+  (no-nested-borrows-list-case acl2tmp5
     :cons (ok t)
     :nil (ok nil))))
 
 (defun no-nested-borrows-test-is-cons ()
-  (b* (((ok v0) (no-nested-borrows-is-cons (no-nested-borrows-list-cons 0 (no-nested-borrows-list-nil)))))
-  (massert v0)))
+  (b* (((ok v6_6) (no-nested-borrows-is-cons (no-nested-borrows-list-cons 0 (no-nested-borrows-list-nil)))))
+  (massert v6_6)))
 
 (defun no-nested-borrows-split-list (l)
-  (b* ((acl2tmp2 l))
-  (no-nested-borrows-list-case acl2tmp2
-    :cons (b* ((hd (no-nested-borrows-list-cons->f0 acl2tmp2)) (tl (no-nested-borrows-list-cons->f1 acl2tmp2))) (ok (cons hd tl)))
+  (b* ((acl2tmp7 l))
+  (no-nested-borrows-list-case acl2tmp7
+    :cons (b* ((hd_8 (no-nested-borrows-list-cons->f0 acl2tmp7)) (tl_9 (no-nested-borrows-list-cons->f1 acl2tmp7))) (ok (cons hd_8 tl_9)))
     :nil (fail (err-failure)))))
 
 (defun no-nested-borrows-test-split-list ()
-  (b* (((ok v0) (no-nested-borrows-split-list (no-nested-borrows-list-cons 0 (no-nested-borrows-list-nil)))))
-  (b* ((acl2tmp3 v0)
-     (hd (car acl2tmp3)))
-  (massert (equal hd 0)))))
+  (b* (((ok v10_10) (no-nested-borrows-split-list (no-nested-borrows-list-cons 0 (no-nested-borrows-list-nil)))))
+  (b* ((acl2tmp11 v10_10)
+     (hd_12 (car acl2tmp11)))
+  (massert (equal hd_12 0)))))
 
 ;; SKIPPED function no-nested-borrows-choose: ACL2: lambda in output (backward function or closure); not supported in v0 -- see the defunctionalization plan
 
@@ -125,30 +125,30 @@
 
 (defun no-nested-borrows-list-length (n l)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (b* ((acl2tmp4 l))
-  (no-nested-borrows-list-case acl2tmp4
-    :cons (b* ((l1 (no-nested-borrows-list-cons->f1 acl2tmp4))) (b* (((ok v0) (no-nested-borrows-list-length n l1)))
-  (u32-add 1 v0)))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_13 (1- n)))
+  (b* ((acl2tmp14 l))
+  (no-nested-borrows-list-case acl2tmp14
+    :cons (b* ((l1_15 (no-nested-borrows-list-cons->f1 acl2tmp14))) (b* (((ok v16_16) (no-nested-borrows-list-length n_13 l1_15)))
+  (u32-add 1 v16_16)))
     :nil (ok 0))))))
 
 (defun no-nested-borrows-list-nth-shared (n l i)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (b* ((acl2tmp5 l))
-  (no-nested-borrows-list-case acl2tmp5
-    :cons (b* ((x (no-nested-borrows-list-cons->f0 acl2tmp5)) (tl (no-nested-borrows-list-cons->f1 acl2tmp5))) (if (equal i 0) (ok x) (b* (((ok v0) (u32-sub i 1)))
-  (no-nested-borrows-list-nth-shared n tl v0))))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_17 (1- n)))
+  (b* ((acl2tmp18 l))
+  (no-nested-borrows-list-case acl2tmp18
+    :cons (b* ((x_19 (no-nested-borrows-list-cons->f0 acl2tmp18)) (tl_20 (no-nested-borrows-list-cons->f1 acl2tmp18))) (if (equal i 0) (ok x_19) (b* (((ok v21_21) (u32-sub i 1)))
+  (no-nested-borrows-list-nth-shared n_17 tl_20 v21_21))))
     :nil (fail (err-failure)))))))
 
 ;; SKIPPED function no-nested-borrows-list-nth-mut: ACL2: lambda in output (backward function or closure); not supported in v0 -- see the defunctionalization plan
 
 (defun no-nested-borrows-list-rev-aux (n li lo)
   (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n (1- n)))
-  (b* ((acl2tmp8 li))
-  (no-nested-borrows-list-case acl2tmp8
-    :cons (b* ((hd (no-nested-borrows-list-cons->f0 acl2tmp8)) (tl (no-nested-borrows-list-cons->f1 acl2tmp8))) (no-nested-borrows-list-rev-aux n tl (no-nested-borrows-list-cons hd lo)))
+  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_31 (1- n)))
+  (b* ((acl2tmp32 li))
+  (no-nested-borrows-list-case acl2tmp32
+    :cons (b* ((hd_33 (no-nested-borrows-list-cons->f0 acl2tmp32)) (tl_34 (no-nested-borrows-list-cons->f1 acl2tmp32))) (no-nested-borrows-list-rev-aux n_31 tl_34 (no-nested-borrows-list-cons hd_33 lo)))
     :nil (ok lo))))))
 
 ;; SKIPPED function no-nested-borrows-list-rev: ACL2: call to a function that was itself skipped
@@ -193,8 +193,8 @@
   (ok 0))
 
 (defun no-nested-borrows-test-shared-borrow-enum1 (l)
-  (b* ((acl2tmp9 l))
-  (no-nested-borrows-list-case acl2tmp9
+  (b* ((acl2tmp39 l))
+  (no-nested-borrows-list-case acl2tmp39
     :cons (ok 1)
     :nil (ok 0))))
 
@@ -208,32 +208,32 @@
   (no-nested-borrows-incr x))
 
 (defun no-nested-borrows-read-then-incr (x)
-  (b* (((ok x) (u32-add x 1)))
-  (ok (cons x x))))
+  (b* (((ok x_40) (u32-add x 1)))
+  (ok (cons x x_40))))
 
 (fty::defprod no-nested-borrows-tuple
   ((f0 acl2::any-p) (f1 acl2::any-p))
   :xvar the-no-nested-borrows-tuple)
 
 (defun no-nested-borrows-read-tuple (x)
-  (b* ((acl2tmp10 x)
-     (v0 (car acl2tmp10)))
-  (ok v0)))
+  (b* ((acl2tmp41 x)
+     (v42_42 (car acl2tmp41)))
+  (ok v42_42)))
 
 (defun no-nested-borrows-update-tuple (x)
-  (b* ((acl2tmp11 x)
-     (v0 (cdr acl2tmp11)))
-  (ok (cons 1 v0))))
+  (b* ((acl2tmp43 x)
+     (v44_44 (cdr acl2tmp43)))
+  (ok (cons 1 v44_44))))
 
 (defun no-nested-borrows-read-tuple-struct (x)
-  (b* ((acl2tmp12 x)
-     (v0 (car acl2tmp12)))
-  (ok v0)))
+  (b* ((acl2tmp45 x)
+     (v46_46 (car acl2tmp45)))
+  (ok v46_46)))
 
 (defun no-nested-borrows-update-tuple-struct (x)
-  (b* ((acl2tmp13 x)
-     (v0 (cdr acl2tmp13)))
-  (ok (no-nested-borrows-tuple 1 v0))))
+  (b* ((acl2tmp47 x)
+     (v48_48 (cdr acl2tmp47)))
+  (ok (no-nested-borrows-tuple 1 v48_48))))
 
 (defun no-nested-borrows-create-tuple-struct (x y)
   (ok (no-nested-borrows-tuple x y)))
@@ -262,9 +262,9 @@
   :xvar the-no-nested-borrows-expandsimpliy-wrapper)
 
 (defun no-nested-borrows-expandsimpliy-check-expand-simplify-symb1 (x)
-  (b* ((acl2tmp14 x)
-     (v0 (car acl2tmp14)))
-  (if v0 (ok x) (ok x))))
+  (b* ((acl2tmp49 x)
+     (v50_50 (car acl2tmp49)))
+  (if v50_50 (ok x) (ok x))))
 
 (fty::defprod no-nested-borrows-expandsimpliy-wrapper2
   ((b acl2::any-p) (x acl2::any-p))

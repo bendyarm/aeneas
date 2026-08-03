@@ -533,8 +533,12 @@ let () =
               log#error "The ACL2 backend requires the -use-fuel option";
               fail true);
             (* Loops must become recursive functions (the printer has no
-               loop combinator) *)
-            loops_to_recursive_functions := true;
+               loop combinator). Required explicitly: the loop micro-passes
+               read this flag before this per-backend block runs, so it must
+               be set on the command line (parity with -use-fuel). *)
+            if not !loops_to_recursive_functions then (
+              log#error "The ACL2 backend requires the -loops-to-rec option";
+              fail true);
             (* Keep the emitted b* forms simple (same motivation as Coq:
                limited patterns in the target syntax) *)
             decompose_monadic_let_bindings := true;
