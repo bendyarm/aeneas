@@ -106,8 +106,8 @@ let clean_var_name (basename : string option) (i : int) : string =
    indices are assigned by depth-first search). Returns the names in DFS
    order and, separately, one "surface name" per top-level pattern
    ("&" for ignored patterns). *)
-let bind_tpats ?(toplevel = false) (ctx : actx) (env : venv)
-    (pats : tpat list) : venv * string list =
+let bind_tpats ?(toplevel = false) (ctx : actx) (env : venv) (pats : tpat list)
+    : venv * string list =
   let idx = ref 0 in
   let group = ref BVarId.Map.empty in
   let names = ref [] in
@@ -117,11 +117,11 @@ let bind_tpats ?(toplevel = false) (ctx : actx) (env : venv)
         let i = !idx in
         idx := i + 1;
         let name =
-          if toplevel then (
+          if toplevel then
             (* Function formals are a single binder group: per-index clean
                names, distinct within the group. Kept readable for proofs. *)
             let n = clean_var_name v.basename i in
-            if List.mem n !names then n ^ "-" ^ string_of_int i else n)
+            if List.mem n !names then n ^ "-" ^ string_of_int i else n
           else (
             (* Internal bindings must be globally unique within the
                function: nested single-binding b* groups otherwise reuse a
@@ -288,20 +288,52 @@ and qualif_app_to_acl2 (span : Meta.span) (ctx : actx) (_env : venv)
       with
       | Some prim -> sexp (prim :: args_s)
       | None ->
-      if List.mem (id, lp) ctx.skipped then
-        [%craise] span "ACL2: call to a function that was itself skipped"
-      else
-        let base = fun_name span ctx id in
-        let name =
-          match lp with
-          | None -> base
-          | Some (lp_id, is_body) ->
-              base ^ "-loop" ^ LoopId.to_string lp_id
-              ^ if is_body then "-body" else ""
-        in
-        sexp (name :: args_s))
-  | FunOrOp (Fun (FromLlbc (FunId (FBuiltin _), _))) ->
-      [%craise] span "ACL2: builtin (std) function not mapped in v0"
+          if List.mem (id, lp) ctx.skipped then
+            [%craise] span "ACL2: call to a function that was itself skipped"
+          else
+            let base = fun_name span ctx id in
+            let name =
+              match lp with
+              | None -> base
+              | Some (lp_id, is_body) ->
+                  base ^ "-loop" ^ LoopId.to_string lp_id
+                  ^ if is_body then "-body" else ""
+            in
+            sexp (name :: args_s))
+  | FunOrOp (Fun (FromLlbc (FunId (FBuiltin bid), _))) -> (
+      match bid with
+      | Types.BoxNew -> (
+          (* Box is transparent in the pure model *)
+          match args_s with
+          | [ a ] -> a
+          | _ -> [%craise] span "ACL2: ill-formed Box::new")
+      | Types.ArrayToSliceShared | Types.ArrayToSliceMut -> (
+          (* both are the identity on the list model; the mut backward
+             (if any) is handled by the usual lambda rejection upstream *)
+          match args_s with
+          | [ a ] -> a
+          | _ -> [%craise] span "ACL2: ill-formed array-to-slice")
+      | Types.ArrayRepeat ->
+          (* [x; N]: the count N is a const generic, which v0 erases, so we
+             cannot build the list. Reject cleanly rather than emit a call
+             with a missing argument. *)
+          [%craise] span
+            "ACL2: array-repeat [x; N] needs the const-generic length \
+             (not              supported in v0)"
+      | Types.Index { is_range = false; mutability = Types.RShared; _ } ->
+          sexp ("array-index" :: args_s)
+      | Types.Index { is_range = false; mutability = Types.RMut; _ } ->
+          (* mutable single-element index: micro-passes usually turn the
+             write side into UpdateAtIndex; a surviving &mut index means a
+             backward function, which we reject *)
+          [%craise] span
+            "ACL2: &mut index survived to extraction (backward function)"
+      | Types.Index { is_range = true; mutability = Types.RShared; _ } ->
+          sexp ("array-subslice" :: args_s)
+      | Types.Index { is_range = true; _ } ->
+          [%craise] span "ACL2: mutable subslice not supported"
+      | Types.PtrFromParts _ ->
+          [%craise] span "ACL2: raw pointers not supported")
   | FunOrOp (Fun (FromLlbc (TraitMethod _, _))) ->
       [%craise] span "ACL2: trait method call; run charon with --monomorphize"
   | FunOrOp (Fun (Pure Return)) -> sexp ("ok" :: args_s)
@@ -309,6 +341,7 @@ and qualif_app_to_acl2 (span : Meta.span) (ctx : actx) (_env : venv)
   | FunOrOp (Fun (Pure Assert)) -> sexp ("massert" :: args_s)
   | FunOrOp (Fun (Pure FuelDecrease)) -> sexp ("1-" :: args_s)
   | FunOrOp (Fun (Pure FuelEqZero)) -> sexp ("zp" :: args_s)
+  | FunOrOp (Fun (Pure (UpdateAtIndex _))) -> sexp ("array-update" :: args_s)
   | FunOrOp (Fun (Pure _)) ->
       [%craise] span "ACL2: unsupported pure builtin function"
   | FunOrOp (Unop (Not None)) -> sexp ("not" :: args_s)
@@ -346,6 +379,9 @@ and adt_cons_to_acl2 (span : Meta.span) (ctx : actx) (adt_id : type_id)
       else if variant_id = Some error_out_of_fuel_id then "(err-out-of-fuel)"
       else [%craise] span "ACL2: ill-formed error"
   | TBuiltin TFuel -> [%craise] span "ACL2: fuel constructor not expected"
+  | TBuiltin TArray ->
+      (* array literal [v0, ..., vn] *)
+      sexp ("list" :: args_s)
   | TBuiltin _ -> [%craise] span "ACL2: unsupported builtin ADT constructor"
   | TTuple -> (
       match args_s with
@@ -487,9 +523,43 @@ and match_to_acl2 (span : Meta.span) (ctx : actx) (env : venv) (scrut : texpr)
   ^ String.concat "\n    " branches_s
   ^ "))"
 
-and struct_update_to_acl2 (span : Meta.span) (_ctx : actx) (_env : venv)
-    (_su : struct_update) : string =
-  [%craise] span "ACL2: struct update not supported in v0"
+and struct_update_to_acl2 (span : Meta.span) (ctx : actx) (env : venv)
+    (su : struct_update) : string =
+  match su.struct_id with
+  | TBuiltin TArray ->
+      (* array literal [v0; ...; vn] built as an aggregate: no [init] for a
+         fresh array, and the updates cover every index in order *)
+      if su.init <> None then
+        [%craise] span "ACL2: array update-with-init not supported in v0"
+      else
+        let sorted =
+          List.sort (fun (a, _) (b, _) -> FieldId.compare_id a b) su.updates
+        in
+        let elems =
+          List.map (fun (_, e) -> texpr_to_acl2 span ctx env e) sorted
+        in
+        sexp ("list" :: elems)
+  | TAdtId id -> (
+      let tname = type_name span ctx id in
+      let decl = TypeDeclId.Map.find id ctx.types in
+      let fnames =
+        match decl.kind with
+        | Struct fields -> field_names fields
+        | _ -> [%craise] span "ACL2: struct update on a non-struct"
+      in
+      let upd_strs =
+        List.map
+          (fun (fid, e) ->
+            let fname = List.nth fnames (FieldId.to_int fid) in
+            ":" ^ fname ^ " " ^ texpr_to_acl2 span ctx env e)
+          su.updates
+      in
+      match su.init with
+      | Some base ->
+          sexp
+            (("change-" ^ tname) :: texpr_to_acl2 span ctx env base :: upd_strs)
+      | None -> sexp (("make-" ^ tname) :: upd_strs))
+  | _ -> [%craise] span "ACL2: unsupported struct update"
 
 (* ----------------------------------------------------------------- decls *)
 
@@ -643,7 +713,9 @@ let fun_decl_to_acl2 (ctx : actx) (is_rec : bool) (decl : Pure.fun_decl) :
   match decl.body with
   | None -> ";; opaque function " ^ name ^ " (skipped)"
   | Some body ->
-      let env, input_names = bind_tpats ~toplevel:true ctx empty_venv body.inputs in
+      let env, input_names =
+        bind_tpats ~toplevel:true ctx empty_venv body.inputs
+      in
       List.iter
         (fun n ->
           if n = "&" then
@@ -847,13 +919,14 @@ let extract_crate (out : out_channel) (rust_module_name : string)
               sccs
       | LlbcAst.GlobalGroup g ->
           let gids =
-            match g with NonRecGroup id -> [ id ] | RecGroup ids -> ids
+            match g with
+            | NonRecGroup id -> [ id ]
+            | RecGroup ids -> ids
           in
           List.iter
             (fun gid ->
               ignore
-                (emit_decl "global"
-                   (GlobalDeclId.Map.find gid global_names)
+                (emit_decl "global" (GlobalDeclId.Map.find gid global_names)
                    (fun () -> global_decl_to_acl2 actx gid)))
             gids
       | LlbcAst.TraitDeclGroup _ | LlbcAst.MixedGroup _ ->

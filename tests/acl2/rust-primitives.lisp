@@ -204,6 +204,50 @@
 (def-rust-uint-bitops u128 128)
 (def-rust-uint-bitops usize 64)
 
+;; ---------------------------------------------------------------- arrays
+;; Rust arrays [T; N] and slices &[T] are both modeled as true lists (the
+;; same representation Kestrel bv-arrays use). Indexing/updating is
+;; bounds-checked and returns a result; conversions between arrays and
+;; slices are the identity. usize bounds are implicitly respected because
+;; list lengths are.
+
+(defun array-index (a i)
+  (if (and (natp i) (< i (len a)))
+      (ok (nth i a))
+    (fail (err-failure))))
+
+(defun array-update (a i v)
+  (if (and (natp i) (< i (len a)))
+      (ok (update-nth i v a))
+    (fail (err-failure))))
+
+(defun array-len (a) (len a))
+
+(defun array-repeat (n x)
+  (if (zp n) nil (cons x (array-repeat (1- n) x))))
+
+;; Subslice [i..j) of a list, shared form.
+(defun array-subslice (a i j)
+  (if (and (natp i) (natp j) (<= i j) (<= j (len a)))
+      (ok (nthcdr i (take j a)))
+    (fail (err-failure))))
+
+;; A few rules the proofs want.
+(defthm array-index-ok
+  (implies (and (natp i) (< i (len a)))
+           (equal (array-index a i) (ok (nth i a)))))
+
+(defthm array-index-oob
+  (implies (not (and (natp i) (< i (len a))))
+           (equal (array-index a i) (fail (err-failure)))))
+
+(defthm array-update-ok
+  (implies (and (natp i) (< i (len a)))
+           (equal (array-update a i v) (ok (update-nth i v a)))))
+
+(defthm len-of-array-repeat
+  (equal (len (array-repeat n x)) (nfix n)))
+
 ;; ------------------------------------------------- characterization rules
 ;; The seed of the Stage-1 rule library: rewrite checked ops to ok/fail
 ;; under arithmetic side conditions, so proofs about extracted code never

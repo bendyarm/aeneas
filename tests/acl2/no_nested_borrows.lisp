@@ -167,19 +167,37 @@
   ((p acl2::any-p))
   :xvar the-no-nested-borrows-structwithtuple)
 
-;; SKIPPED function no-nested-borrows-new-tuple1: ACL2: struct update not supported in v0
+(defun no-nested-borrows-new-tuple1 ()
+  (ok (make-no-nested-borrows-structwithtuple :p (cons 1 2))))
 
-;; SKIPPED function no-nested-borrows-new-tuple2: ACL2: struct update not supported in v0
+(defun no-nested-borrows-new-tuple2 ()
+  (ok (make-no-nested-borrows-structwithtuple :p (cons 1 2))))
 
-;; SKIPPED function no-nested-borrows-new-tuple3: ACL2: struct update not supported in v0
+(defun no-nested-borrows-new-tuple3 ()
+  (ok (make-no-nested-borrows-structwithtuple :p (cons 1 2))))
 
 (fty::defprod no-nested-borrows-structwithpair
   ((p acl2::any-p))
   :xvar the-no-nested-borrows-structwithpair)
 
-;; SKIPPED function no-nested-borrows-new-pair1: ACL2: struct update not supported in v0
+(defun no-nested-borrows-new-pair1 ()
+  (ok (make-no-nested-borrows-structwithpair :p (make-no-nested-borrows-pair :x 1 :y 2))))
 
-;; SKIPPED function no-nested-borrows-test-constants: ACL2: call to a function that was itself skipped
+(defun no-nested-borrows-test-constants ()
+  (b* (((ok v39_39) (no-nested-borrows-new-tuple1)))
+  (b* ((acl2tmp40 (no-nested-borrows-structwithtuple->p v39_39))
+     (v41_41 (car acl2tmp40)))
+  (b* (((ok &) (massert (equal v41_41 1))))
+  (b* (((ok v42_42) (no-nested-borrows-new-tuple2)))
+  (b* ((acl2tmp43 (no-nested-borrows-structwithtuple->p v42_42))
+     (v44_44 (car acl2tmp43)))
+  (b* (((ok &) (massert (equal v44_44 1))))
+  (b* (((ok v45_45) (no-nested-borrows-new-tuple3)))
+  (b* ((acl2tmp46 (no-nested-borrows-structwithtuple->p v45_45))
+     (v47_47 (car acl2tmp46)))
+  (b* (((ok &) (massert (equal v47_47 1))))
+  (b* (((ok v48_48) (no-nested-borrows-new-pair1)))
+  (massert (equal (no-nested-borrows-pair->x (no-nested-borrows-structwithpair->p v48_48)) 1)))))))))))))
 
 (defun no-nested-borrows-test-weird-borrows1 ()
   (ok (unit)))
@@ -193,8 +211,8 @@
   (ok 0))
 
 (defun no-nested-borrows-test-shared-borrow-enum1 (l)
-  (b* ((acl2tmp39 l))
-  (no-nested-borrows-list-case acl2tmp39
+  (b* ((acl2tmp49 l))
+  (no-nested-borrows-list-case acl2tmp49
     :cons (ok 1)
     :nil (ok 0))))
 
@@ -208,32 +226,32 @@
   (no-nested-borrows-incr x))
 
 (defun no-nested-borrows-read-then-incr (x)
-  (b* (((ok x_40) (u32-add x 1)))
-  (ok (cons x x_40))))
+  (b* (((ok x_50) (u32-add x 1)))
+  (ok (cons x x_50))))
 
 (fty::defprod no-nested-borrows-tuple
   ((f0 acl2::any-p) (f1 acl2::any-p))
   :xvar the-no-nested-borrows-tuple)
 
 (defun no-nested-borrows-read-tuple (x)
-  (b* ((acl2tmp41 x)
-     (v42_42 (car acl2tmp41)))
-  (ok v42_42)))
+  (b* ((acl2tmp51 x)
+     (v52_52 (car acl2tmp51)))
+  (ok v52_52)))
 
 (defun no-nested-borrows-update-tuple (x)
-  (b* ((acl2tmp43 x)
-     (v44_44 (cdr acl2tmp43)))
-  (ok (cons 1 v44_44))))
+  (b* ((acl2tmp53 x)
+     (v54_54 (cdr acl2tmp53)))
+  (ok (cons 1 v54_54))))
 
 (defun no-nested-borrows-read-tuple-struct (x)
-  (b* ((acl2tmp45 x)
-     (v46_46 (car acl2tmp45)))
-  (ok v46_46)))
+  (b* ((acl2tmp55 x)
+     (v56_56 (car acl2tmp55)))
+  (ok v56_56)))
 
 (defun no-nested-borrows-update-tuple-struct (x)
-  (b* ((acl2tmp47 x)
-     (v48_48 (cdr acl2tmp47)))
-  (ok (no-nested-borrows-tuple 1 v48_48))))
+  (b* ((acl2tmp57 x)
+     (v58_58 (cdr acl2tmp57)))
+  (ok (no-nested-borrows-tuple 1 v58_58))))
 
 (defun no-nested-borrows-create-tuple-struct (x y)
   (ok (no-nested-borrows-tuple x y)))
@@ -262,9 +280,9 @@
   :xvar the-no-nested-borrows-expandsimpliy-wrapper)
 
 (defun no-nested-borrows-expandsimpliy-check-expand-simplify-symb1 (x)
-  (b* ((acl2tmp49 x)
-     (v50_50 (car acl2tmp49)))
-  (if v50_50 (ok x) (ok x))))
+  (b* ((acl2tmp59 x)
+     (v60_60 (car acl2tmp59)))
+  (if v60_60 (ok x) (ok x))))
 
 (fty::defprod no-nested-borrows-expandsimpliy-wrapper2
   ((b acl2::any-p) (x acl2::any-p))
