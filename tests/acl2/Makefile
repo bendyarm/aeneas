@@ -37,13 +37,19 @@ regen:
 	  $(SRC)/tea_arr.rs --crate-name=rust_tea_arr --crate-type=rlib \
 	  --allow=unused --allow=non_snake_case >/dev/null 2>&1
 	@$(AENEAS) $(AENEAS_FLAGS) -dest . $(LLBC)/rust_tea_arr.llbc || true
+	@# Vec needs --monomorphize (resolves the SliceIndex trait plumbing)
+	@$(CHARON) rustc --dest-file $(LLBC)/vec_demo.llbc --preset=aeneas \
+	  --monomorphize -- $(SRC)/vec_demo.rs --crate-name=vec_demo \
+	  --crate-type=rlib --allow=unused --allow=non_snake_case >/dev/null 2>&1
+	@$(AENEAS) $(AENEAS_FLAGS) -dest . $(LLBC)/vec_demo.llbc || true
 
 # Certify every book in the directory (generated + handwritten).
 verify:
 	$(CERT_PL) -j $(shell nproc) \
 	  rust-primitives demo loops no_nested_borrows proofs \
 	  rust_tea tea-bridges tea-equiv tea-vectors \
-	  rust_tea_arr tea_arr-vectors tea-arr-equiv
+	  rust_tea_arr tea_arr-vectors tea-arr-equiv \
+	  vec_demo vec_demo-proofs
 
 clean:
 	rm -f *.cert *.cert.out *.fasl *.port Makefile-tmp

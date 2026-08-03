@@ -12,6 +12,8 @@ Rust sources in `../src`, plus handwritten proof books about them. The
 | `proofs.lisp` | handwritten | specs/equivalence for the above (list_nth==nth, sum loop, get_max==max, ...) |
 | `rust_tea.lisp` | generated | scalar-signature TEA (`tea.rs`, crate `rust_tea`) |
 | `rust_tea_arr.lisp` | generated | array-signature TEA (`tea_arr.rs`, crate `rust_tea_arr`) |
+| `vec_demo.lisp` | generated | `Vec` demo (`vec_demo.rs`; needs `--monomorphize`) |
+| `vec_demo-proofs.lisp` | handwritten | build/len/get properties of the Vec demo |
 | `tea-bridges.lisp` | handwritten | extracted u32 ops == Kestrel bit-vector ops |
 | `tea-equiv.lisp` | handwritten | scalar TEA == Kestrel spec; decrypt∘encrypt=id |
 | `tea-arr-equiv.lisp` | handwritten | array TEA == Kestrel spec; decrypt∘encrypt=id |

@@ -248,6 +248,25 @@
 (defthm len-of-array-repeat
   (equal (len (array-repeat n x)) (nfix n)))
 
+;; ------------------------------------------------------------------ Vec
+;; Rust Vec<T> is a growable array, modeled (like arrays/slices) as a list.
+;; push/insert take &mut self, so Aeneas returns the updated vector; new
+;; and len cannot fail. Requires the crate extracted with --monomorphize.
+
+(defun vec-new () (ok nil))
+(defun vec-len (v) (len v))
+(defun vec-push (v x) (ok (append v (list x))))
+(defun vec-insert (v i x)
+  (if (and (natp i) (<= i (len v)))
+      (ok (append (take i v) (cons x (nthcdr i v))))
+    (fail (err-failure))))
+
+(defthm len-of-vec-push
+  (equal (len (result-ok->val (vec-push v x))) (+ 1 (len v))))
+
+(defthm true-listp-of-vec-push
+  (implies (true-listp v) (true-listp (result-ok->val (vec-push v x)))))
+
 ;; ------------------------------------------------- characterization rules
 ;; The seed of the Stage-1 rule library: rewrite checked ops to ok/fail
 ;; under arithmetic side conditions, so proofs about extracted code never

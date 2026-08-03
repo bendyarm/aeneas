@@ -172,9 +172,30 @@ let std_fun_mapping (mangled : string) : string option =
         else None)
       ok_types
   in
+  let has sub =
+    try
+      ignore (Str.search_forward (Str.regexp_string sub) mangled 0);
+      true
+    with Not_found -> false
+  in
+  let starts p =
+    String.length mangled >= String.length p
+    && String.sub mangled 0 (String.length p) = p
+  in
   match List.find_map try_wrap [ "add"; "sub"; "mul" ] with
   | Some s -> Some s
-  | None -> None
+  | None ->
+      (* alloc::vec::Vec ops. The mangled name carries an [alloc-vec]
+         prefix in both the generic and monomorphized forms; we key off
+         that plus the method substring. v0 requires --monomorphize for
+         Vec (it resolves the SliceIndex trait plumbing). *)
+      if starts "alloc-vec" && has "-push" then Some "vec-push"
+      else if starts "alloc-vec" && has "-insert" then Some "vec-insert"
+      else if starts "alloc-vec" && has "-new" then Some "vec-new"
+      else if starts "alloc-vec" && has "-with-capacity" then Some "vec-new"
+      else if starts "alloc-vec" && has "-len" then Some "vec-len"
+      else if starts "alloc-vec" && has "-index" then Some "array-index"
+      else None
 
 let fun_name (span : Meta.span) (ctx : actx) (id : FunDeclId.id) : string =
   if FunDeclId.Set.mem id ctx.opaque_funs then
@@ -803,6 +824,7 @@ let extract_crate (out : out_channel) (rust_module_name : string)
         if t.f.body = None then FunDeclId.Set.add id s else s)
       ctx.trans_funs FunDeclId.Set.empty
   in
+
   (* Globals: name each as a defconst symbol *<mangled>*, and remember its
      initializer function id so we can emit its value. *)
   let global_names =
