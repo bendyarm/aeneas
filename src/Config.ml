@@ -76,6 +76,7 @@ let backend_to_string (b : backend) =
   | Coq -> "Rocq"
   | Lean -> "Lean"
   | HOL4 -> "HOL4"
+  | Acl2 -> "ACL2"
 
 let backend_name () : string = backend_to_string (backend ())
 
@@ -438,7 +439,7 @@ let use_tuple_structs = ref true
 let backend_has_tuple_projectors backend =
   match backend with
   | Lean -> true
-  | Coq | FStar | HOL4 -> false
+  | Coq | FStar | HOL4 | Acl2 -> false
 
 (** Toggle the use of tuple projectors *)
 let use_tuple_projectors = ref false

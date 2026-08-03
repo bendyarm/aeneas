@@ -84,7 +84,7 @@ let builtin_types () : Pure.builtin_type_info list =
                    in
                    match backend () with
                    | FStar | Lean -> name
-                   | Coq | HOL4 -> extract_name ^ "_" ^ name ))
+                   | Coq | HOL4 | Acl2 -> extract_name ^ "_" ^ name ))
                fields
            in
            let constructor = mk_struct_constructor extract_name in
@@ -102,7 +102,7 @@ let builtin_types () : Pure.builtin_type_info list =
                    match backend () with
                    | FStar | Coq -> extract_name ^ "_" ^ evariant
                    | Lean -> extract_name ^ "." ^ evariant
-                   | HOL4 -> extract_name ^ evariant
+                   | HOL4 | Acl2 -> extract_name ^ evariant
                  in
                  ({
                     rust_variant_name = variant;
@@ -142,7 +142,7 @@ let builtin_types () : Pure.builtin_type_info list =
            extract_name =
              (match backend () with
              | Lean -> "Option"
-             | Coq | FStar | HOL4 -> "option");
+             | Coq | FStar | HOL4 | Acl2 -> "option");
            keep_params = None;
            mut_regions = [];
            body_info =
@@ -155,7 +155,7 @@ let builtin_types () : Pure.builtin_type_info list =
                         (match backend () with
                         | FStar | Coq -> "None"
                         | Lean -> "none"
-                        | HOL4 -> "NONE");
+                        | HOL4 | Acl2 -> "NONE");
                       fields = None;
                     };
                     {
@@ -164,7 +164,7 @@ let builtin_types () : Pure.builtin_type_info list =
                         (match backend () with
                         | FStar | Coq -> "Some"
                         | Lean -> "some"
-                        | HOL4 -> "SOME");
+                        | HOL4 | Acl2 -> "SOME");
                       fields = None;
                     };
                   ]);
@@ -226,7 +226,8 @@ let builtin_trait_decls_info () =
         in
         let type_name =
           match backend () with
-          | FStar | Coq | HOL4 -> StringUtils.lowercase_first_letter type_name
+          | FStar | Coq | HOL4 | Acl2 ->
+              StringUtils.lowercase_first_letter type_name
           | Lean -> type_name
         in
         (item_name, type_name)

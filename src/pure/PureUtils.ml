@@ -409,7 +409,7 @@ let rec let_group_requires_parentheses (span : Meta.span) (e : texpr) : bool =
 let texpr_requires_parentheses span e =
   match Config.backend () with
   | FStar | Lean -> false
-  | Coq | HOL4 -> let_group_requires_parentheses span e
+  | Coq | HOL4 | Acl2 -> let_group_requires_parentheses span e
 
 let is_fvar (e : texpr) : bool =
   match e.e with
@@ -1865,7 +1865,7 @@ let wrap_in_match_fuel (span : Meta.span) (fuel0 : FVarId.id) (fuel : FVarId.id)
   let mk_let = if close then mk_closed_checked_let else mk_opened_checked_let in
   let mk_branch = if close then close_branch span else mk_opened_branch in
   match Config.backend () with
-  | FStar ->
+  | FStar | Acl2 ->
       (* Generate an expression:
          {[
            if fuel0 = 0 then Fail OutOfFuel

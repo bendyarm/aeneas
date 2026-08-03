@@ -67,7 +67,7 @@ let extract_fun_decl_register_names (ctx : extraction_ctx)
           (* Add the decreases proof for Lean only *)
           match backend () with
           | Coq | FStar -> ctx
-          | HOL4 -> [%craise] def.item_meta.span "Unexpected"
+          | HOL4 | Acl2 -> [%craise] def.item_meta.span "Unexpected"
           | Lean -> ctx_add_decreases_proof def ctx
         else ctx
       in
@@ -388,7 +388,7 @@ let lets_require_wrap_in_do (span : Meta.span)
   | Lean ->
       (* For Lean, we wrap in a block iff at least one of the let-bindings is monadic *)
       List.exists (fun (m, _, _) -> m) lets
-  | HOL4 ->
+  | HOL4 | Acl2 ->
       (* HOL4 is similar to HOL4, but we add a sanity check *)
       let wrap_in_do = List.exists (fun (m, _, _) -> m) lets in
       if wrap_in_do then
@@ -454,7 +454,8 @@ let extract_cast_kind_gen (span : Meta.span)
                      if signed_src then "IScalar.cast" else "UScalar.cast"
                    else if signed_src then "IScalar.hcast"
                    else "UScalar.hcast"
-               | HOL4 -> admit_string __FILE__ __LINE__ span "Unreachable"
+               | HOL4 | Acl2 ->
+                   admit_string __FILE__ __LINE__ span "Unreachable"
              in
              let src =
                if backend () <> Lean then Some (integer_type_to_string src)
@@ -471,7 +472,8 @@ let extract_cast_kind_gen (span : Meta.span)
                    if Scalars.integer_type_is_signed tgt then
                      "IScalar.cast_fromBool"
                    else "UScalar.cast_fromBool"
-               | HOL4 -> admit_string __FILE__ __LINE__ span "Unreachable"
+               | HOL4 | Acl2 ->
+                   admit_string __FILE__ __LINE__ span "Unreachable"
              in
              let tgt = integer_type_to_string tgt in
              (cast_str, None, Some tgt)
@@ -548,7 +550,7 @@ let extract_cast_kind (span : Meta.span)
     ~(inside : bool) (kind : cast_kind) (arg : texpr) : unit =
   (* HOL4 has a special treatment *)
   match backend () with
-  | HOL4 -> extract_cast_kind_hol4 span extract_expr fmt ~inside kind arg
+  | HOL4 | Acl2 -> extract_cast_kind_hol4 span extract_expr fmt ~inside kind arg
   | FStar | Coq | Lean ->
       extract_cast_kind_gen span extract_expr fmt ~inside kind arg
 
@@ -704,7 +706,8 @@ let extract_texpr_errors (fmt : F.formatter) =
   match backend () with
   | FStar | Coq -> F.pp_print_string fmt "admit"
   | Lean -> F.pp_print_string fmt "sorry"
-  | HOL4 -> F.pp_print_string fmt "(* ERROR: could not generate the code *)"
+  | HOL4 | Acl2 ->
+      F.pp_print_string fmt "(* ERROR: could not generate the code *)"
 
 (** - [inside_do]: [true] if we are inside a do block. In Lean, controls whether
       we can print let-bindings or if we need to insert a [do] first. *)
@@ -879,7 +882,7 @@ and extract_array_or_slice (span : Meta.span) (ctx : extraction_ctx)
     let delimiter =
       match backend () with
       | Lean -> ","
-      | Coq | FStar | HOL4 -> ";"
+      | Coq | FStar | HOL4 | Acl2 -> ";"
     in
     F.pp_print_space fmt ();
     F.pp_open_hovbox fmt 0;
@@ -1159,7 +1162,7 @@ and extract_field_projector (span : Meta.span) (ctx : extraction_ctx)
           (* Check if we need to extract the type as a tuple *)
           if is_tuple_struct then
             match backend () with
-            | FStar | HOL4 | Coq -> FieldId.to_string proj.field_id
+            | FStar | HOL4 | Coq | Acl2 -> FieldId.to_string proj.field_id
             | Lean ->
                 (* Tuples in Lean are syntax sugar for nested products/pairs,
                    so we need to map the field id accordingly.
@@ -1214,7 +1217,7 @@ and extract_field_projector (span : Meta.span) (ctx : extraction_ctx)
         F.pp_print_string fmt ".";
         (* If in Coq, the field projection has to be parenthesized *)
         (match backend () with
-        | FStar | Lean | HOL4 -> F.pp_print_string fmt field_name
+        | FStar | Lean | HOL4 | Acl2 -> F.pp_print_string fmt field_name
         | Coq -> F.pp_print_string fmt ("(" ^ field_name ^ ")"));
         (* Close the box *)
         F.pp_close_box fmt ()
@@ -1297,7 +1300,7 @@ and extract_lets (span : Meta.span) (ctx : extraction_ctx) (fmt : F.formatter)
   *)
   let lets, next_e =
     match backend () with
-    | HOL4 -> raw_destruct_lets_no_interleave span e
+    | HOL4 | Acl2 -> raw_destruct_lets_no_interleave span e
     | FStar | Coq | Lean -> raw_destruct_lets e
   in
   (* Extract the let-bindings *)
@@ -1325,7 +1328,7 @@ and extract_lets (span : Meta.span) (ctx : extraction_ctx) (fmt : F.formatter)
         F.pp_print_space fmt ();
         let arrow =
           match backend () with
-          | Coq | HOL4 -> "<-"
+          | Coq | HOL4 | Acl2 -> "<-"
           | FStar | Lean -> [%internal_error] span
         in
         F.pp_print_string fmt arrow;
@@ -1356,7 +1359,7 @@ and extract_lets (span : Meta.span) (ctx : extraction_ctx) (fmt : F.formatter)
               | Coq | Lean ->
                   F.pp_print_string fmt "let";
                   F.pp_print_space fmt ()
-              | HOL4 -> ()
+              | HOL4 | Acl2 -> ()
             else (
               F.pp_print_string fmt "let";
               F.pp_print_space fmt ());
@@ -1367,7 +1370,7 @@ and extract_lets (span : Meta.span) (ctx : extraction_ctx) (fmt : F.formatter)
               | FStar -> "="
               | Coq -> ":="
               | Lean -> if monadic then "←" else ":="
-              | HOL4 -> if monadic then "<-" else "="
+              | HOL4 | Acl2 -> if monadic then "<-" else "="
             in
             F.pp_print_string fmt eq;
             F.pp_close_box fmt ();
@@ -1378,7 +1381,7 @@ and extract_lets (span : Meta.span) (ctx : extraction_ctx) (fmt : F.formatter)
               | Lean ->
                   (* In Lean, (monadic) let-bindings don't require to end with anything *)
                   ()
-              | Coq | FStar | HOL4 ->
+              | Coq | FStar | HOL4 | Acl2 ->
                   F.pp_print_space fmt ();
                   F.pp_print_string fmt "in"
             in
@@ -1499,7 +1502,7 @@ and extract_Switch (span : Meta.span) (ctx : extraction_ctx) (fmt : F.formatter)
                 F.pp_print_space fmt ();
                 F.pp_print_string fmt "begin";
                 F.pp_print_space fmt
-            | Coq | Lean | HOL4 ->
+            | Coq | Lean | HOL4 | Acl2 ->
                 F.pp_print_space fmt ();
                 F.pp_print_string fmt "(";
                 F.pp_print_cut fmt)
@@ -1520,7 +1523,7 @@ and extract_Switch (span : Meta.span) (ctx : extraction_ctx) (fmt : F.formatter)
            | FStar ->
                F.pp_print_space fmt ();
                F.pp_print_string fmt "end"
-           | Coq | Lean | HOL4 -> F.pp_print_string fmt ")");
+           | Coq | Lean | HOL4 | Acl2 -> F.pp_print_string fmt ")");
         (* Close the box for the then/else+branch *)
         F.pp_close_box fmt ()
       in
@@ -1536,7 +1539,7 @@ and extract_Switch (span : Meta.span) (ctx : extraction_ctx) (fmt : F.formatter)
         | FStar -> "begin match"
         | Coq -> "match"
         | Lean -> if ctx.use_dep_ite then "match h:" else "match"
-        | HOL4 ->
+        | HOL4 | Acl2 ->
             (* We're being extra safe in the case of HOL4 *)
             "(case"
       in
@@ -1548,7 +1551,7 @@ and extract_Switch (span : Meta.span) (ctx : extraction_ctx) (fmt : F.formatter)
       let match_scrut_end =
         match backend () with
         | FStar | Coq | Lean -> "with"
-        | HOL4 -> "of"
+        | HOL4 | Acl2 -> "of"
       in
       F.pp_print_string fmt match_scrut_end;
       (* Close the box for the [match ... with] *)
@@ -1571,7 +1574,7 @@ and extract_Switch (span : Meta.span) (ctx : extraction_ctx) (fmt : F.formatter)
         let arrow =
           match backend () with
           | FStar -> "->"
-          | Coq | Lean | HOL4 -> "=>"
+          | Coq | Lean | HOL4 | Acl2 -> "=>"
         in
         F.pp_print_string fmt arrow;
         (* Close the box for the pattern *)
@@ -1595,7 +1598,7 @@ and extract_Switch (span : Meta.span) (ctx : extraction_ctx) (fmt : F.formatter)
       | FStar | Coq ->
           F.pp_print_space fmt ();
           F.pp_print_string fmt "end"
-      | HOL4 -> F.pp_print_string fmt ")"));
+      | HOL4 | Acl2 -> F.pp_print_string fmt ")"));
   (* Close the box for the whole expression *)
   F.pp_close_box fmt ()
 
@@ -1660,13 +1663,13 @@ and extract_StructUpdate (span : Meta.span) (ctx : extraction_ctx)
           match backend () with
           | Lean | FStar -> (Some "{", Some "}")
           | Coq -> (Some "{|", Some "|}")
-          | HOL4 -> (None, None)
+          | HOL4 | Acl2 -> (None, None)
         in
         (* Inner brackets *)
         let ilb, irb =
           match backend () with
           | Lean | FStar | Coq -> (None, None)
-          | HOL4 -> (Some "<|", Some "|>")
+          | HOL4 | Acl2 -> (Some "<|", Some "|>")
         in
         (* Helper *)
         let print_bracket (is_left : bool) b =
@@ -1692,11 +1695,11 @@ and extract_StructUpdate (span : Meta.span) (ctx : extraction_ctx)
         let delimiter =
           match backend () with
           | Lean -> ","
-          | Coq | FStar | HOL4 -> ";"
+          | Coq | FStar | HOL4 | Acl2 -> ";"
         in
         let assign =
           match backend () with
-          | Coq | Lean | HOL4 -> ":="
+          | Coq | Lean | HOL4 | Acl2 -> ":="
           | FStar -> "="
         in
         Collections.List.iter_link
@@ -2268,7 +2271,7 @@ let extract_fun_decl_gen (ctx : extraction_ctx) (fmt : F.formatter)
     F.pp_print_space fmt ();
     let eq =
       match backend () with
-      | FStar | HOL4 -> "="
+      | FStar | HOL4 | Acl2 -> "="
       | Coq -> ":="
       | Lean -> ":= do"
     in
@@ -2544,7 +2547,7 @@ let extract_global_decl_body_gen (span : Meta.span) (ctx : extraction_ctx)
     F.pp_print_space fmt ();
     let eq =
       match backend () with
-      | FStar | HOL4 -> "="
+      | FStar | HOL4 | Acl2 -> "="
       | Coq -> ":="
       | Lean -> if with_do then ":= do" else ":="
     in
@@ -3067,7 +3070,7 @@ let extract_trait_decl_method_items_aux (ctx : extraction_ctx)
     let backend_uses_forall =
       match backend () with
       | Coq | Lean -> true
-      | FStar | HOL4 -> false
+      | FStar | HOL4 | Acl2 -> false
     in
     let generics_not_empty = method_generics <> empty_generic_params in
     let use_forall = generics_not_empty && backend_uses_forall in
@@ -3779,7 +3782,7 @@ let extract_unit_test_if_marked (ctx : extraction_ctx) (fmt : F.formatter)
               ctx
           in
           F.pp_print_string fmt (success ^ " ())")
-      | HOL4 ->
+      | HOL4 | Acl2 ->
           F.pp_print_string fmt "val _ = assert_ok (";
           F.pp_print_string fmt "“";
           let fun_name =

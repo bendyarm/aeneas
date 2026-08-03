@@ -27,7 +27,7 @@ let split_on_separator (s : string) : string list =
 
 let flatten_name (name : string list) : string =
   match backend () with
-  | FStar | Coq | HOL4 -> String.concat "_" name
+  | FStar | Coq | HOL4 | Acl2 -> String.concat "_" name
   | Lean -> String.concat "." name
 
 let flatten_name_no_sep (name : string list) : string =
@@ -54,7 +54,7 @@ let () =
     or HOL4, and a different value if the target is Lean. *)
 let backend_choice (fstar_coq_hol4 : 'a) (lean : 'a) : 'a =
   match backend () with
-  | Coq | FStar | HOL4 -> fstar_coq_hol4
+  | Coq | FStar | HOL4 | Acl2 -> fstar_coq_hol4
   | Lean -> lean
 
 type type_variant_kind =
@@ -69,12 +69,12 @@ let mk_struct_constructor (type_name : string) : string =
   let prefix =
     match backend () with
     | FStar -> "Mk"
-    | Coq | HOL4 -> "mk"
+    | Coq | HOL4 | Acl2 -> "mk"
     | Lean -> ""
   in
   let suffix =
     match backend () with
-    | FStar | Coq | HOL4 -> ""
+    | FStar | Coq | HOL4 | Acl2 -> ""
     | Lean -> ".mk"
   in
   prefix ^ type_name ^ suffix

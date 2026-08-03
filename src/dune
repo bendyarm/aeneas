@@ -52,6 +52,7 @@
   Expressions
   ExpressionsUtils
   Extract
+  ExtractAcl2
   ExtractBase
   ExtractBuiltin
   ExtractBuiltinCore
