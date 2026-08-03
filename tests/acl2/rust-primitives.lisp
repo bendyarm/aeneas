@@ -254,7 +254,7 @@
 ;; and len cannot fail. Requires the crate extracted with --monomorphize.
 
 (defun vec-new () (ok nil))
-(defun vec-len (v) (len v))
+(defun vec-len (v) (ok (len v)))
 (defun vec-push (v x) (ok (append v (list x))))
 (defun vec-insert (v i x)
   (if (and (natp i) (<= i (len v)))

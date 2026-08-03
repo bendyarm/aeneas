@@ -42,6 +42,10 @@ regen:
 	  --monomorphize -- $(SRC)/vec_demo.rs --crate-name=vec_demo \
 	  --crate-type=rlib --allow=unused --allow=non_snake_case >/dev/null 2>&1
 	@$(AENEAS) $(AENEAS_FLAGS) -dest . $(LLBC)/vec_demo.llbc || true
+	@$(CHARON) rustc --dest-file $(LLBC)/vec_sum.llbc --preset=aeneas \
+	  --monomorphize -- $(SRC)/vec_sum.rs --crate-name=vec_sum \
+	  --crate-type=rlib --allow=unused --allow=non_snake_case >/dev/null 2>&1
+	@$(AENEAS) $(AENEAS_FLAGS) -dest . $(LLBC)/vec_sum.llbc || true
 
 # Certify every book in the directory (generated + handwritten).
 verify:
@@ -49,7 +53,7 @@ verify:
 	  rust-primitives demo loops no_nested_borrows proofs \
 	  rust_tea tea-bridges tea-equiv tea-vectors \
 	  rust_tea_arr tea_arr-vectors tea-arr-equiv \
-	  vec_demo vec_demo-proofs
+	  vec_demo vec_demo-proofs vec_sum vec_sum-proofs
 
 clean:
 	rm -f *.cert *.cert.out *.fasl *.port Makefile-tmp
