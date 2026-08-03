@@ -1,0 +1,6 @@
+*.cert
+*.fasl
+*.port
+*.out
+Makefile-tmp
+workxxx*

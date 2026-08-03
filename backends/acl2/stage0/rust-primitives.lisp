@@ -96,6 +96,72 @@
 (defun massert (b)
   (if b (ok (unit)) (fail (err-failure))))
 
+;; ---------------------------------------------------- all integer types
+;; Macro-generated recognizers and checked ops for the remaining Rust
+;; integer types (u32/i32 above are hand-written and used by the earliest
+;; proofs). usize/isize are modeled as 64-bit here; upstream Aeneas
+;; currently pins usize to 32 bits in the F* primitives with a TODO --
+;; revisit for consistency once upstream decides (plan section 5.4).
+
+(defmacro def-rust-int-type (name min max)
+  (let* ((s (symbol-name name)))
+    (let ((pred (intern$ (concatenate 'string s "P") "ACL2"))
+          (add (intern$ (concatenate 'string s "-ADD") "ACL2"))
+          (sub (intern$ (concatenate 'string s "-SUB") "ACL2"))
+          (mul (intern$ (concatenate 'string s "-MUL") "ACL2"))
+          (dv (intern$ (concatenate 'string s "-DIV") "ACL2"))
+          (rm (intern$ (concatenate 'string s "-REM") "ACL2"))
+          (add-ok (intern$ (concatenate 'string s "-ADD-OK") "ACL2"))
+          (add-fail (intern$ (concatenate 'string s "-ADD-FAIL") "ACL2"))
+          (sub-ok (intern$ (concatenate 'string s "-SUB-OK") "ACL2"))
+          (sub-fail (intern$ (concatenate 'string s "-SUB-FAIL") "ACL2"))
+          (mul-ok (intern$ (concatenate 'string s "-MUL-OK") "ACL2")))
+      `(progn
+         (defun ,pred (x)
+           (declare (xargs :guard t))
+           (and (integerp x) (<= ,min x) (<= x ,max)))
+         (defun ,add (x y)
+           (let ((r (+ x y))) (if (,pred r) (ok r) (fail (err-failure)))))
+         (defun ,sub (x y)
+           (let ((r (- x y))) (if (,pred r) (ok r) (fail (err-failure)))))
+         (defun ,mul (x y)
+           (let ((r (* x y))) (if (,pred r) (ok r) (fail (err-failure)))))
+         (defun ,dv (x y)
+           (if (eql y 0) (fail (err-failure))
+             (let ((r (truncate x y)))
+               (if (,pred r) (ok r) (fail (err-failure))))))
+         (defun ,rm (x y)
+           (if (eql y 0) (fail (err-failure))
+             (let ((r (rem x y)))
+               (if (,pred r) (ok r) (fail (err-failure))))))
+         (defthm ,add-ok
+           (implies (and (,pred x) (,pred y) (,pred (+ x y)))
+                    (equal (,add x y) (ok (+ x y)))))
+         (defthm ,add-fail
+           (implies (and (,pred x) (,pred y) (not (,pred (+ x y))))
+                    (equal (,add x y) (fail (err-failure)))))
+         (defthm ,sub-ok
+           (implies (and (,pred x) (,pred y) (,pred (- x y)))
+                    (equal (,sub x y) (ok (- x y)))))
+         (defthm ,sub-fail
+           (implies (and (,pred x) (,pred y) (not (,pred (- x y))))
+                    (equal (,sub x y) (fail (err-failure)))))
+         (defthm ,mul-ok
+           (implies (and (,pred x) (,pred y) (,pred (* x y)))
+                    (equal (,mul x y) (ok (* x y)))))))))
+
+(def-rust-int-type u8 0 255)
+(def-rust-int-type u16 0 65535)
+(def-rust-int-type u64 0 18446744073709551615)
+(def-rust-int-type u128 0 340282366920938463463374607431768211455)
+(def-rust-int-type usize 0 18446744073709551615)
+(def-rust-int-type i8 -128 127)
+(def-rust-int-type i16 -32768 32767)
+(def-rust-int-type i64 -9223372036854775808 9223372036854775807)
+(def-rust-int-type i128 -170141183460469231731687303715884105728
+                        170141183460469231731687303715884105727)
+(def-rust-int-type isize -9223372036854775808 9223372036854775807)
+
 ;; ------------------------------------------------- characterization rules
 ;; The seed of the Stage-1 rule library: rewrite checked ops to ok/fail
 ;; under arithmetic side conditions, so proofs about extracted code never

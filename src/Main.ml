@@ -532,6 +532,9 @@ let () =
             if not !use_fuel then (
               log#error "The ACL2 backend requires the -use-fuel option";
               fail true);
+            (* Loops must become recursive functions (the printer has no
+               loop combinator) *)
+            loops_to_recursive_functions := true;
             (* Keep the emitted b* forms simple (same motivation as Coq:
                limited patterns in the target syntax) *)
             decompose_monadic_let_bindings := true;
