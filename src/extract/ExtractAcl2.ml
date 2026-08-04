@@ -208,15 +208,42 @@ let std_fun_mapping (mangled : string) : string option =
       else if starts "alloc-vec" && has "-index" then Some "array-index"
       else None)
 
+(* The monomorphized Range<_> iterator methods a `for i in a..b` loop lowers
+   to. They are opaque in core (their real bodies pull in ub_checks /
+   unchecked_add), so instead of extracting the body we synthesize a
+   first-order one (see [synth_range_iter_body]): `next` is the fused
+   Range -> (Option, Range), `into_iter` is the identity. We key off the
+   mangled monomorphic name. *)
+let str_contains (name : string) (sub : string) : bool =
+  try
+    ignore (Str.search_forward (Str.regexp_string sub) name 0);
+    true
+  with Not_found -> false
+
+let is_range_iter_next (name : string) : bool =
+  str_contains name "iterator-iterator-for-core-ops-range-range"
+  && str_contains name "-next-"
+
+let is_range_iter_into_iter (name : string) : bool =
+  str_contains name "intoiterator-for-core-ops-range-range"
+  && str_contains name "into-iter"
+
+let is_range_iter_method (name : string) : bool =
+  is_range_iter_next name || is_range_iter_into_iter name
+
 let fun_name (span : Meta.span) (ctx : actx) (id : FunDeclId.id) : string =
-  if FunDeclId.Set.mem id ctx.opaque_funs then
-    [%craise] span
-      "ACL2: call to an opaque/std function with no ACL2 mapping yet"
-  else
-    match FunDeclId.Map.find_opt id ctx.fun_names with
-    | Some s -> s
-    | None ->
-        [%craise] span "ACL2: call to a function without a name (builtin?)"
+  match FunDeclId.Map.find_opt id ctx.fun_names with
+  (* Synthesized Range iterator methods resolve even though they are opaque. *)
+  | Some s when is_range_iter_method s -> s
+  | _ ->
+      if FunDeclId.Set.mem id ctx.opaque_funs then
+        [%craise] span
+          "ACL2: call to an opaque/std function with no ACL2 mapping yet"
+      else (
+        match FunDeclId.Map.find_opt id ctx.fun_names with
+        | Some s -> s
+        | None ->
+            [%craise] span "ACL2: call to a function without a name (builtin?)")
 
 let type_name (span : Meta.span) (ctx : actx) (id : TypeDeclId.id) : string =
   match TypeDeclId.Map.find_opt id ctx.type_names with
@@ -750,6 +777,53 @@ let group_to_sccs (decls : Pure.fun_decl list) : fun_scc list =
       { members = grp; is_rec })
     ordered
 
+(* Synthesize a first-order body for an opaque Range iterator method.
+   [into_iter] : Range -> result Range is the identity; [next] : Range ->
+   result (Option * Range) is the fused advance (yield start, step start+1).
+   The Option/Range constructors are the ones we emit for those (per-crate,
+   monomorphic) ADTs, recovered from the method's own signature so the names
+   match the generated deftagsum/defprod exactly. *)
+let synth_range_iter_body (span : Meta.span) (ctx : actx) (decl : Pure.fun_decl)
+    (name : string) : string =
+  if is_range_iter_into_iter name then "(defun " ^ name ^ " (self) (ok self))"
+  else
+    let range_id =
+      match decl.signature.inputs with
+      | TAdt (TAdtId id, _) :: _ -> id
+      | _ -> [%craise] span "ACL2: Range::next: unexpected input signature"
+    in
+    let option_id =
+      match decl.signature.output with
+      | TAdt
+          ( TBuiltin TResult,
+            {
+              types =
+                [ TAdt (TTuple, { types = TAdt (TAdtId oid, _) :: _; _ }) ];
+              _;
+            } ) -> oid
+      | _ -> [%craise] span "ACL2: Range::next: unexpected output signature"
+    in
+    let rname = type_name span ctx range_id in
+    let oname = type_name span ctx option_id in
+    let rdecl = TypeDeclId.Map.find range_id ctx.types in
+    let fstart, fend =
+      match rdecl.kind with
+      | Struct fields -> (
+          match field_names fields with
+          | s :: e :: _ -> (s, e)
+          | _ -> [%craise] span "ACL2: Range has unexpected fields")
+      | _ -> [%craise] span "ACL2: Range is not a struct"
+    in
+    String.concat "\n"
+      [
+        "(defun " ^ name ^ " (self)";
+        "  (b* ((s (" ^ rname ^ "->" ^ fstart ^ " self))";
+        "       (e (" ^ rname ^ "->" ^ fend ^ " self)))";
+        "  (if (< s e)";
+        "      (ok (cons (" ^ oname ^ "-some s) (" ^ rname ^ " (+ s 1) e)))";
+        "    (ok (cons (" ^ oname ^ "-none) self)))))";
+      ]
+
 let fun_decl_to_acl2 (ctx : actx) (is_rec : bool) (decl : Pure.fun_decl) :
     string =
   let span = decl.item_meta.span in
@@ -762,7 +836,9 @@ let fun_decl_to_acl2 (ctx : actx) (is_rec : bool) (decl : Pure.fun_decl) :
         ^ if is_body then "-body" else ""
   in
   match decl.body with
-  | None -> ";; opaque function " ^ name ^ " (skipped)"
+  | None ->
+      if is_range_iter_method name then synth_range_iter_body span ctx decl name
+      else ";; opaque function " ^ name ^ " (skipped)"
   | Some body ->
       let env, input_names =
         bind_tpats ~toplevel:true ctx empty_venv body.inputs

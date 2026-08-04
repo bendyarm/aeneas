@@ -52,6 +52,15 @@ regen:
 	  --monomorphize -- $(SRC)/aes_probe.rs --crate-name=aes_probe \
 	  --crate-type=rlib --allow=unused --allow=non_snake_case >/dev/null 2>&1
 	@$(AENEAS) $(AENEAS_FLAGS) -dest . $(LLBC)/aes_probe.llbc || true
+	@# Range for-loops (`for i in 0..n`) via synthesized Range::next/into_iter.
+	@$(CHARON) rustc --dest-file $(LLBC)/iterators_scalar.llbc --preset=aeneas \
+	  --monomorphize -- $(SRC)/iterators-scalar.rs --crate-name=iterators_scalar \
+	  --crate-type=rlib --allow=unused --allow=non_snake_case >/dev/null 2>&1
+	@$(AENEAS) $(AENEAS_FLAGS) -dest . $(LLBC)/iterators_scalar.llbc || true
+	@$(CHARON) rustc --dest-file $(LLBC)/range_for.llbc --preset=aeneas \
+	  --monomorphize -- $(SRC)/range_for.rs --crate-name=range_for \
+	  --crate-type=rlib --allow=unused --allow=non_snake_case >/dev/null 2>&1
+	@$(AENEAS) $(AENEAS_FLAGS) -dest . $(LLBC)/range_for.llbc || true
 
 # Certify every book in the directory (generated + handwritten).
 verify:
@@ -60,7 +69,8 @@ verify:
 	  rust_tea tea-bridges tea-equiv tea-vectors \
 	  rust_tea_arr tea_arr-vectors tea-arr-equiv \
 	  vec_demo vec_demo-proofs vec_sum vec_sum-proofs \
-	  aes_probe aes_probe-proofs
+	  aes_probe aes_probe-proofs \
+	  iterators_scalar range_for range_for-proofs
 
 clean:
 	rm -f *.cert *.cert.out *.fasl *.port Makefile-tmp

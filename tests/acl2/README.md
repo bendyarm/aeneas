@@ -22,6 +22,17 @@ Rust sources in `../src`, plus handwritten proof books about them. The
 | `tea-vectors,tea_arr-vectors.lisp` | handwritten | executable known-answer vectors |
 | `aes_probe.lisp` | generated | AES construct probe (`aes_probe.rs`): S-box lookup with `byte as usize`, in-place `&mut` state xor, `rotate_left`, functional round, `xtime`, GF(2⁸) multiply |
 | `aes_probe-proofs.lisp` | handwritten | FIPS-197 GF vectors; `sub`==S-box lookup (cast transparent, never panics); `xtime`==`AES::xtime` and `gmul`==`AES::gf256mult` for **all** bytes |
+| `iterators_scalar.lisp` | generated | minimal `for i in 0..n` loop (`iterators-scalar.rs`) |
+| `range_for.lisp` | generated | range for-loops (`range_for.rs`): array indexing + accumulation with `i as u32` |
+| `range_for-proofs.lisp` | handwritten | synthesized `Range::next` characterized; extracted `for i in 0..n` sum == fold spec for all inputs; execution vectors |
+
+Range for-loops (`for i in 0..n`) are supported: the ACL2 backend synthesizes
+first-order bodies for the (opaque, monomorphic) `Range::next` (fused
+`Range -> (Option, Range)`) and `into_iter` (identity), so the loop lowers to a
+fuel recursion like any `while`. `.step_by(...)` (the `StepBy` adapter) is not
+yet supported; and when several `Range<T>` monomorphizations coexist, ExtractBase
+reports a name clash for its own registry (the ACL2 output uses distinct mangled
+names and is still correct, but `aeneas` exits nonzero) — both are follow-ons.
 
 The AES probe establishes empirically that AES's computational core is
 first-order (no backward functions): the in-place block mutation, S-box
