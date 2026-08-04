@@ -17,3 +17,20 @@
 (assert-event
  (equal (aes-fixslice-encrypt-encrypt 100 *fips-key* *fips-pt*)
         (ok *fips-ct*)))
+
+;; ------------------------------------------------------------------------
+;; Decryption: FIPS-197 C.1 known-answer test and the round-trip identity,
+;; both executed in the prover on the WHOLE cipher (key schedule + decrypt).
+(assert-event
+ (equal (aes-fixslice-encrypt-decrypt 100 *fips-key* *fips-ct*)
+        (ok *fips-pt*)))
+
+;; decrypt . encrypt = id (and encrypt . decrypt = id), for the FIPS vector.
+(assert-event
+ (equal (aes-fixslice-encrypt-decrypt 100 *fips-key*
+          (result-ok->val (aes-fixslice-encrypt-encrypt 100 *fips-key* *fips-pt*)))
+        (ok *fips-pt*)))
+(assert-event
+ (equal (aes-fixslice-encrypt-encrypt 100 *fips-key*
+          (result-ok->val (aes-fixslice-encrypt-decrypt 100 *fips-key* *fips-ct*)))
+        (ok *fips-ct*)))

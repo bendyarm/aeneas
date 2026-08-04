@@ -27,8 +27,8 @@ Rust sources in `../src`, plus handwritten proof books about them. The
 | `range_for-proofs.lisp` | handwritten | synthesized `Range::next` characterized; extracted `for i in 0..n` sum == fold spec for all inputs; execution vectors |
 | `aes_fixslice_core.lisp` | generated | **real** RustCrypto `aes` v0.9.1 fixslice round core (`aes_fixslice_core.rs`, vendored): the 113-gate bitsliced S-box, `mix_columns_{0..3}`/`inv_*`, rotate helpers, `add_round_key` (a `for i in 0..8`). All first-order; `add_round_key` exercises the range-`for` iterator support |
 | `aes_fixslice_core-proofs.lisp` | handwritten | semantic-preservation: extracted `sub_bytes` and a full round compute bit-identically to the shipped Rust (golden vectors from running the vendored crate) |
-| `aes_fixslice_encrypt.lisp` | generated | **the WHOLE fixsliced AES-128** — key schedule (`aes128_key_schedule`) AND encrypt (`bitslice`, 10 rounds, `inv_bitslice`). Extracted first-order from vendored `aes_fixslice_encrypt.rs` |
-| `aes_fixslice_encrypt-proofs.lisp` | handwritten | **FIPS-197 Appendix C.1 known-answer test, end-to-end**: `encrypt(key, plaintext)` reproduces `69c4e0d8…c55a` bit-for-bit, straight from the raw 16-byte key |
+| `aes_fixslice_encrypt.lisp` | generated | **the WHOLE fixsliced AES-128, encrypt AND decrypt** — key schedule (`aes128_key_schedule`), encrypt (`bitslice`, 10 rounds, `inv_bitslice`) and decrypt (`inv_sub_bytes`, `inv_mix_columns`, `inv_shift_rows`). Extracted first-order from vendored `aes_fixslice_encrypt.rs` |
+| `aes_fixslice_encrypt-proofs.lisp` | handwritten | **FIPS-197 Appendix C.1 KAT, end-to-end**: `encrypt(key, pt)` and `decrypt(key, ct)` match the standard bit-for-bit from the raw key; plus the round-trip identity `decrypt∘encrypt = encrypt∘decrypt = id` |
 
 `aes_fixslice_encrypt.rs` is the vendored single-block AES-128 (key schedule +
 encrypt). Documented de-sugarings beyond the round core: byte packing

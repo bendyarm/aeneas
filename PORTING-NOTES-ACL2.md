@@ -47,3 +47,29 @@ every `match … backend () …` non-exhaustive, which is the work list.
   charon-ml built in the switch), the pinned Rust nightly toolchain, and
   ACL2 + the certified book subset. Then the edit→`dune build`→extract→
   `cert.pl` loop runs entirely offline.
+
+## Known workaround: unrolling loops that call heavy functions
+
+ACL2's admission of a *recursive* (fuel) loop function whose body reaches a large
+callee expands that callee during admission and can blow up super-linearly. The
+extracted AES-128 key schedule first exhibited this: the `rcon` loop calls
+`key_round` → `sub_bytes` (the 113-gate S-box), and the loop book took >9 minutes
+to certify (and did not finish). The same shape appears for any loop that calls a
+heavy function.
+
+Two fixes, both verified:
+
+1. **Unrolling (used in the vendored AES).** A loop with a statically-known trip
+   count is written straight-line, so its extraction is non-recursive and admits
+   in seconds (the encrypt/decrypt rounds and the key-schedule `rcon` loop). The
+   round body stays a single shared function (`key_round`, `sub_bytes`, …), so
+   there is no duplicated logic — only repeated one-line calls. Faithful only
+   because the counts are static (AES-128); NOT a general solution.
+
+2. **Principled fix (TODO in ExtractAcl2).** Emit `(in-theory (disable <callee>))`
+   for heavy callees before the loop functions that call them (and, for
+   backward-compatible downstream proofs, re-`enable` at end of book). Confirmed
+   locally: disabling `key_round` before the `rcon` loop makes the *recursive*
+   version admit in ~6s. This keeps genuine (non-static-count) loops as loops.
+   Disabling a `:definition` rune does not disable its `:executable-counterpart`,
+   so execution-based known-answer tests still run.

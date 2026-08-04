@@ -621,3 +621,238 @@ pub fn encrypt(key: [u8; 16], block: [u8; 16]) -> [u8; 16] {
     let rkeys = aes128_key_schedule(&key);
     encrypt_block(rkeys, block)
 }
+
+// ----------------------------------------------------------------------------
+// DECRYPT (vendored from aes128_decrypt). inv_sub_bytes is the inverse S-box
+// (verbatim). The inverse round ops (inv_mix_columns_*, inv_shift_rows_*,
+// inv_bitslice) and the shared key schedule are already defined above. The
+// 10-round `loop{...break}` is unrolled (fixed count), like encrypt.
+
+fn inv_sub_bytes(state: &mut State) {
+    let u7 = state[0];
+    let u6 = state[1];
+    let u5 = state[2];
+    let u4 = state[3];
+    let u3 = state[4];
+    let u2 = state[5];
+    let u1 = state[6];
+    let u0 = state[7];
+
+    let t23 = u0 ^ u3;
+    let t8 = u1 ^ t23;
+    let m2 = t23 & t8;
+    let t4 = u4 ^ t8;
+    let t22 = u1 ^ u3;
+    let t2 = u0 ^ u1;
+    let t1 = u3 ^ u4;
+    // t23 -> stack
+    let t9 = u7 ^ t1;
+    // t8 -> stack
+    let m7 = t22 & t9;
+    // t9 -> stack
+    let t24 = u4 ^ u7;
+    // m7 -> stack
+    let t10 = t2 ^ t24;
+    // u4 -> stack
+    let m14 = t2 & t10;
+    let r5 = u6 ^ u7;
+    // m2 -> stack
+    let t3 = t1 ^ r5;
+    // t2 -> stack
+    let t13 = t2 ^ r5;
+    let t19 = t22 ^ r5;
+    // t3 -> stack
+    let t17 = u2 ^ t19;
+    // t4 -> stack
+    let t25 = u2 ^ t1;
+    let r13 = u1 ^ u6;
+    // t25 -> stack
+    let t20 = t24 ^ r13;
+    // t17 -> stack
+    let m9 = t20 & t17;
+    // t20 -> stack
+    let r17 = u2 ^ u5;
+    // t22 -> stack
+    let t6 = t22 ^ r17;
+    // t13 -> stack
+    let m1 = t13 & t6;
+    let y5 = u0 ^ r17;
+    let m4 = t19 & y5;
+    let m5 = m4 ^ m1;
+    let m17 = m5 ^ t24;
+    let r18 = u5 ^ u6;
+    let t27 = t1 ^ r18;
+    let t15 = t10 ^ t27;
+    // t6 -> stack
+    let m11 = t1 & t15;
+    let m15 = m14 ^ m11;
+    let m21 = m17 ^ m15;
+    // t1 -> stack
+    // t4 <- stack
+    let m12 = t4 & t27;
+    let m13 = m12 ^ m11;
+    let t14 = t10 ^ r18;
+    let m3 = t14 ^ m1;
+    // m2 <- stack
+    let m16 = m3 ^ m2;
+    let m20 = m16 ^ m13;
+    // u4 <- stack
+    let r19 = u2 ^ u4;
+    let t16 = r13 ^ r19;
+    // t3 <- stack
+    let t26 = t3 ^ t16;
+    let m6 = t3 & t16;
+    let m8 = t26 ^ m6;
+    // t10 -> stack
+    // m7 <- stack
+    let m18 = m8 ^ m7;
+    let m22 = m18 ^ m13;
+    let m25 = m22 & m20;
+    let m26 = m21 ^ m25;
+    let m10 = m9 ^ m6;
+    let m19 = m10 ^ m15;
+    // t25 <- stack
+    let m23 = m19 ^ t25;
+    let m28 = m23 ^ m25;
+    let m24 = m22 ^ m23;
+    let m30 = m26 & m24;
+    let m39 = m23 ^ m30;
+    let m48 = m39 & y5;
+    let m57 = m39 & t19;
+    // m48 -> stack
+    let m36 = m24 ^ m25;
+    let m31 = m20 & m23;
+    let m27 = m20 ^ m21;
+    let m32 = m27 & m31;
+    let m29 = m28 & m27;
+    let m37 = m21 ^ m29;
+    // m39 -> stack
+    let m42 = m37 ^ m39;
+    let m52 = m42 & t15;
+    // t27 -> stack
+    // t1 <- stack
+    let m61 = m42 & t1;
+    let p0 = m52 ^ m61;
+    let p16 = m57 ^ m61;
+    // m57 -> stack
+    // t20 <- stack
+    let m60 = m37 & t20;
+    // p16 -> stack
+    // t17 <- stack
+    let m51 = m37 & t17;
+    let m33 = m27 ^ m25;
+    let m38 = m32 ^ m33;
+    let m43 = m37 ^ m38;
+    let m49 = m43 & t16;
+    let p6 = m49 ^ m60;
+    let p13 = m49 ^ m51;
+    let m58 = m43 & t3;
+    // t9 <- stack
+    let m50 = m38 & t9;
+    // t22 <- stack
+    let m59 = m38 & t22;
+    // p6 -> stack
+    let p1 = m58 ^ m59;
+    let p7 = p0 ^ p1;
+    let m34 = m21 & m22;
+    let m35 = m24 & m34;
+    let m40 = m35 ^ m36;
+    let m41 = m38 ^ m40;
+    let m45 = m42 ^ m41;
+    // t27 <- stack
+    let m53 = m45 & t27;
+    let p8 = m50 ^ m53;
+    let p23 = p7 ^ p8;
+    // t4 <- stack
+    let m62 = m45 & t4;
+    let p14 = m49 ^ m62;
+    let s6 = p14 ^ p23;
+    // t10 <- stack
+    let m54 = m41 & t10;
+    let p2 = m54 ^ m62;
+    let p22 = p2 ^ p7;
+    let s0 = p13 ^ p22;
+    let p17 = m58 ^ p2;
+    let p15 = m54 ^ m59;
+    // t2 <- stack
+    let m63 = m41 & t2;
+    // m39 <- stack
+    let m44 = m39 ^ m40;
+    // p17 -> stack
+    // t6 <- stack
+    let m46 = m44 & t6;
+    let p5 = m46 ^ m51;
+    // p23 -> stack
+    let p18 = m63 ^ p5;
+    let p24 = p5 ^ p7;
+    // m48 <- stack
+    let p12 = m46 ^ m48;
+    let s3 = p12 ^ p22;
+    // t13 <- stack
+    let m55 = m44 & t13;
+    let p9 = m55 ^ m63;
+    // p16 <- stack
+    let s7 = p9 ^ p16;
+    // t8 <- stack
+    let m47 = m40 & t8;
+    let p3 = m47 ^ m50;
+    let p19 = p2 ^ p3;
+    let s5 = p19 ^ p24;
+    let p11 = p0 ^ p3;
+    let p26 = p9 ^ p11;
+    // t23 <- stack
+    let m56 = m40 & t23;
+    let p4 = m48 ^ m56;
+    // p6 <- stack
+    let p20 = p4 ^ p6;
+    let p29 = p15 ^ p20;
+    let s1 = p26 ^ p29;
+    // m57 <- stack
+    let p10 = m57 ^ p4;
+    let p27 = p10 ^ p18;
+    // p23 <- stack
+    let s4 = p23 ^ p27;
+    let p25 = p6 ^ p10;
+    let p28 = p11 ^ p25;
+    // p17 <- stack
+    let s2 = p17 ^ p28;
+
+    state[0] = s7;
+    state[1] = s6;
+    state[2] = s5;
+    state[3] = s4;
+    state[4] = s3;
+    state[5] = s2;
+    state[6] = s1;
+    state[7] = s0;
+}
+
+fn aes128_decrypt(rkeys: &[u32; 88], block0: &[u8; 16], block1: &[u8; 16]) -> [[u8; 16]; 2] {
+    let mut state: State = bitslice(block0, block1);
+    add_round_key(&mut state, rkeys, 80);
+    inv_sub_bytes(&mut state);
+    inv_shift_rows_2(&mut state);
+    add_round_key(&mut state, rkeys, 72); inv_mix_columns_1(&mut state); inv_sub_bytes(&mut state);
+    add_round_key(&mut state, rkeys, 64); inv_mix_columns_0(&mut state); inv_sub_bytes(&mut state);
+    add_round_key(&mut state, rkeys, 56); inv_mix_columns_3(&mut state); inv_sub_bytes(&mut state);
+    add_round_key(&mut state, rkeys, 48); inv_mix_columns_2(&mut state); inv_sub_bytes(&mut state);
+    add_round_key(&mut state, rkeys, 40); inv_mix_columns_1(&mut state); inv_sub_bytes(&mut state);
+    add_round_key(&mut state, rkeys, 32); inv_mix_columns_0(&mut state); inv_sub_bytes(&mut state);
+    add_round_key(&mut state, rkeys, 24); inv_mix_columns_3(&mut state); inv_sub_bytes(&mut state);
+    add_round_key(&mut state, rkeys, 16); inv_mix_columns_2(&mut state); inv_sub_bytes(&mut state);
+    add_round_key(&mut state, rkeys, 8);  inv_mix_columns_1(&mut state); inv_sub_bytes(&mut state);
+    add_round_key(&mut state, rkeys, 0);
+    inv_bitslice(&state)
+}
+
+/// Decrypt one 16-byte block given the fixsliced expanded key.
+pub fn decrypt_block(rkeys: [u32; 88], block: [u8; 16]) -> [u8; 16] {
+    let out = aes128_decrypt(&rkeys, &block, &block);
+    out[0]
+}
+
+/// Full AES-128 decryption: expand the key and decrypt one block.
+pub fn decrypt(key: [u8; 16], block: [u8; 16]) -> [u8; 16] {
+    let rkeys = aes128_key_schedule(&key);
+    decrypt_block(rkeys, block)
+}
