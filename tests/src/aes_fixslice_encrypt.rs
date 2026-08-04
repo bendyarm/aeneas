@@ -454,3 +454,170 @@ pub fn encrypt_block(rkeys: [u32; 88], block: [u8; 16]) -> [u8; 16] {
     let out = aes128_encrypt(&rkeys, &block, &block);
     out[0]
 }
+
+// ----------------------------------------------------------------------------
+// KEY SCHEDULE (vendored from aes128_key_schedule). The reference passes
+// &mut rkeys[a..b] mutable subslices into sub_bytes / inv_shift_rows / etc.;
+// we de-sugar those to read8 / process-on-State / write8 at an offset, so the
+// whole [u32;88] is mutated by index (no mutable-subslice write-back). Also:
+// memshift32's (0..8).rev() -> forward (the src/dst ranges are non-overlapping);
+// the (8..72).step_by(32) adjustment loop -> `while`. Gate logic verbatim.
+
+fn shift_rows_1(state: &mut State) {
+    for i in 0..8 {
+        let mut x = state[i];
+        delta_swap_1(&mut x, 4, 0x0c0f0300);
+        delta_swap_1(&mut x, 2, 0x33003300);
+        state[i] = x;
+    }
+}
+fn shift_rows_3(state: &mut State) {
+    for i in 0..8 {
+        let mut x = state[i];
+        delta_swap_1(&mut x, 4, 0x030f0c00);
+        delta_swap_1(&mut x, 2, 0x33003300);
+        state[i] = x;
+    }
+}
+fn inv_shift_rows_1(state: &mut State) { shift_rows_3(state); }
+fn inv_shift_rows_2(state: &mut State) { shift_rows_2(state); }
+fn inv_shift_rows_3(state: &mut State) { shift_rows_1(state); }
+
+fn add_round_constant_bit(state: &mut State, bit: usize) {
+    state[bit] ^= 0x0000c000;
+}
+
+fn read8(rkeys: &[u32; 88], off: usize) -> State {
+    [
+        rkeys[off], rkeys[off + 1], rkeys[off + 2], rkeys[off + 3],
+        rkeys[off + 4], rkeys[off + 5], rkeys[off + 6], rkeys[off + 7],
+    ]
+}
+fn write8(rkeys: &mut [u32; 88], off: usize, s: State) {
+    for i in 0..8 {
+        rkeys[off + i] = s[i];
+    }
+}
+
+fn sub_bytes_at(rkeys: &mut [u32; 88], off: usize) {
+    let mut s = read8(rkeys, off);
+    sub_bytes(&mut s);
+    write8(rkeys, off, s);
+}
+fn sub_bytes_nots_at(rkeys: &mut [u32; 88], off: usize) {
+    let mut s = read8(rkeys, off);
+    sub_bytes_nots(&mut s);
+    write8(rkeys, off, s);
+}
+fn add_rc_bit_at(rkeys: &mut [u32; 88], off: usize, bit: usize) {
+    let mut s = read8(rkeys, off);
+    add_round_constant_bit(&mut s, bit);
+    write8(rkeys, off, s);
+}
+fn inv_shift_rows_1_at(rkeys: &mut [u32; 88], off: usize) {
+    let mut s = read8(rkeys, off);
+    inv_shift_rows_1(&mut s);
+    write8(rkeys, off, s);
+}
+fn inv_shift_rows_2_at(rkeys: &mut [u32; 88], off: usize) {
+    let mut s = read8(rkeys, off);
+    inv_shift_rows_2(&mut s);
+    write8(rkeys, off, s);
+}
+fn inv_shift_rows_3_at(rkeys: &mut [u32; 88], off: usize) {
+    let mut s = read8(rkeys, off);
+    inv_shift_rows_3(&mut s);
+    write8(rkeys, off, s);
+}
+
+fn memshift32(buffer: &mut [u32; 88], src_offset: usize) {
+    let dst_offset = src_offset + 8;
+    for i in 0..8 {
+        buffer[dst_offset + i] = buffer[src_offset + i];
+    }
+}
+
+fn xor_columns(rkeys: &mut [u32; 88], offset: usize, idx_xor: usize, idx_ror: u32) {
+    for i in 0..8 {
+        let off_i = offset + i;
+        let rk = rkeys[off_i - idx_xor] ^ (0x03030303 & ror(rkeys[off_i], idx_ror));
+        rkeys[off_i] =
+            rk ^ (0xfcfcfcfc & (rk << 2)) ^ (0xf0f0f0f0 & (rk << 4)) ^ (0xc0c0c0c0 & (rk << 6));
+    }
+}
+
+fn bitslice_into(rkeys: &mut [u32; 88], off: usize, in0: &[u8; 16], in1: &[u8; 16]) {
+    let s = bitslice(in0, in1);
+    write8(rkeys, off, s);
+}
+
+fn add_rcon(rkeys: &mut [u32; 88], rk_off: usize, rcon: usize) {
+    if rcon < 8 {
+        add_rc_bit_at(rkeys, rk_off, rcon);
+    } else {
+        add_rc_bit_at(rkeys, rk_off, rcon - 8);
+        add_rc_bit_at(rkeys, rk_off, rcon - 7);
+        add_rc_bit_at(rkeys, rk_off, rcon - 5);
+        add_rc_bit_at(rkeys, rk_off, rcon - 4);
+    }
+}
+
+// One key-expansion round, factored OUT of the rcon loop: keeping the loop
+// body a single (non-recursive) call keeps the recursive loop shallow, which
+// ACL2 admits quickly (a deeply-nested body in the recursive fn itself blows
+// up the admission).
+fn key_round(rkeys: &mut [u32; 88], rk_off_in: usize, rcon: usize) -> usize {
+    memshift32(rkeys, rk_off_in);
+    let rk_off = rk_off_in + 8;
+    sub_bytes_at(rkeys, rk_off);
+    sub_bytes_nots_at(rkeys, rk_off);
+    add_rcon(rkeys, rk_off, rcon);
+    xor_columns(rkeys, rk_off, 8, ror_distance(1, 3));
+    rk_off
+}
+
+fn aes128_key_schedule(key: &[u8; 16]) -> [u32; 88] {
+    let mut rkeys: [u32; 88] = [0u32; 88];
+    bitslice_into(&mut rkeys, 0, key, key);
+    // The rcon loop (10 rounds, fixed) is UNROLLED: a recursive loop whose body
+    // calls the heavy key_round makes ACL2's recursive admission expand
+    // key_round -> sub_bytes (113 gates) and blow up; straight-line (like the
+    // encrypt rounds) admits fast. Faithful -- AES-128's counts are static.
+    let mut rk_off = 0;
+    rk_off = key_round(&mut rkeys, rk_off, 0);
+    rk_off = key_round(&mut rkeys, rk_off, 1);
+    rk_off = key_round(&mut rkeys, rk_off, 2);
+    rk_off = key_round(&mut rkeys, rk_off, 3);
+    rk_off = key_round(&mut rkeys, rk_off, 4);
+    rk_off = key_round(&mut rkeys, rk_off, 5);
+    rk_off = key_round(&mut rkeys, rk_off, 6);
+    rk_off = key_round(&mut rkeys, rk_off, 7);
+    rk_off = key_round(&mut rkeys, rk_off, 8);
+    let _ = key_round(&mut rkeys, rk_off, 9);
+    // Adjust to fixslicing format (non-compact): (8..72).step_by(32) = {8,40}.
+    inv_shift_rows_1_at(&mut rkeys, 8);
+    inv_shift_rows_2_at(&mut rkeys, 16);
+    inv_shift_rows_3_at(&mut rkeys, 24);
+    inv_shift_rows_1_at(&mut rkeys, 40);
+    inv_shift_rows_2_at(&mut rkeys, 48);
+    inv_shift_rows_3_at(&mut rkeys, 56);
+    inv_shift_rows_1_at(&mut rkeys, 72);
+    // Account for NOTs removed from sub_bytes (i = 1..=10).
+    sub_bytes_nots_at(&mut rkeys, 8);
+    sub_bytes_nots_at(&mut rkeys, 16);
+    sub_bytes_nots_at(&mut rkeys, 24);
+    sub_bytes_nots_at(&mut rkeys, 32);
+    sub_bytes_nots_at(&mut rkeys, 40);
+    sub_bytes_nots_at(&mut rkeys, 48);
+    sub_bytes_nots_at(&mut rkeys, 56);
+    sub_bytes_nots_at(&mut rkeys, 64);
+    sub_bytes_nots_at(&mut rkeys, 72);
+    sub_bytes_nots_at(&mut rkeys, 80);
+    rkeys
+}
+
+/// Full AES-128: expand the key and encrypt one block.
+pub fn encrypt(key: [u8; 16], block: [u8; 16]) -> [u8; 16] {
+    let rkeys = aes128_key_schedule(&key);
+    encrypt_block(rkeys, block)
+}

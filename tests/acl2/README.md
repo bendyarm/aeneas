@@ -27,17 +27,20 @@ Rust sources in `../src`, plus handwritten proof books about them. The
 | `range_for-proofs.lisp` | handwritten | synthesized `Range::next` characterized; extracted `for i in 0..n` sum == fold spec for all inputs; execution vectors |
 | `aes_fixslice_core.lisp` | generated | **real** RustCrypto `aes` v0.9.1 fixslice round core (`aes_fixslice_core.rs`, vendored): the 113-gate bitsliced S-box, `mix_columns_{0..3}`/`inv_*`, rotate helpers, `add_round_key` (a `for i in 0..8`). All first-order; `add_round_key` exercises the range-`for` iterator support |
 | `aes_fixslice_core-proofs.lisp` | handwritten | semantic-preservation: extracted `sub_bytes` and a full round compute bit-identically to the shipped Rust (golden vectors from running the vendored crate) |
-| `aes_fixslice_encrypt.lisp` | generated | **the full fixsliced AES-128 encrypt** (given the expanded key): `bitslice`, 10 rounds (`sub_bytes`/`mix_columns`/`add_round_key`/`shift_rows`), `inv_bitslice`. Extracted first-order from vendored `aes_fixslice_encrypt.rs` |
-| `aes_fixslice_encrypt-proofs.lisp` | handwritten | **FIPS-197 Appendix C.1 known-answer test**: the extracted encrypt reproduces `69c4e0d8…c55a` bit-for-bit (expanded key from running the reference crate key schedule) |
+| `aes_fixslice_encrypt.lisp` | generated | **the WHOLE fixsliced AES-128** — key schedule (`aes128_key_schedule`) AND encrypt (`bitslice`, 10 rounds, `inv_bitslice`). Extracted first-order from vendored `aes_fixslice_encrypt.rs` |
+| `aes_fixslice_encrypt-proofs.lisp` | handwritten | **FIPS-197 Appendix C.1 known-answer test, end-to-end**: `encrypt(key, plaintext)` reproduces `69c4e0d8…c55a` bit-for-bit, straight from the raw 16-byte key |
 
-`aes_fixslice_encrypt.rs` is the vendored single-block AES-128 encrypt (expanded
-key passed in). Additional documented de-sugarings beyond the round core: the
-byte packing (`from_le_bytes`/`to_le_bytes` → explicit little-endian assembly,
-narrowing casts masked so they match the checked-cast model), and the 10-round
-`loop{…break}` unrolled (statically fixed trip count). The key schedule is not
-yet extracted (its `&mut rkeys[a..b]` mutable subslices are a backward-function
-frontier); the FIPS expanded key is computed by running the reference key
-schedule (see the throwaway `keygen.rs` harness) and embedded as `*fips-rk*`.
+`aes_fixslice_encrypt.rs` is the vendored single-block AES-128 (key schedule +
+encrypt). Documented de-sugarings beyond the round core: byte packing
+(`from_le_bytes`/`to_le_bytes` → explicit little-endian assembly, narrowing
+casts masked to match the checked-cast model); the key schedule's `&mut
+rkeys[a..b]` mutable subslices → offset-based `read8`/`write8` (whole-array
+mutation, no backward-function write-back); and the statically-fixed loops (the
+encrypt's 10-round `loop{…break}`, the key schedule's rcon loop, `.step_by`)
+unrolled. Unrolling the rcon loop is also what keeps ACL2 admission fast: a
+recursive loop whose body calls the heavy `sub_bytes` (113-gate S-box) blows up
+recursive admission; straight-line is non-recursive and admits in seconds.
+The `[u32; 88]` zero-init uses the new `[x; N]` (`array-repeat`) support.
 
 `aes_fixslice_core.rs` is vendored verbatim from RustCrypto `aes` v0.9.1
 (`aes/src/soft/fixslice32.rs`, MIT/Apache-2.0) with the cipher-crate API

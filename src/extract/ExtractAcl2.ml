@@ -372,13 +372,15 @@ and qualif_app_to_acl2 (span : Meta.span) (ctx : actx) (_env : venv)
           match args_s with
           | [ a ] -> a
           | _ -> [%craise] span "ACL2: ill-formed array-to-slice")
-      | Types.ArrayRepeat ->
-          (* [x; N]: the count N is a const generic, which v0 erases, so we
-             cannot build the list. Reject cleanly rather than emit a call
-             with a missing argument. *)
-          [%craise] span
-            "ACL2: array-repeat [x; N] needs the const-generic length \
-             (not              supported in v0)"
+      | Types.ArrayRepeat -> (
+          (* [x; N]: N is a const generic. After --monomorphize it is a
+             concrete literal, so we can build (array-repeat N x). *)
+          match (q.generics.const_generics, args_s) with
+          | [ CgValue n_lit ], [ x ] ->
+              sexp [ "array-repeat"; literal_to_acl2 span n_lit; x ]
+          | _ ->
+              [%craise] span
+                "ACL2: array-repeat needs a literal length and one element")
       | Types.Index { is_range = false; mutability = Types.RShared; _ } ->
           sexp ("array-index" :: args_s)
       | Types.Index { is_range = false; mutability = Types.RMut; _ } ->
