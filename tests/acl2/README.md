@@ -32,6 +32,7 @@ Rust sources in `../src`, plus handwritten proof books about them. The
 | `rust-primitives-gl.lisp`, `aes_fixslice_encrypt-gl.lisp` | generated (sed) | GL-compatible variants of the two books above: `(fail …)` rewritten to its expansion `(result-fail …)` so `centaur/gl` (which defines its own `fail`) can share the world. `make gl-variants`; bodies otherwise identical |
 | `aes_fixslice_bijection.lisp` | handwritten | **Phase 2 — the representation bijection**: `inv_bitslice ∘ bitslice = id` proved for **all 2²⁵⁶** two-block byte inputs by bit-blasting the real extracted functions with `centaur/gl` (BDD engine, no external solver); plus `delta_swap_2` is self-inverse. Non-vacuity checked with a negative control |
 | `aes_fixslice_correspondence.lisp` | handwritten | **Phase 2 — the state↔fixslice correspondence**: lifts the bijection to a general 16-byte-list form (`inv-bitslice-of-bitslice-general`, the reusable crux), defines the map `φ` from a fixslice `[u32;8]` State to Kestrel's 4×4 `statep`, and proves `φ(bitslice(block)) = copyarraytostate(block)` (+ that `φ` lands in `statep`) — the bridge Phase 3's per-op equivalences are stated across |
+| `aes_fixslice_subbytes.lisp` | handwritten | **Phase 3 — SubBytes**: the shipped 113-gate bitsliced S-box validated against the FIPS-197 table. Fixslice splits the S-box affine (the NOTs are folded into the round keys), so the full S-box on the state is `sub_bytes_nots ∘ sub_bytes`; GL bit-blasts `inv_bitslice(sub_bytes_nots(sub_bytes(bitslice b))) = map-sbox(b)` for **all 2²⁵⁶** inputs, then `subbytes-correspondence` lifts it through `φ` to `AES::subbytes` |
 
 `aes_fixslice_encrypt.rs` is the vendored single-block AES-128 (key schedule +
 encrypt). Documented de-sugarings beyond the round core: byte packing
@@ -95,9 +96,25 @@ Kestrel's 4×4 `statep` exactly as Kestrel's own `cipher` does
 (`copyarraytostate`), and proves the entry-point bridge
 `φ(bitslice(block)) = copyarraytostate(block)` together with `statep`-ness. The
 per-op equivalences (`sub_bytes == AES::subbytes`, `mix_columns ==
-AES::mixcolumns`, …) of Phases 3–4 are stated across this `φ`; the S-box and
-MixColumns obligations are nonlinear, so those use Z3 via Smtlink (Phase-3
-tooling) rather than BDDs.
+AES::mixcolumns`, …) of Phases 3–4 are stated across this `φ`.
+
+## Phase 3: per-operation equivalence (SubBytes)
+
+`aes_fixslice_subbytes.lisp` proves the first and strongest per-op result: the
+shipped 113-gate Boyar-Peralta S-box computes the FIPS-197 table S-box. The
+subtlety is that fixslice **splits the S-box affine** — `sub_bytes` is the gate
+network *without* the final NOTs, which the crate removes and folds into the
+round keys (`aes_fixslice_encrypt.rs`: "Account for NOTs removed from
+sub_bytes"). So the full byte-wise S-box on the state is `sub_bytes_nots ∘
+sub_bytes`. GL bit-blasts the real extracted circuit,
+`inv_bitslice(sub_bytes_nots(sub_bytes(bitslice b))) = map-sbox(b)`, for all
+2²⁵⁶ inputs (~55s); `subbytes-correspondence` then lifts it through `φ` to
+`φ(SubBytes(bitslice b)) = AES::subbytes(copyarraytostate b)`. Note GL's BDD
+engine handled this nonlinear obligation directly — an 8→8 S-box has a bounded
+BDD — so Z3/Smtlink (stood up for Phase 3) was not needed here; it stays in
+reserve for any obligation whose BDDs do blow up. Remaining Phase-3 ops
+(MixColumns, AddRoundKey, the ShiftRows-in-key-schedule compensation) follow the
+same pattern.
 
 ## Dependencies
 
