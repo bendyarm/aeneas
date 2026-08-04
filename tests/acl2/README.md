@@ -25,6 +25,15 @@ Rust sources in `../src`, plus handwritten proof books about them. The
 | `iterators_scalar.lisp` | generated | minimal `for i in 0..n` loop (`iterators-scalar.rs`) |
 | `range_for.lisp` | generated | range for-loops (`range_for.rs`): array indexing + accumulation with `i as u32` |
 | `range_for-proofs.lisp` | handwritten | synthesized `Range::next` characterized; extracted `for i in 0..n` sum == fold spec for all inputs; execution vectors |
+| `aes_fixslice_core.lisp` | generated | **real** RustCrypto `aes` v0.9.1 fixslice round core (`aes_fixslice_core.rs`, vendored): the 113-gate bitsliced S-box, `mix_columns_{0..3}`/`inv_*`, rotate helpers, `add_round_key` (a `for i in 0..8`). All first-order; `add_round_key` exercises the range-`for` iterator support |
+| `aes_fixslice_core-proofs.lisp` | handwritten | semantic-preservation: extracted `sub_bytes` and a full round compute bit-identically to the shipped Rust (golden vectors from running the vendored crate) |
+
+`aes_fixslice_core.rs` is vendored verbatim from RustCrypto `aes` v0.9.1
+(`aes/src/soft/fixslice32.rs`, MIT/Apache-2.0) with the cipher-crate API
+stripped and two mechanical de-sugarings documented in its header. It is the
+first *real* crate code (not a probe) through the pipeline. The full AES-128
+encrypt (bitslice/inv_bitslice byte packing, key schedule, round loop) is the
+next increment — see the fixslice experiment plan and the Phase-1 reject list.
 
 Range for-loops (`for i in 0..n`) are supported: the ACL2 backend synthesizes
 first-order bodies for the (opaque, monomorphic) `Range::next` (fused

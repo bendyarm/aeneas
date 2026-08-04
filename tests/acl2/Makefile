@@ -61,6 +61,11 @@ regen:
 	  --monomorphize -- $(SRC)/range_for.rs --crate-name=range_for \
 	  --crate-type=rlib --allow=unused --allow=non_snake_case >/dev/null 2>&1
 	@$(AENEAS) $(AENEAS_FLAGS) -dest . $(LLBC)/range_for.llbc || true
+	@# Vendored RustCrypto AES fixslice round core (real shipped gate logic).
+	@$(CHARON) rustc --dest-file $(LLBC)/aes_fixslice_core.llbc --preset=aeneas \
+	  --monomorphize -- $(SRC)/aes_fixslice_core.rs --crate-name=aes_fixslice_core \
+	  --crate-type=rlib --allow=unused --allow=non_snake_case >/dev/null 2>&1
+	@$(AENEAS) $(AENEAS_FLAGS) -dest . $(LLBC)/aes_fixslice_core.llbc || true
 
 # Certify every book in the directory (generated + handwritten).
 verify:
@@ -70,7 +75,8 @@ verify:
 	  rust_tea_arr tea_arr-vectors tea-arr-equiv \
 	  vec_demo vec_demo-proofs vec_sum vec_sum-proofs \
 	  aes_probe aes_probe-proofs \
-	  iterators_scalar range_for range_for-proofs
+	  iterators_scalar range_for range_for-proofs \
+	  aes_fixslice_core aes_fixslice_core-proofs
 
 clean:
 	rm -f *.cert *.cert.out *.fasl *.port Makefile-tmp
