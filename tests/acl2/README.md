@@ -31,6 +31,7 @@ Rust sources in `../src`, plus handwritten proof books about them. The
 | `aes_fixslice_encrypt-proofs.lisp` | handwritten | **FIPS-197 Appendix C.1 KAT, end-to-end**: `encrypt(key, pt)` and `decrypt(key, ct)` match the standard bit-for-bit from the raw key; plus the round-trip identity `decrypt∘encrypt = encrypt∘decrypt = id` |
 | `rust-primitives-gl.lisp`, `aes_fixslice_encrypt-gl.lisp` | generated (sed) | GL-compatible variants of the two books above: `(fail …)` rewritten to its expansion `(result-fail …)` so `centaur/gl` (which defines its own `fail`) can share the world. `make gl-variants`; bodies otherwise identical |
 | `aes_fixslice_bijection.lisp` | handwritten | **Phase 2 — the representation bijection**: `inv_bitslice ∘ bitslice = id` proved for **all 2²⁵⁶** two-block byte inputs by bit-blasting the real extracted functions with `centaur/gl` (BDD engine, no external solver); plus `delta_swap_2` is self-inverse. Non-vacuity checked with a negative control |
+| `aes_fixslice_correspondence.lisp` | handwritten | **Phase 2 — the state↔fixslice correspondence**: lifts the bijection to a general 16-byte-list form (`inv-bitslice-of-bitslice-general`, the reusable crux), defines the map `φ` from a fixslice `[u32;8]` State to Kestrel's 4×4 `statep`, and proves `φ(bitslice(block)) = copyarraytostate(block)` (+ that `φ` lands in `statep`) — the bridge Phase 3's per-op equivalences are stated across |
 
 `aes_fixslice_encrypt.rs` is the vendored single-block AES-128 (key schedule +
 encrypt). Documented de-sugarings beyond the round core: byte packing
@@ -81,9 +82,22 @@ fail-fast step — a wrong bit-order model surfaces immediately as a concrete GL
 counterexample (verified by a negative control). Because `centaur/gl` defines
 its own function `fail`, colliding with the runtime's `fail` macro, the proof
 loads the extracted code through the mechanical `-gl` variants (see the table
-and PORTING-NOTES-ACL2.md). Still open in Phase 2: the `state ↔ fixslice`
-correspondence to Kestrel's `statep` — the per-op equivalence work (Phases 3–4)
-builds on this map.
+and PORTING-NOTES-ACL2.md).
+
+`aes_fixslice_correspondence.lisp` closes Phase 2. It first lifts the GL
+bijection (proved over 32 explicit byte variables) to a general 16-byte-**list**
+statement, `inv-bitslice-of-bitslice-general` — the reusable crux, obtained by
+instantiating the GL theorem at a block's elements and folding the element-lists
+back with a length-16 decomposition lemma, all with the huge extracted
+definitions kept closed. It then defines the correspondence map `φ`: project a
+fixslice State's lane back to 16 bytes (`inv_bitslice`) and load it into
+Kestrel's 4×4 `statep` exactly as Kestrel's own `cipher` does
+(`copyarraytostate`), and proves the entry-point bridge
+`φ(bitslice(block)) = copyarraytostate(block)` together with `statep`-ness. The
+per-op equivalences (`sub_bytes == AES::subbytes`, `mix_columns ==
+AES::mixcolumns`, …) of Phases 3–4 are stated across this `φ`; the S-box and
+MixColumns obligations are nonlinear, so those use Z3 via Smtlink (Phase-3
+tooling) rather than BDDs.
 
 ## Dependencies
 

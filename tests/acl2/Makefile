@@ -103,7 +103,8 @@ verify:
 	  iterators_scalar range_for range_for-proofs \
 	  aes_fixslice_core aes_fixslice_core-proofs \
 	  aes_fixslice_encrypt aes_fixslice_encrypt-proofs \
-	  rust-primitives-gl aes_fixslice_encrypt-gl aes_fixslice_bijection
+	  rust-primitives-gl aes_fixslice_encrypt-gl aes_fixslice_bijection \
+	  aes_fixslice_correspondence
 
 clean:
 	rm -f *.cert *.cert.out *.fasl *.port Makefile-tmp
