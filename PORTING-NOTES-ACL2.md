@@ -73,3 +73,34 @@ Two fixes, both verified:
    version admit in ~6s. This keeps genuine (non-static-count) loops as loops.
    Disabling a `:definition` rune does not disable its `:executable-counterpart`,
    so execution-based known-answer tests still run.
+
+## Known workaround: the `fail` runtime macro collides with centaur/gl
+
+The Phase-2 bijection proof (`tests/acl2/aes_fixslice_bijection.lisp`) bit-blasts
+the extracted `bitslice`/`inv_bitslice` with **centaur/gl**, so a single ACL2
+world must hold both the extracted code and GL. It cannot: `rust-primitives`
+defines `fail` as a *macro* (a one-line alias, `(defmacro fail (e) `(result-fail
+,e))`), while centaur/gl transitively defines a *function* named `fail`
+(`misc/hons-help`). ACL2 forbids a macro and a function to share a name in one
+world, so `(include-book "centaur/gl/gl")` after the extracted book aborts with
+"The name FAIL is in use as a macro." (`ok`, `array-index`, `u32p`, … do NOT
+collide — `fail` is the only one.)
+
+Two fixes:
+
+1. **GL-compatible variant (used now).** The Makefile `gl-variants` target
+   `sed`-rewrites `(fail …)` to its expansion `(result-fail …)` and drops the
+   macro definition, producing `rust-primitives-gl.lisp` and
+   `aes_fixslice_encrypt-gl.lisp`. The rewrite is purely mechanical and
+   semantics-preserving (every function *body* is identical), so a theorem about
+   the `-gl` functions is a theorem about the real extracted code. The variants
+   are build artifacts, never hand-edited, and regenerate whenever the canonical
+   books change. Self-contained; touches nothing else.
+
+2. **Principled fix (TODO in the runtime/printer).** Give the runtime's monad
+   sugar a collision-proof name — either emit `result-fail`/`result-ok` directly
+   (drop the macros) or rename to something namespaced (e.g. `rust-fail`), so
+   *every* extracted book is GL-ready without a variant copy. Deferred because it
+   touches the printer, all generated books, and the handwritten proofs that
+   mention `fail`; parallel to the unrolling workaround above (do the mechanical
+   thing now, land the invasive rename deliberately). Not urgent.

@@ -29,6 +29,8 @@ Rust sources in `../src`, plus handwritten proof books about them. The
 | `aes_fixslice_core-proofs.lisp` | handwritten | semantic-preservation: extracted `sub_bytes` and a full round compute bit-identically to the shipped Rust (golden vectors from running the vendored crate) |
 | `aes_fixslice_encrypt.lisp` | generated | **the WHOLE fixsliced AES-128, encrypt AND decrypt** — key schedule (`aes128_key_schedule`), encrypt (`bitslice`, 10 rounds, `inv_bitslice`) and decrypt (`inv_sub_bytes`, `inv_mix_columns`, `inv_shift_rows`). Extracted first-order from vendored `aes_fixslice_encrypt.rs` |
 | `aes_fixslice_encrypt-proofs.lisp` | handwritten | **FIPS-197 Appendix C.1 KAT, end-to-end**: `encrypt(key, pt)` and `decrypt(key, ct)` match the standard bit-for-bit from the raw key; plus the round-trip identity `decrypt∘encrypt = encrypt∘decrypt = id` |
+| `rust-primitives-gl.lisp`, `aes_fixslice_encrypt-gl.lisp` | generated (sed) | GL-compatible variants of the two books above: `(fail …)` rewritten to its expansion `(result-fail …)` so `centaur/gl` (which defines its own `fail`) can share the world. `make gl-variants`; bodies otherwise identical |
+| `aes_fixslice_bijection.lisp` | handwritten | **Phase 2 — the representation bijection**: `inv_bitslice ∘ bitslice = id` proved for **all 2²⁵⁶** two-block byte inputs by bit-blasting the real extracted functions with `centaur/gl` (BDD engine, no external solver); plus `delta_swap_2` is self-inverse. Non-vacuity checked with a negative control |
 
 `aes_fixslice_encrypt.rs` is the vendored single-block AES-128 (key schedule +
 encrypt). Documented de-sugarings beyond the round core: byte packing
@@ -65,9 +67,27 @@ plain fuel-recursive ACL2. The gaps it drove out were integer `as` casts and
 `<ty>-cast-bool`, `<ty>-rotate-left/right`, mirroring the F*/Coq
 `scalar_cast`/`scalar_cast_bool` semantics).
 
+## Phase 2: the representation bijection (bit-blasted)
+
+`aes_fixslice_bijection.lisp` opens the equivalence-to-Kestrel arc. The
+fixsliced state is a bit-permuted repacking of the input bytes, so the first
+thing to pin down is that the packing is a genuine bijection —
+`inv_bitslice(bitslice(b)) = b`. This is proved for **every** 2²⁵⁶ pair of
+16-byte blocks by bit-blasting the *real* extracted `bitslice`/`inv_bitslice`
+with `centaur/gl`. GL's built-in BDD engine suffices (no external SAT/SMT
+solver): the obligation is a pure bit-permutation composed with byte
+pack/unpack, so the BDDs stay linear and it closes in ~10s. It is the plan's
+fail-fast step — a wrong bit-order model surfaces immediately as a concrete GL
+counterexample (verified by a negative control). Because `centaur/gl` defines
+its own function `fail`, colliding with the runtime's `fail` macro, the proof
+loads the extracted code through the mechanical `-gl` variants (see the table
+and PORTING-NOTES-ACL2.md). Still open in Phase 2: the `state ↔ fixslice`
+correspondence to Kestrel's `statep` — the per-op equivalence work (Phases 3–4)
+builds on this map.
+
 ## Dependencies
 
 `verify` needs an ACL2 with the community books certified, including
 `kestrel/crypto/tea` and `kestrel/crypto/aes` (+ `kestrel/bv`,
 `kestrel/bv-arrays`, `centaur/fty`, `std`, `arithmetic-5`) for the
-equivalence books.
+equivalence books, and `centaur/gl` for the Phase-2 bijection (bit-blasting).
