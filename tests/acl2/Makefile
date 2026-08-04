@@ -66,6 +66,11 @@ regen:
 	  --monomorphize -- $(SRC)/aes_fixslice_core.rs --crate-name=aes_fixslice_core \
 	  --crate-type=rlib --allow=unused --allow=non_snake_case >/dev/null 2>&1
 	@$(AENEAS) $(AENEAS_FLAGS) -dest . $(LLBC)/aes_fixslice_core.llbc || true
+	@# Full fixsliced AES-128 encrypt (given expanded key); FIPS-197 C.1 in proofs.
+	@$(CHARON) rustc --dest-file $(LLBC)/aes_fixslice_encrypt.llbc --preset=aeneas \
+	  --monomorphize -- $(SRC)/aes_fixslice_encrypt.rs --crate-name=aes_fixslice_encrypt \
+	  --crate-type=rlib --allow=unused --allow=non_snake_case >/dev/null 2>&1
+	@$(AENEAS) $(AENEAS_FLAGS) -dest . $(LLBC)/aes_fixslice_encrypt.llbc || true
 
 # Certify every book in the directory (generated + handwritten).
 verify:
@@ -76,7 +81,8 @@ verify:
 	  vec_demo vec_demo-proofs vec_sum vec_sum-proofs \
 	  aes_probe aes_probe-proofs \
 	  iterators_scalar range_for range_for-proofs \
-	  aes_fixslice_core aes_fixslice_core-proofs
+	  aes_fixslice_core aes_fixslice_core-proofs \
+	  aes_fixslice_encrypt aes_fixslice_encrypt-proofs
 
 clean:
 	rm -f *.cert *.cert.out *.fasl *.port Makefile-tmp
