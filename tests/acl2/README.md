@@ -33,6 +33,8 @@ Rust sources in `../src`, plus handwritten proof books about them. The
 | `aes_fixslice_bijection.lisp` | handwritten | **Phase 2 — the representation bijection**: `inv_bitslice ∘ bitslice = id` proved for **all 2²⁵⁶** two-block byte inputs by bit-blasting the real extracted functions with `centaur/gl` (BDD engine, no external solver); plus `delta_swap_2` is self-inverse. Non-vacuity checked with a negative control |
 | `aes_fixslice_correspondence.lisp` | handwritten | **Phase 2 — the state↔fixslice correspondence**: lifts the bijection to a general 16-byte-list form (`inv-bitslice-of-bitslice-general`, the reusable crux), defines the map `φ` from a fixslice `[u32;8]` State to Kestrel's 4×4 `statep`, and proves `φ(bitslice(block)) = copyarraytostate(block)` (+ that `φ` lands in `statep`) — the bridge Phase 3's per-op equivalences are stated across |
 | `aes_fixslice_subbytes.lisp` | handwritten | **Phase 3 — SubBytes**: the shipped 113-gate bitsliced S-box validated against the FIPS-197 table. Fixslice splits the S-box affine (the NOTs are folded into the round keys), so the full S-box on the state is `sub_bytes_nots ∘ sub_bytes`; GL bit-blasts `inv_bitslice(sub_bytes_nots(sub_bytes(bitslice b))) = map-sbox(b)` for **all 2²⁵⁶** inputs, then `subbytes-correspondence` lifts it through `φ` to `AES::subbytes` |
+| `aes_fixslice_mixcolumns.lisp` | handwritten | **Phase 3 — MixColumns**: `mixcolumns-correspondence` proves `φ(mix_columns_0(bitslice b)) = AES::mixcolumns(copyarraytostate b)`. `mix_columns_0` is the un-rotated (phase-0) variant = standard MixColumns; GL bit-blasts the real GF(2⁸) circuit against Kestrel's field spec. Includes the reusable `copyarraytostate ∘ copy-state-to-array = id` round-trip |
+| `aes_fixslice_addroundkey.lisp` | handwritten | **Phase 3 — AddRoundKey**: `addroundkey-correspondence` proves `φ(add_round_key(bitslice s, K)) = AES::addroundkey(copyarraytostate s, cols(K))`. Since `inv_bitslice` is GF(2)-linear (proved), fixslice AddRoundKey through the packing is byte-wise XOR; the key is columnized to match Kestrel's roundkey layout |
 
 `aes_fixslice_encrypt.rs` is the vendored single-block AES-128 (key schedule +
 encrypt). Documented de-sugarings beyond the round core: byte packing
@@ -112,9 +114,28 @@ sub_bytes`. GL bit-blasts the real extracted circuit,
 `φ(SubBytes(bitslice b)) = AES::subbytes(copyarraytostate b)`. Note GL's BDD
 engine handled this nonlinear obligation directly — an 8→8 S-box has a bounded
 BDD — so Z3/Smtlink (stood up for Phase 3) was not needed here; it stays in
-reserve for any obligation whose BDDs do blow up. Remaining Phase-3 ops
-(MixColumns, AddRoundKey, the ShiftRows-in-key-schedule compensation) follow the
-same pattern.
+reserve for any obligation whose BDDs do blow up.
+
+`aes_fixslice_mixcolumns.lisp` and `aes_fixslice_addroundkey.lisp` carry the
+same φ pattern to the two linear round ops. **MixColumns**: fixslice ships four
+variants (`mix_columns_0..3`) because the state representation rotates each round
+to fold ShiftRows in for free; `mix_columns_0` is the un-rotated one and is
+exactly standard MixColumns, proved via GL against Kestrel's GF(2⁸) field spec
+(GL evaluates `gf256mult` fine). **AddRoundKey**: `inv_bitslice` is GF(2)-linear
+(proved as its own GL lemma), so add_round_key through the packing is byte-wise
+XOR of the state and the unpacked key. Two modeling points surfaced and are
+handled explicitly: the full doubly-bitsliced AddRoundKey overran GL's BDDs, so
+the key is carried as a symbolic State (more general, and inv_bitslice's
+linearity does the work); and Kestrel's `addroundkey` indexes the round key
+transposed relative to the state, so the key bytes are columnized (`bytes->cols`)
+to match.
+
+The **rotated frame-variants** — `mix_columns_1/2/3` and the last round's
+`shift_rows_2` — are MixColumns/ShiftRows in a rotated representation, meaningful
+only inside the round pipeline (they encode the folded ShiftRows). Their
+correspondence is a **Phase-4 composition** matter rather than a standalone
+per-op equivalence; the whole-cipher FIPS KAT already validates that composition
+end to end.
 
 ## Dependencies
 
