@@ -37,6 +37,7 @@ Rust sources in `../src`, plus handwritten proof books about them. The
 | `aes_fixslice_addroundkey.lisp` | handwritten | **Phase 3 — AddRoundKey**: `addroundkey-correspondence` proves `φ(add_round_key(bitslice s, K)) = AES::addroundkey(copyarraytostate s, cols(K))`. Since `inv_bitslice` is GF(2)-linear (proved), fixslice AddRoundKey through the packing is byte-wise XOR; the key is columnized to match Kestrel's roundkey layout |
 | `aes_fixslice_round.lisp` | handwritten | **Phase 4 foundation — compositional rewriting**: the two-way packing bijection (`bitslice ∘ inv_bitslice = id`), a `wstatep` state predicate, and the **push-in rewrite rules** `inv_bitslice(op(S)) = op'(inv_bitslice(S))` for each op (SubBytes/MixColumns/AddRoundKey), *derived by rewriting* from the Phase-3 lemmas + preservation lemmas so they chain. A `compose-demo` collapses a two-op fragment to byte-level Kestrel ops by rewriting alone |
 | `aes_fixslice_shiftrows.lisp` | handwritten | **Phase 4 — the ShiftRows fold, against the spec**: `mix_columns_i` (i=1,2,3), through φ, is MixColumns *conjugated* into the ShiftRows^i frame — `invshiftrows^i ∘ mixcolumns ∘ shiftrows^i`, all Kestrel spec ops — and the last round's `shift_rows_2 = shiftrows²`. These are the pieces that telescope: with `y_r = shiftrows^r(φ(state_r))` the `sr^r` change of variable cancels each conjugation (SubBytes commutes with ShiftRows), collapsing the fixslice recurrence onto the spec's |
+| `aes_fixslice_rounds.lisp` | handwritten | **Phase 4 — round-induction core**: the spec-level commutation facts (`subbytes∘shiftrows = shiftrows∘subbytes`, `shiftrows∘invshiftrows = id`, `shiftrows⁴ = id`) — all pure rewriting, no GL — and the telescoping absorption `shiftrows^i(φ(mix_columns_i(bitslice b))) = mixcolumns(shiftrows^i(…))`, showing `sr^i` cancels the `isr^i` conjugation to recover the spec's round op |
 
 `aes_fixslice_encrypt.rs` is the vendored single-block AES-128 (key schedule +
 encrypt). Documented de-sugarings beyond the round core: byte packing
@@ -164,8 +165,18 @@ ShiftRows^i frame), and `shift_rows_2 = shiftrows²`. These telescope: define
 id`, `sr^4 = id`, and `SB∘sr = sr∘SB`), which is exactly the spec's round
 recurrence `mc∘sr∘SB`. So `y_r = spec_state_r` by induction, and the last round's
 `shiftrows²` corrects the residual `sr^9 = sr` frame to the final `shiftrows`.
-Remaining for Phase 4: assemble this telescoping into the round induction to
-`encrypt == AES::aes-128-encrypt` (pure rewriting, plus the key-schedule side).
+`aes_fixslice_rounds.lisp` proves the algebraic core of that argument, entirely
+by rewriting over the spec (no GL): the commutation lemmas (`SB∘sr = sr∘SB`,
+`sr∘isr = id`, `sr⁴ = id`) and the telescoping-absorption
+`shiftrows^i(φ(mix_columns_i(bitslice b))) = mixcolumns(shiftrows^i(…))`, i.e.
+`sr^i` cancels the `isr^i` conjugation to leave the spec's round op. What remains
+to reach `encrypt == AES::aes-128-encrypt` is the *assembly*, in three pieces:
+(a) the S-box-affine fold — the encrypt's data path uses bare `sub_bytes` (=
+S-box minus the `0x63` affine), the NOTs being carried in the round keys; (b)
+`add_round_key`'s 88-word `rkeys`-plus-offset argument reduced to the 8-word
+round-key slice; (c) the 10-round chain and the key schedule
+(`aes128_key_schedule` producing keys matching Kestrel's `keyexpansion` under
+the same `shiftrows^r`/NOTs bookkeeping) — the largest separate piece.
 
 ## Dependencies
 
