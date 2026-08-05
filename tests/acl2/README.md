@@ -35,6 +35,7 @@ Rust sources in `../src`, plus handwritten proof books about them. The
 | `aes_fixslice_subbytes.lisp` | handwritten | **Phase 3 — SubBytes**: the shipped 113-gate bitsliced S-box validated against the FIPS-197 table. Fixslice splits the S-box affine (the NOTs are folded into the round keys), so the full S-box on the state is `sub_bytes_nots ∘ sub_bytes`; GL bit-blasts `inv_bitslice(sub_bytes_nots(sub_bytes(bitslice b))) = map-sbox(b)` for **all 2²⁵⁶** inputs, then `subbytes-correspondence` lifts it through `φ` to `AES::subbytes` |
 | `aes_fixslice_mixcolumns.lisp` | handwritten | **Phase 3 — MixColumns**: `mixcolumns-correspondence` proves `φ(mix_columns_0(bitslice b)) = AES::mixcolumns(copyarraytostate b)`. `mix_columns_0` is the un-rotated (phase-0) variant = standard MixColumns; GL bit-blasts the real GF(2⁸) circuit against Kestrel's field spec. Includes the reusable `copyarraytostate ∘ copy-state-to-array = id` round-trip |
 | `aes_fixslice_addroundkey.lisp` | handwritten | **Phase 3 — AddRoundKey**: `addroundkey-correspondence` proves `φ(add_round_key(bitslice s, K)) = AES::addroundkey(copyarraytostate s, cols(K))`. Since `inv_bitslice` is GF(2)-linear (proved), fixslice AddRoundKey through the packing is byte-wise XOR; the key is columnized to match Kestrel's roundkey layout |
+| `aes_fixslice_round.lisp` | handwritten | **Phase 4 foundation — compositional rewriting**: the two-way packing bijection (`bitslice ∘ inv_bitslice = id`), a `wstatep` state predicate, and the **push-in rewrite rules** `inv_bitslice(op(S)) = op'(inv_bitslice(S))` for each op (SubBytes/MixColumns/AddRoundKey), *derived by rewriting* from the Phase-3 lemmas + preservation lemmas so they chain. A `compose-demo` collapses a two-op fragment to byte-level Kestrel ops by rewriting alone |
 
 `aes_fixslice_encrypt.rs` is the vendored single-block AES-128 (key schedule +
 encrypt). Documented de-sugarings beyond the round core: byte packing
@@ -136,6 +137,24 @@ only inside the round pipeline (they encode the folded ShiftRows). Their
 correspondence is a **Phase-4 composition** matter rather than a standalone
 per-op equivalence; the whole-cipher FIPS KAT already validates that composition
 end to end.
+
+## Phase 4: compositional rewriting
+
+`aes_fixslice_round.lisp` opens Phase 4 with the composition machinery. The
+route is **structured rewriting**, not bit-blasting: the goal is to push
+`inv_bitslice` inward through the round pipeline with rewrite rules
+`inv_bitslice(op(S)) = op'(inv_bitslice(S))` until it meets `bitslice(pt)` and
+`inv_bitslice(bitslice pt) = pt` closes it, leaving a chain of byte-level Kestrel
+ops. Rewriting keeps the proof observable (each step is a named rule) and keeps
+the trusted base small — the only bit-blasted facts are the irreducible packing
+identities. This file proves the other bijection direction (`bitslice ∘
+inv_bitslice = id`), a `wstatep` fixslice-state predicate, the three push-in
+rules (each *derived by rewriting* from its Phase-3 lemma, not re-bit-blasted),
+`wstatep`-preservation for each op so the rules chain, and a `compose-demo` that
+collapses `inv_bitslice(add_round_key(mix_columns_0(S), K))` to byte-level ops by
+rewriting alone. Remaining for Phase 4: the ShiftRows-fold rotation (the
+`mix_columns_1/2/3` and `shift_rows_2` frame-variants telescope across the 10
+rounds), then the round induction to `encrypt == AES::aes-128-encrypt`.
 
 ## Dependencies
 

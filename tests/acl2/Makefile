@@ -105,7 +105,7 @@ verify:
 	  aes_fixslice_encrypt aes_fixslice_encrypt-proofs \
 	  rust-primitives-gl aes_fixslice_encrypt-gl aes_fixslice_bijection \
 	  aes_fixslice_correspondence aes_fixslice_subbytes \
-	  aes_fixslice_mixcolumns aes_fixslice_addroundkey
+	  aes_fixslice_mixcolumns aes_fixslice_addroundkey aes_fixslice_round
 
 clean:
 	rm -f *.cert *.cert.out *.fasl *.port Makefile-tmp
