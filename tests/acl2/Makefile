@@ -107,7 +107,7 @@ verify:
 	  aes_fixslice_correspondence aes_fixslice_subbytes \
 	  aes_fixslice_mixcolumns aes_fixslice_addroundkey aes_fixslice_round \
 	  aes_fixslice_shiftrows aes_fixslice_rounds aes_fixslice_keyschedule \
-	  aes_fixslice_keycore
+	  aes_fixslice_keycore aes_fixslice_keychain aes_fixslice_keyops
 
 clean:
 	rm -f *.cert *.cert.out *.fasl *.port Makefile-tmp
