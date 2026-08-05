@@ -1,19 +1,24 @@
-; Phase 4 -- key-schedule: connecting krw8 to the spec recurrence via the
-; keycore step cruxes.  ROUND 0 is proven end-to-end:
-;   krw8-crux-0 : car(inv_bitslice(krw8(bitslice(b,b), 0))) = kr-spec-bytes(b, 1)
-; for every 16-byte b, by combining key-round-step-rcon0 (keycore) with
-; key-round-window (keyround) over the seed array rk0 = append(bitslice(b,b),
-; 80 zeros).  The bridges are reusable: take-8-nthcdr = rd8 (the cruxes read the
-; window as take/nthcdr), bitslice-of-inp is a wstate, and rd8 of the seed reads
-; back the bitslice.
+; Phase 4 -- key-schedule: bridges toward connecting krw8 to the spec recurrence.
 ;
-; ROUNDS 1-9 are STRUCTURALLY IDENTICAL (swap rcon{c} + xpow) but the same proof
-; recipe explodes in the rewriter (~184s prove, then fails) for c>=1 while c=0
-; closes in <1s -- with key_round/krw8/inv_bitslice/bitslice all disabled, so the
-; blow-up is in the arith-5 + len-when-wstatep interaction on the nonzero-rcon
-; terms.  A robust replacement (a single c-general lemma, or discharging the
-; key-round-window hyps without the free-variable len-when-wstatep) is the next
-; step; the machinery (key-round-window, wstatep-of-bitslice) is all in place.
+; STATUS: the three BRIDGES below are proven and reusable --
+;   take-nthcdr-is-rd8 : the keycore cruxes read the window as (take 8 (nthcdr
+;                        off .)); that is our rd8 in bounds
+;   wstatep-of-bitslice: bitslice of two inp blocks is a wstate (GL fact lifted)
+;   rd8-of-append-8    : rd8 of the seed array reads back the bitslice
+;
+; The intended payoff -- krw8-crux-c : car(inv_bitslice(krw8(bitslice(b,b),c)))
+; = kr-spec-bytes(b, xpow c) -- is NOT yet proven for any c.  It combines
+; key-round-step-rcon{c} (keycore) with key-round-window (keyround) over the seed
+; rk0 = append(bitslice(b,b), 80 zeros).  The window/take-nthcdr substitution
+; lines up cleanly, but the step is tangled with lifting the GL crux's sixteen
+; (unsigned-byte-p 8 (nth i b)) hypotheses to a single (aes::inp b): done in one
+; shot the rewriter either blows up (~200s) or drowns in unsigned-byte-p case
+; splits.  The fix is to SEPARATE the two: first lift the crux to (inp b) using
+; this codebase's standard -general idiom (:use gl + expand-len-16 + disabled
+; functions, as in subbytes/correspondence), then substitute the window against
+; that clean c-general fact.  All the pieces (key-round-window, wstatep-of-
+; bitslice, take-nthcdr-is-rd8, expand-len-16, unsigned-byte-p-8-of-nth-when-inp)
+; are in place.
 (in-package "ACL2")
 (include-book "aes_fixslice_keyround")
 (local (include-book "std/lists/nth" :dir :system))
