@@ -7,9 +7,16 @@
 //      narrowing casts `(w>>k) as u8` -> `((w>>k)&0xff) as u8` to match the
 //      checked-cast model; semantically identical truncation)
 //  * add_round_key(&mut rkeys[o..o+8]) -> (rkeys:&[u32;88], off) + index
-//  * shift_rows_2 iter_mut -> `for i in 0..8`
-//  * the 10-round `loop{...break}` -> unrolled (statically fixed trip count)
+//  * shift_rows_* / add_round_key iter_mut/zip -> `for i in 0..8`
+//  * memshift32 `for i in (0..8).rev()` -> `for i in 0..8` (src/dst windows
+//      are disjoint, so direction is irrelevant; Rev<Range> not yet extractable)
+//  * encrypt/decrypt round `loop{...break}` -> unrolled (statically fixed trip
+//      count); the key-schedule rcon loop is a `for` loop (recursive extraction)
 //  * State::default()/BatchBlocks -> explicit [u32;8] / [[u8;16];2] literals
+//  * debug_assert!s dropped; cfg(aes_backend_soft="compact") branches resolved
+//      to the non-compact path; aes192/aes256 and the cipher-crate API omitted
+// Pristine upstream reference: tests/src/reference/fixslice32-aes-v0.9.1.rs;
+// per-function audit + de-vendoring roadmap: PORTING-NOTES-ACL2.md.
 
 type State = [u32; 8];
 

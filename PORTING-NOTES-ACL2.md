@@ -104,3 +104,63 @@ Two fixes:
    touches the printer, all generated books, and the handwritten proofs that
    mention `fail`; parallel to the unrolling workaround above (do the mechanical
    thing now, land the invasive rename deliberately). Not urgent.
+
+## AES fixslice vendoring: provenance, mechanical audit, de-vendoring roadmap
+
+**Provenance.** `tests/src/aes_fixslice_encrypt.rs` was written BY HAND (no tool
+generated it) as an adaptation of RustCrypto `aes` v0.9.1
+`src/soft/fixslice32.rs` (repo `RustCrypto/block-ciphers`, tag `aes-v0.9.1`,
+commit `507938c`), created in commit `c3555dd1` so the module would go through
+today's Charon -> Aeneas -> ACL2 pipeline. The pristine upstream file is checked
+in at `tests/src/reference/fixslice32-aes-v0.9.1.rs` (MIT/Apache-2.0) so the
+adaptation is diffable forever. The theorems are about the ADAPTED copy; they
+transfer to shipped RustCrypto exactly modulo the deltas below.
+
+**Mechanical audit** (function-by-function, whitespace/comment-insensitive;
+script-verified against the reference copy):
+
+| Delta class | Functions | Nature |
+|---|---|---|
+| Byte-identical | `ror`, `ror_distance`, `rotate_rows_*`, `rotate_rows_and_columns_*`, `delta_swap_1/2` (10 fns), and the whole `define_mix_columns!` macro | none |
+| Signature-only (`&mut [u32]` -> `&mut State`/`&[u32;88]`; `debug_assert` dropped) | `sub_bytes` (the 113-gate S-box network: body verbatim), `sub_bytes_nots`, `inv_sub_bytes`, `add_round_constant_bit`, `xor_columns`, `inv_shift_rows_1/2/3` | zero gate changes |
+| `iter_mut`/`zip` -> indexed `for` | `shift_rows_1/2/3`, `add_round_key` | same ops, indexed |
+| LE byte plumbing (`from_le_bytes`+`try_into` -> `ld_le`; `to_le_bytes`+`copy_from_slice` -> explicit arrays with masked `as u8` casts) | `bitslice`, `inv_bitslice` | endianness-explicit |
+| Subslice borrows -> `(array, offset)` + `read8`/`write8`/`*_at` wrappers | `aes128_key_schedule` call sites, `sub_bytes_at` etc. (vendored-only helpers) | structural |
+| Loop unrolls | encrypt/decrypt round loops (still unrolled); key-schedule rcon loop (RE-ROLLED, recursive extraction) | control flow |
+| **Undocumented until this audit**: `memshift32` iterates `for i in 0..8` instead of upstream `for i in (0..8).rev()` | `memshift32` | equivalent (src `[s,s+8)` / dst `[s+8,s+16)` disjoint), changed because `Rev<Range>` isn't extractable yet |
+| Dropped | `aes192_*`/`aes256_*`, cipher-crate API, `cfg(aes_backend_soft = "compact")` branches (non-compact path vendored), `debug_assert`s | scope reduction |
+
+**De-vendoring roadmap** — what the toolchain needs so each delta can be
+deleted and the audited subject moves toward verbatim upstream:
+
+1. FREE / already zero: macros (rustc expands pre-MIR); `cfg` selection
+   (rustc resolves); those deltas need no toolchain work.
+2. `debug_assert!`: check whether the charon preset compiles them out; if so
+   restore them verbatim (zero-cost fidelity win). Small.
+3. Loop re-rolls: key schedule DONE (see below); re-roll the encrypt/decrypt
+   round loops the same way (`-loops-to-rec` + opaque round fns admit fine);
+   requires reworking the Phase-3 round-unfold proofs to the recursive form.
+   Medium, proof-side only.
+4. `Rev<Range<usize>>` iterator (restores `memshift32`'s `.rev()`): synthesize
+   `next` like the existing `Range` support. Small.
+5. `u32 as u8` narrowing casts: the runtime currently models narrowing casts as
+   checked; Rust `as` truncates totally. Fix the cast primitive to truncating
+   semantics; the masked-cast delta then disappears. Small, and a semantic-
+   fidelity fix independent of AES.
+6. `from_le_bytes`/`to_le_bytes`/`try_into`/`copy_from_slice`: add runtime
+   primitives (pure LE assembly + monadic length checks) and printer mappings.
+   Small-medium.
+7. `&mut rkeys[a..b]` subslice borrows: Aeneas already splits these borrows;
+   the backend needs the monomorphized `Index/IndexMut<Range<usize>>` ops
+   (subrange read + write-back) as primitives. This deletes `read8`/`write8`/
+   the `*_at` wrappers — the largest structural delta. Medium.
+8. `iter_mut()`/`.zip()` over slices: needs `core::slice::IterMut` (and `Zip`)
+   extraction — an Aeneas-core capability question, not just the printer.
+   Probe first; possibly an upstream Aeneas contribution. Largest unknown.
+9. Whole-crate extraction (cipher traits, generic-array, batch API, AES-192/256):
+   long-term; today's audited claim is module-level (the fixslice32 math).
+
+Worked so far: the key-schedule rcon loop was restored to a `for` loop and the
+recursive extraction admits fast and re-certifies the whole chain including the
+FIPS-197 executable checks — evidence that the "unrollings are required" caveat
+was about a pipeline limitation that no longer exists for factored loop bodies.
