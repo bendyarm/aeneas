@@ -11,7 +11,8 @@
 //  * memshift32 `for i in (0..8).rev()` -> `for i in 0..8` (src/dst windows
 //      are disjoint, so direction is irrelevant; Rev<Range> not yet extractable)
 //  * encrypt/decrypt round `loop{...break}` -> unrolled (statically fixed trip
-//      count); the key-schedule rcon loop is a `for` loop (recursive extraction)
+//      count); the key-schedule rcon + fold loops are `for` loops (recursive
+//      extraction; the fold's (8..72).step_by(32) -> plain-range equivalent)
 //  * State::default()/BatchBlocks -> explicit [u32;8] / [[u8;16];2] literals
 //  * debug_assert!s dropped; cfg(aes_backend_soft="compact") branches resolved
 //      to the non-compact path; aes192/aes256 and the cipher-crate API omitted
@@ -596,25 +597,26 @@ fn aes128_key_schedule(key: &[u8; 16]) -> [u32; 88] {
         rk_off = key_round(&mut rkeys, rk_off, rcon);
     }
     let _ = rk_off;
-    // Adjust to fixslicing format (non-compact): (8..72).step_by(32) = {8,40}.
-    inv_shift_rows_1_at(&mut rkeys, 8);
-    inv_shift_rows_2_at(&mut rkeys, 16);
-    inv_shift_rows_3_at(&mut rkeys, 24);
-    inv_shift_rows_1_at(&mut rkeys, 40);
-    inv_shift_rows_2_at(&mut rkeys, 48);
-    inv_shift_rows_3_at(&mut rkeys, 56);
+    // Adjust to fixslicing format (non-compact). Upstream iterates
+    // (8..72).step_by(32) = {8, 40}; step_by isn't extractable yet (roadmap),
+    // so the equivalent plain-range form base = 8 + 32*k, k in 0..2 is used.
+    for k in 0..2usize {
+        // base = 8 + 32*k, written branch-free of loop-var multiplication
+        // (k*32 sends ACL2's termination arithmetic nonlinear).
+        let base = if k == 0 { 8 } else { 40 };
+        inv_shift_rows_1_at(&mut rkeys, base);
+        inv_shift_rows_2_at(&mut rkeys, base + 8);
+        inv_shift_rows_3_at(&mut rkeys, base + 16);
+    }
     inv_shift_rows_1_at(&mut rkeys, 72);
-    // Account for NOTs removed from sub_bytes (i = 1..=10).
-    sub_bytes_nots_at(&mut rkeys, 8);
-    sub_bytes_nots_at(&mut rkeys, 16);
-    sub_bytes_nots_at(&mut rkeys, 24);
-    sub_bytes_nots_at(&mut rkeys, 32);
-    sub_bytes_nots_at(&mut rkeys, 40);
-    sub_bytes_nots_at(&mut rkeys, 48);
-    sub_bytes_nots_at(&mut rkeys, 56);
-    sub_bytes_nots_at(&mut rkeys, 64);
-    sub_bytes_nots_at(&mut rkeys, 72);
-    sub_bytes_nots_at(&mut rkeys, 80);
+    // Account for NOTs removed from sub_bytes (i = 1..=10), as upstream;
+    // the byte offset 8*i is carried additively for the same reason.
+    let mut off = 8;
+    for _i in 1usize..11 {
+        sub_bytes_nots_at(&mut rkeys, off);
+        off += 8;
+    }
+    let _ = off;
     rkeys
 }
 
