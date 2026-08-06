@@ -164,3 +164,13 @@ Worked so far: the key-schedule rcon loop was restored to a `for` loop and the
 recursive extraction admits fast and re-certifies the whole chain including the
 FIPS-197 executable checks — evidence that the "unrollings are required" caveat
 was about a pipeline limitation that no longer exists for factored loop bodies.
+
+## Extraction naming bug found during the fold re-roll
+
+Instantiating BOTH `Range<usize>` and `Range<i32>` in one crate (an
+unannotated `for _i in 1..11` defaults to i32 when nothing constrains the
+type) makes name registration fail: "The chosen name is already in the names
+set: core_ops_range_Range_Insts_CoreIterTraitsIteratorIterator_next" -- the
+type argument is not part of the registered key.  Worked around by annotating
+the loops `usize`; the backend fix is to include instantiation types in the
+name key.

@@ -862,7 +862,15 @@ let fun_decl_to_acl2 (ctx : actx) (is_rec : bool) (decl : Pure.fun_decl) :
       let measure =
         match (is_rec, fuel_input) with
         | true, Some fuel ->
-            "\n  (declare (xargs :measure (nfix " ^ fuel ^ ")))"
+            (* The fuel measure decreases by 1 per call, so the termination
+               obligation never needs crate-level reasoning.  Pin the theory to
+               ground-zero: otherwise ACL2 opens the (enabled, non-recursive)
+               crate functions appearing in the recursive call's governors --
+               e.g. a loop body chaining several array-window ops -- and the
+               ok-monad if-nests blow up clausification of a trivial goal. *)
+            "\n  (declare (xargs :measure (nfix " ^ fuel
+            ^ ")\n                  :hints ((\"Goal\" :in-theory (theory \
+               'ground-zero)))))"
         | true, None ->
             [%craise] span
               "ACL2: recursive function without fuel; use -use-fuel"
