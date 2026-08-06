@@ -160,67 +160,258 @@
 ;; ks-decomp theory below can use the single rune without opening the tagsum.
 (defthm rk-of-ok (equal (result-kind (result-ok x)) :ok))
 
+
+;; ===========================================================================
+;; (3) The FOLD loops (recursive extraction of the fold section).
+;; loop1 = the (8..72).step_by(32)-equivalent isr triple at base 8+32k, k<2;
+;; loop2 = the NOTs loop, sub_bytes_nots_at(8i) for i in 1..11.
+;; Same recipe as the rcon loop: fuel-canonicalize each at-op, then collapse
+;; the loop to a spec chain (loop1 by explicit 2-step expansion; loop2 by
+;; induction).
+;; ===========================================================================
+;; ---- shift-rows loops are fuel-irrelevant (value-level): two-fuel equality
+;; by SIMULTANEOUS induction on both fuels (an IH at one decremented fuel
+;; cannot reach the other side), gates kept closed; then the isr ops
+;; canonicalize to fuel 100.
+(defun sr3-ind2 (n1 n2 i e s)
+  (declare (xargs :measure (nfix (- (nfix e) (nfix i)))))
+  (if (and (natp i) (natp e) (< i e) (not (zp n1)) (not (zp n2)) (< i (len s)))
+      (sr3-ind2 (1- n1) (1- n2) (+ i 1) e (update-nth i (result-ok->val (aes-fixslice-encrypt-delta-swap-1 (result-ok->val (aes-fixslice-encrypt-delta-swap-1 (nth i s) 4 51317760)) 2 855651072)) s))
+    (list n1 n2 i e s)))
+(defthm sr3-loop0-two-fuel
+  (implies (and (natp i) (natp e) (<= i e) (< (len s) 4294967296) (<= e (len s))
+                (< (- e i) (nfix n1)) (< (- e i) (nfix n2)))
+           (equal (aes-fixslice-encrypt-shift-rows-3-loop0 n1 (rng i e) s)
+                  (aes-fixslice-encrypt-shift-rows-3-loop0 n2 (rng i e) s)))
+  :rule-classes nil
+  :hints (("Goal" :induct (sr3-ind2 n1 n2 i e s)
+           :in-theory (disable aes-fixslice-encrypt-shift-rows-3-loop0
+                               aes-fixslice-encrypt-delta-swap-1
+                               (:executable-counterpart aes-fixslice-encrypt-delta-swap-1)
+                               u32-xor u32-and u32-shl u32-shr nth
+                               (:executable-counterpart core-ops-range-range-usize-)))))
+(defun sr2-ind2 (n1 n2 i e s)
+  (declare (xargs :measure (nfix (- (nfix e) (nfix i)))))
+  (if (and (natp i) (natp e) (< i e) (not (zp n1)) (not (zp n2)) (< i (len s)))
+      (sr2-ind2 (1- n1) (1- n2) (+ i 1) e (update-nth i (result-ok->val (aes-fixslice-encrypt-delta-swap-1 (nth i s) 4 251662080)) s))
+    (list n1 n2 i e s)))
+(defthm sr2-loop0-two-fuel
+  (implies (and (natp i) (natp e) (<= i e) (< (len s) 4294967296) (<= e (len s))
+                (< (- e i) (nfix n1)) (< (- e i) (nfix n2)))
+           (equal (aes-fixslice-encrypt-shift-rows-2-loop0 n1 (rng i e) s)
+                  (aes-fixslice-encrypt-shift-rows-2-loop0 n2 (rng i e) s)))
+  :rule-classes nil
+  :hints (("Goal" :induct (sr2-ind2 n1 n2 i e s)
+           :in-theory (disable aes-fixslice-encrypt-shift-rows-2-loop0
+                               aes-fixslice-encrypt-delta-swap-1
+                               (:executable-counterpart aes-fixslice-encrypt-delta-swap-1)
+                               u32-xor u32-and u32-shl u32-shr nth
+                               (:executable-counterpart core-ops-range-range-usize-)))))
+(defun sr1-ind2 (n1 n2 i e s)
+  (declare (xargs :measure (nfix (- (nfix e) (nfix i)))))
+  (if (and (natp i) (natp e) (< i e) (not (zp n1)) (not (zp n2)) (< i (len s)))
+      (sr1-ind2 (1- n1) (1- n2) (+ i 1) e (update-nth i (result-ok->val (aes-fixslice-encrypt-delta-swap-1 (result-ok->val (aes-fixslice-encrypt-delta-swap-1 (nth i s) 4 202310400)) 2 855651072)) s))
+    (list n1 n2 i e s)))
+(defthm sr1-loop0-two-fuel
+  (implies (and (natp i) (natp e) (<= i e) (< (len s) 4294967296) (<= e (len s))
+                (< (- e i) (nfix n1)) (< (- e i) (nfix n2)))
+           (equal (aes-fixslice-encrypt-shift-rows-1-loop0 n1 (rng i e) s)
+                  (aes-fixslice-encrypt-shift-rows-1-loop0 n2 (rng i e) s)))
+  :rule-classes nil
+  :hints (("Goal" :induct (sr1-ind2 n1 n2 i e s)
+           :in-theory (disable aes-fixslice-encrypt-shift-rows-1-loop0
+                               aes-fixslice-encrypt-delta-swap-1
+                               (:executable-counterpart aes-fixslice-encrypt-delta-swap-1)
+                               u32-xor u32-and u32-shl u32-shr nth
+                               (:executable-counterpart core-ops-range-range-usize-)))))
+(defthm isr1-fuel-canon
+  (implies (and (syntaxp (not (equal n (quote (quote 100)))))
+                (true-listp s) (equal (len s) 8) (< 8 (nfix n)))
+           (equal (aes-fixslice-encrypt-inv-shift-rows-1 n s)
+                  (aes-fixslice-encrypt-inv-shift-rows-1 100 s)))
+  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-1 aes-fixslice-encrypt-shift-rows-3)
+                                  (aes-fixslice-encrypt-shift-rows-3-loop0))
+           :use ((:instance sr3-loop0-two-fuel (i 0) (e 8) (n1 n) (n2 100))))))
+(defthm isr2-fuel-canon
+  (implies (and (syntaxp (not (equal n (quote (quote 100)))))
+                (true-listp s) (equal (len s) 8) (< 8 (nfix n)))
+           (equal (aes-fixslice-encrypt-inv-shift-rows-2 n s)
+                  (aes-fixslice-encrypt-inv-shift-rows-2 100 s)))
+  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-2 aes-fixslice-encrypt-shift-rows-2)
+                                  (aes-fixslice-encrypt-shift-rows-2-loop0))
+           :use ((:instance sr2-loop0-two-fuel (i 0) (e 8) (n1 n) (n2 100))))))
+(defthm isr3-fuel-canon
+  (implies (and (syntaxp (not (equal n (quote (quote 100)))))
+                (true-listp s) (equal (len s) 8) (< 8 (nfix n)))
+           (equal (aes-fixslice-encrypt-inv-shift-rows-3 n s)
+                  (aes-fixslice-encrypt-inv-shift-rows-3 100 s)))
+  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-3 aes-fixslice-encrypt-shift-rows-1)
+                                  (aes-fixslice-encrypt-shift-rows-1-loop0))
+           :use ((:instance sr1-loop0-two-fuel (i 0) (e 8) (n1 n) (n2 100))))))
+;; at-level canonicalization (length-only): open the -at, canonicalize the op
+;; inside (rd8 windows are always len-8 true-lists), keep write8 via the
+;; generic w8spec form on both sides.
+(defthm isr1-at-fuel-canon
+  (implies (and (syntaxp (not (equal m ''100)))
+                (natp off) (<= (+ off 8) (len rk)) (< (len rk) 4294967296) (< 8 (nfix m)))
+           (equal (aes-fixslice-encrypt-inv-shift-rows-1-at m rk off)
+                  (aes-fixslice-encrypt-inv-shift-rows-1-at 100 rk off)))
+  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-1-at)
+                                  (aes-fixslice-encrypt-inv-shift-rows-1 w8-spec rd8 nth
+                                   aes-fixslice-encrypt-write8)))))
+(defthm isr2-at-fuel-canon
+  (implies (and (syntaxp (not (equal m ''100)))
+                (natp off) (<= (+ off 8) (len rk)) (< (len rk) 4294967296) (< 8 (nfix m)))
+           (equal (aes-fixslice-encrypt-inv-shift-rows-2-at m rk off)
+                  (aes-fixslice-encrypt-inv-shift-rows-2-at 100 rk off)))
+  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-2-at)
+                                  (aes-fixslice-encrypt-inv-shift-rows-2 w8-spec rd8 nth
+                                   aes-fixslice-encrypt-write8)))))
+(defthm isr3-at-fuel-canon
+  (implies (and (syntaxp (not (equal m ''100)))
+                (natp off) (<= (+ off 8) (len rk)) (< (len rk) 4294967296) (< 8 (nfix m)))
+           (equal (aes-fixslice-encrypt-inv-shift-rows-3-at m rk off)
+                  (aes-fixslice-encrypt-inv-shift-rows-3-at 100 rk off)))
+  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-3-at)
+                                  (aes-fixslice-encrypt-inv-shift-rows-3 w8-spec rd8 nth
+                                   aes-fixslice-encrypt-write8)))))
+(defthm sbn-at-fuel-canon
+  (implies (and (syntaxp (not (equal m ''100)))
+                (natp off) (<= (+ off 8) (len rk)) (< (len rk) 4294967296) (< 8 (nfix m)))
+           (equal (aes-fixslice-encrypt-sub-bytes-nots-at m rk off)
+                  (aes-fixslice-encrypt-sub-bytes-nots-at 100 rk off)))
+  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-sub-bytes-nots-at)
+                                  (aes-fixslice-encrypt-sub-bytes-nots w8-spec rd8 nth
+                                   aes-fixslice-encrypt-write8)))))
+
 ;; ---------------------------------------------------------------------------
-;; IN PROGRESS -- ks-decomp, the final collapse:
-;;   (aes::inp key) => schedule(100,key) = (ok (ks-fold (kr-chain (seed key) 0 0)))
-;; Status: the pinned-theory collapse now traverses the whole schedule body and
-;; ks-loop0-is-kr-chain fires (the loop becomes (ok (kr-chain seed 0 0))); the
-;; run was killed at the wall-clock limit with three residual subgoals -- the
-;; final ok-binder/constructor bookkeeping (rk-of-ok / ok-elim were not yet
-;; engaging; likely the (eq (result-kind ..) :ok) binder tests want eq handled
-;; alongside the helpers).  The helpers (result-p-of-sbn-at, ok-elim) are
-;; certified above.  Kept disabled so the book certifies; next session resumes
-;; here -- or the fold section gets re-rolled at the source like the rcon loop,
-;; which shrinks the schedule body to ~6 binds and makes this collapse trivial.
-#|
+;; the spec chains (all at-ops at canonical fuel 100, kept opaque).
+(defund isr-step (rk base)
+  (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-3-at 100
+    (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-2-at 100
+      (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1-at 100 rk base))
+      (+ base 8)))
+    (+ base 16))))
+
+;; the NOTs chain, threading the byte offset additively (off = 8i, lockstep).
+(defun sbn-chain (rk off i)
+  (declare (xargs :measure (nfix (- 11 (nfix i)))))
+  (if (or (not (natp i)) (>= i 11)) rk
+    (sbn-chain (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots-at 100 rk off))
+               (+ off 8) (1+ i))))
+
+;; length facts for the chains (thread the @100 len lemmas).
+(defthm len-of-isr-step
+  (implies (and (natp base) (<= (+ base 24) (len rk)) (< (len rk) 4294967296))
+           (equal (len (isr-step rk base)) (len rk)))
+  :hints (("Goal" :in-theory (e/d (isr-step)
+                                  (aes-fixslice-encrypt-inv-shift-rows-1-at
+                                   aes-fixslice-encrypt-inv-shift-rows-2-at
+                                   aes-fixslice-encrypt-inv-shift-rows-3-at)))))
+
+(defthm mul-8-le-80 (implies (and (natp i) (< i 11)) (<= (* 8 i) 80)))
+
+(defthm len-of-sbn-chain
+  (implies (and (equal (len rk) 88) (natp i) (<= 1 i) (equal off (* 8 i)))
+           (equal (len (sbn-chain rk off i)) 88))
+  :hints (("Goal" :induct (sbn-chain rk off i)
+           :in-theory (e/d (sbn-chain) (aes-fixslice-encrypt-sub-bytes-nots-at nth)))))
+
+;; ---------------------------------------------------------------------------
+;; loop1 (isr triples at k = 0, 1) collapses by explicit two-step expansion.
+(defthm ks-loop1-collapse
+  (implies (and (equal (len rk) 88) (natp m) (< 12 (nfix m)))
+           (equal (aes-fixslice-encrypt-aes128-key-schedule-loop1 m (rng 0 2) rk)
+                  (ok (isr-step (isr-step rk 8) 40))))
+  :hints (("Goal" :do-not-induct t
+           :expand ((aes-fixslice-encrypt-aes128-key-schedule-loop1 m (rng 0 2) rk)
+                    (:free (mm rr) (aes-fixslice-encrypt-aes128-key-schedule-loop1 mm (rng 1 2) rr))
+                    (:free (mm rr) (aes-fixslice-encrypt-aes128-key-schedule-loop1 mm (rng 2 2) rr)))
+           :in-theory (e/d (isr-step)
+                           (aes-fixslice-encrypt-inv-shift-rows-1-at
+                            aes-fixslice-encrypt-inv-shift-rows-2-at
+                            aes-fixslice-encrypt-inv-shift-rows-3-at
+                            aes-fixslice-encrypt-inv-shift-rows-1
+                            aes-fixslice-encrypt-inv-shift-rows-2
+                            aes-fixslice-encrypt-inv-shift-rows-3
+                            w8-spec rd8 nth
+                            (:executable-counterpart core-ops-range-range-usize-))))))
+
+;; result-p facts (the fty equality (equal x (ok v)) decomposes into
+;; result-p x + kind + val; the loop needs its own return-type fact).
+(defthm result-p-of-write8-loop0
+  (result-p (aes-fixslice-encrypt-write8-loop0 n iter rkeys off s))
+  :hints (("Goal" :induct (aes-fixslice-encrypt-write8-loop0 n iter rkeys off s))))
+(defthm result-p-of-sbn-at
+  (result-p (aes-fixslice-encrypt-sub-bytes-nots-at n rk off)))
+(defthm result-p-of-ks-loop2
+  (result-p (aes-fixslice-encrypt-aes128-key-schedule-loop2 n iter rk off))
+  :hints (("Goal" :induct (aes-fixslice-encrypt-aes128-key-schedule-loop2 n iter rk off)
+           :in-theory (disable aes-fixslice-encrypt-sub-bytes-nots-at))))
+
+;; ---------------------------------------------------------------------------
+;; loop2 (the NOTs) IS sbn-chain, by induction (off in lockstep with i).
+(defun sbn-li (m i rk off)
+  (declare (xargs :measure (nfix (- 11 (nfix i)))))
+  (if (or (not (natp i)) (>= i 11)) (list m i rk off)
+    (sbn-li (1- m) (1+ i)
+            (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots-at 100 rk off))
+            (+ off 8))))
+
+(defthm ks-loop2-is-sbn-chain
+  (implies (and (natp i) (<= 1 i) (<= i 11) (equal off (* 8 i)) (equal (len rk) 88)
+                (natp m) (< (+ 12 (- 11 i)) m))
+           (equal (aes-fixslice-encrypt-aes128-key-schedule-loop2 m (rng i 11) rk off)
+                  (ok (sbn-chain rk off i))))
+  :hints (("Goal" :induct (sbn-li m i rk off)
+           :in-theory (e/d (sbn-chain)
+                           (aes-fixslice-encrypt-sub-bytes-nots-at
+                            aes-fixslice-encrypt-sub-bytes-nots
+                            sub-bytes-nots-at-form-n
+                            w8-spec rd8 nth wstatep
+                            (:executable-counterpart core-ops-range-range-usize-))))
+          ("Subgoal *1/2"
+           :expand ((:free (xoff) (aes-fixslice-encrypt-aes128-key-schedule-loop2 m (rng i 11) rk xoff))
+                    (:free (xoff) (sbn-chain rk xoff i))))
+          ("Subgoal *1/1"
+           :expand ((:free (xoff) (aes-fixslice-encrypt-aes128-key-schedule-loop2 m (rng i 11) rk xoff))
+                    (:free (xoff) (sbn-chain rk xoff i))))))
+
+;; ---------------------------------------------------------------------------
+;; (4) THE DECOMPOSITION.  With all three loops collapsed, the schedule body
+;; is 8 binds and the last expression is loop2 itself, so the collapse ends in
+;; (ok (sbn-chain ...)) with no constructor residue.
+(defund ks-fold2 (w)
+  (sbn-chain
+    (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1-at 100
+      (isr-step (isr-step w 8) 40) 72))
+    8 1))
+
+(defthm rk-of-ok2 (equal (result-kind (result-ok x)) :ok))
+
 (defthm ks-decomp
   (implies (aes::inp key)
-           (equal (result-ok->val (aes-fixslice-encrypt-aes128-key-schedule 100 key))
-                  (ks-fold (kr-chain (result-ok->val
+           (equal (aes-fixslice-encrypt-aes128-key-schedule 100 key)
+                  (ok (ks-fold2 (kr-chain (result-ok->val
                                  (aes-fixslice-encrypt-bitslice-into 100 (array-repeat 88 0) 0 key key))
-                               0 0))))
-  :hints (("Goal" :do-not-induct t :do-not '(preprocess)
+                               0 0)))))
+  :hints (("Goal" :do-not-induct t
            :in-theory (union-theories (theory 'ground-zero)
                         '((:definition aes-fixslice-encrypt-aes128-key-schedule)
-                          (:definition ks-fold)
+                          (:definition ks-fold2)
                           (:definition core-iter-traits-collect-impl-core-iter-traits-collect-intoiterator-for-core-ops-range-range-usize-into-iter-core-ops-range-range-usize-)
                           (:definition not)
                           (:rewrite len-of-array-repeat)
                           (:rewrite result-kind-of-seed) (:rewrite len-of-seed) (:rewrite len-of-core)
+                          (:rewrite ks-loop0-is-kr-chain)
+                          (:rewrite ks-loop1-collapse)
+                          (:rewrite ks-loop2-is-sbn-chain)
+                          (:rewrite len-of-isr-step)
                           (:rewrite result-kind-of-isr1-at-len) (:rewrite len-of-isr1-at-len)
-                          (:rewrite result-kind-of-isr2-at-len) (:rewrite len-of-isr2-at-len)
-                          (:rewrite result-kind-of-isr3-at-len) (:rewrite len-of-isr3-at-len)
-                          (:rewrite result-kind-of-sbn-at-len) (:rewrite len-of-sbn-at-len)
                           (:rewrite result-ok->val-of-result-ok)
-                          (:rewrite rk-of-ok) (:rewrite ks-loop0-is-kr-chain)
+                          (:rewrite rk-of-ok2)
                           (:executable-counterpart nfix) (:executable-counterpart zp)
                           (:executable-counterpart binary-+) (:executable-counterpart binary-*)
                           (:executable-counterpart <) (:executable-counterpart unary--)
                           (:executable-counterpart natp) (:executable-counterpart integerp)
                           (:executable-counterpart equal) (:executable-counterpart eq))))))
-
-(defthm ks-decomp-ok
-  (implies (aes::inp key)
-           (equal (result-kind (aes-fixslice-encrypt-aes128-key-schedule 100 key)) :ok))
-  :hints (("Goal" :do-not-induct t :do-not '(preprocess)
-           :in-theory (union-theories (theory 'ground-zero)
-                        '((:definition aes-fixslice-encrypt-aes128-key-schedule)
-                          (:definition ks-fold)
-                          (:definition core-iter-traits-collect-impl-core-iter-traits-collect-intoiterator-for-core-ops-range-range-usize-into-iter-core-ops-range-range-usize-)
-                          (:definition not)
-                          (:rewrite len-of-array-repeat)
-                          (:rewrite result-kind-of-seed) (:rewrite len-of-seed) (:rewrite len-of-core)
-                          (:rewrite result-kind-of-isr1-at-len) (:rewrite len-of-isr1-at-len)
-                          (:rewrite result-kind-of-isr2-at-len) (:rewrite len-of-isr2-at-len)
-                          (:rewrite result-kind-of-isr3-at-len) (:rewrite len-of-isr3-at-len)
-                          (:rewrite result-kind-of-sbn-at-len) (:rewrite len-of-sbn-at-len)
-                          (:rewrite result-ok->val-of-result-ok)
-                          (:rewrite rk-of-ok) (:rewrite ks-loop0-is-kr-chain)
-                          (:executable-counterpart nfix) (:executable-counterpart zp)
-                          (:executable-counterpart binary-+) (:executable-counterpart binary-*)
-                          (:executable-counterpart <) (:executable-counterpart unary--)
-                          (:executable-counterpart natp) (:executable-counterpart integerp)
-                          (:executable-counterpart equal) (:executable-counterpart eq))))))
-
-
-|#
