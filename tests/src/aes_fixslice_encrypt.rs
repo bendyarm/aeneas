@@ -579,21 +579,16 @@ fn key_round(rkeys: &mut [u32; 88], rk_off_in: usize, rcon: usize) -> usize {
 fn aes128_key_schedule(key: &[u8; 16]) -> [u32; 88] {
     let mut rkeys: [u32; 88] = [0u32; 88];
     bitslice_into(&mut rkeys, 0, key, key);
-    // The rcon loop (10 rounds, fixed) is UNROLLED: a recursive loop whose body
-    // calls the heavy key_round makes ACL2's recursive admission expand
-    // key_round -> sub_bytes (113 gates) and blow up; straight-line (like the
-    // encrypt rounds) admits fast. Faithful -- AES-128's counts are static.
+    // The rcon loop (10 rounds, fixed), as in RustCrypto. `-loops-to-rec` emits
+    // a recursive `..._loop0` that calls key_round OPAQUELY (key_round is a
+    // separate fn, not inlined), so admission stays cheap -- like the write8 /
+    // memshift32 loops -- and the recursive form is what the schedule proof
+    // inducts over (the earlier unroll was a workaround that is no longer needed).
     let mut rk_off = 0;
-    rk_off = key_round(&mut rkeys, rk_off, 0);
-    rk_off = key_round(&mut rkeys, rk_off, 1);
-    rk_off = key_round(&mut rkeys, rk_off, 2);
-    rk_off = key_round(&mut rkeys, rk_off, 3);
-    rk_off = key_round(&mut rkeys, rk_off, 4);
-    rk_off = key_round(&mut rkeys, rk_off, 5);
-    rk_off = key_round(&mut rkeys, rk_off, 6);
-    rk_off = key_round(&mut rkeys, rk_off, 7);
-    rk_off = key_round(&mut rkeys, rk_off, 8);
-    let _ = key_round(&mut rkeys, rk_off, 9);
+    for rcon in 0..10 {
+        rk_off = key_round(&mut rkeys, rk_off, rcon);
+    }
+    let _ = rk_off;
     // Adjust to fixslicing format (non-compact): (8..72).step_by(32) = {8,40}.
     inv_shift_rows_1_at(&mut rkeys, 8);
     inv_shift_rows_2_at(&mut rkeys, 16);
