@@ -80,3 +80,6 @@ nohup.out
 */.#*
 *.smt2
 .DS_Store
+# ACL2 test-dir scratch files and certification logs
+tests/acl2/*.lsp
+tests/acl2/*.log
