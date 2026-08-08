@@ -15,8 +15,9 @@
   (array-index *aes-probe-sbox* v2_2))))
 
 (defun aes-probe-xor-into-loop0 (n block k i)
-  (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_3 (1- n)))
+  (declare (xargs :measure (nfix n)
+                  :hints (("Goal" :in-theory (theory 'ground-zero)))))
+  (if (zp n) (result-fail (err-out-of-fuel)) (b* ((n_3 (1- n)))
   (if (< i 4) (b* (((ok v4_4) (array-index k i)))
   (b* (((ok v5_5) (array-index block i)))
   (b* ((v6_6 (u8-xor v5_5 v4_4)))
@@ -52,8 +53,9 @@
   (ok (u8-xor v22_22 v23_23))))))
 
 (defun aes-probe-gmul-loop0 (n p a b i)
-  (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_24 (1- n)))
+  (declare (xargs :measure (nfix n)
+                  :hints (("Goal" :in-theory (theory 'ground-zero)))))
+  (if (zp n) (result-fail (err-out-of-fuel)) (b* ((n_24 (1- n)))
   (if (< i 8) (b* ((v25_25 (u8-and b 1)))
   (b* (((ok p_26) (if (equal v25_25 1) (ok (u8-xor p a)) (ok p))))
   (b* (((ok hi_27) (u8-shr a 7)))

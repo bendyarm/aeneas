@@ -10,8 +10,9 @@
 ;; opaque type alloc-vec-vec-u32- (skipped)
 
 (defun vec-sum-sum-loop0 (n v s i)
-  (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_1 (1- n)))
+  (declare (xargs :measure (nfix n)
+                  :hints (("Goal" :in-theory (theory 'ground-zero)))))
+  (if (zp n) (result-fail (err-out-of-fuel)) (b* ((n_1 (1- n)))
   (b* (((ok v2_2) (vec-len v)))
   (if (< i v2_2) (b* (((ok v3_3) (array-index v i)))
   (b* (((ok s_4) (u32-wrapping-add s v3_3)))

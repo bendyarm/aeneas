@@ -8,20 +8,17 @@
 ;; obligation is a pure bit-permutation composed with byte pack/unpack, so
 ;; the BDDs stay linear and the proof closes in ~10s.
 ;;
-;; These are the REAL extracted functions from aes_fixslice_encrypt.rs. They
-;; are loaded through the GL-compatible variant book aes_fixslice_encrypt-gl,
-;; which differs from the certified generated book in exactly one mechanical
-;; way: the `fail` macro (a one-line alias for `result-fail`) is rewritten to
-;; its expansion, because centaur/gl transitively defines its own function
-;; named `fail` (misc/hons-help) and ACL2 forbids a macro and a function to
-;; share a name in one world. Every function BODY is identical; see the
-;; Makefile `gl-variants` rule (pure sed) and PORTING-NOTES-ACL2.md.
+;; These are the REAL extracted functions from aes_fixslice_encrypt.rs,
+;; loaded directly from the generated book: the backend emits `result-fail`
+;; (never a `fail` macro), so the extracted world coexists with centaur/gl
+;; (whose books transitively define a FUNCTION named `fail`) with no
+;; variant files needed.
 ;;
 ;; Non-vacuity was checked with a negative control: asserting the round-trip
 ;; returns the two blocks SWAPPED makes GL report and verify a concrete
 ;; counterexample (rather than certifying), confirming the proof has teeth.
 (in-package "ACL2")
-(include-book "aes_fixslice_encrypt-gl")
+(include-book "aes_fixslice_encrypt")
 (include-book "centaur/gl/gl" :dir :system)
 
 ;; Lemma: delta_swap_2 -- the bit-exchange primitive the packing is built

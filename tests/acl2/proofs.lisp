@@ -22,7 +22,7 @@
 
 (defthm gen-mul2-add1-overflow
   (implies (and (u32p x) (> (+ (* 2 x) 1) *u32-max*))
-           (equal (demo-mul2-add1 x) (fail (err-failure)))))
+           (equal (demo-mul2-add1 x) (result-fail (err-failure)))))
 
 ;; ---------------------------------------------------------------------
 ;; demo::list_nth == nth, over the generated demo-clist type

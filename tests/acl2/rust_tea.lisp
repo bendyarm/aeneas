@@ -10,8 +10,9 @@
 (defconst *rust-tea-delta* 2654435769)
 
 (defun rust-tea-encrypt-loop0 (n k0 k1 k2 k3 y z sum i)
-  (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_1 (1- n)))
+  (declare (xargs :measure (nfix n)
+                  :hints (("Goal" :in-theory (theory 'ground-zero)))))
+  (if (zp n) (result-fail (err-out-of-fuel)) (b* ((n_1 (1- n)))
   (if (< i 32) (b* (((ok sum_2) (u32-wrapping-add sum *rust-tea-delta*)))
   (b* (((ok v3_3) (u32-shl z 4)))
   (b* (((ok v4_4) (u32-wrapping-add v3_3 k0)))
@@ -36,8 +37,9 @@
   (rust-tea-encrypt-loop0 n k0 k1 k2 k3 v0 v1 0 0))
 
 (defun rust-tea-decrypt-loop0 (n k0 k1 k2 k3 y z sum i)
-  (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_20 (1- n)))
+  (declare (xargs :measure (nfix n)
+                  :hints (("Goal" :in-theory (theory 'ground-zero)))))
+  (if (zp n) (result-fail (err-out-of-fuel)) (b* ((n_20 (1- n)))
   (if (< i 32) (b* (((ok v21_21) (u32-shl y 4)))
   (b* (((ok v22_22) (u32-wrapping-add v21_21 k2)))
   (b* (((ok v23_23) (u32-wrapping-add y sum)))

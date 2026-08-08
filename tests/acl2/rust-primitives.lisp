@@ -25,7 +25,6 @@
   (:fail ((err rust-error-p))))
 
 (defmacro ok (x) `(result-ok ,x))
-(defmacro fail (e) `(result-fail ,e))
 
 ;; Monadic bind as a b* binder:  (b* (((ok x) (u32-add a b))) ...)
 ;; short-circuits on :fail, binding the payload otherwise.
@@ -41,7 +40,7 @@
 
 ;; ---------------------------------------------------------------- integers
 ;; Checked machine-integer ops.  Uniform pattern: compute in Z, return
-;; (ok r) iff r is in range, else (fail (err-failure)) -- matching
+;; (ok r) iff r is in range, else (result-fail (err-failure)) -- matching
 ;; Aeneas's panic-on-overflow semantics.  Division/remainder use
 ;; truncate/rem (Rust rounds toward zero), never floor/mod.
 
@@ -58,41 +57,41 @@
   (and (integerp x) (<= *i32-min* x) (<= x *i32-max*)))
 
 (defun u32-add (x y)
-  (let ((r (+ x y))) (if (u32p r) (ok r) (fail (err-failure)))))
+  (let ((r (+ x y))) (if (u32p r) (ok r) (result-fail (err-failure)))))
 
 (defun u32-sub (x y)
-  (let ((r (- x y))) (if (u32p r) (ok r) (fail (err-failure)))))
+  (let ((r (- x y))) (if (u32p r) (ok r) (result-fail (err-failure)))))
 
 (defun u32-mul (x y)
-  (let ((r (* x y))) (if (u32p r) (ok r) (fail (err-failure)))))
+  (let ((r (* x y))) (if (u32p r) (ok r) (result-fail (err-failure)))))
 
 (defun u32-div (x y)
   (if (eql y 0)
-      (fail (err-failure))
-    (let ((r (truncate x y))) (if (u32p r) (ok r) (fail (err-failure))))))
+      (result-fail (err-failure))
+    (let ((r (truncate x y))) (if (u32p r) (ok r) (result-fail (err-failure))))))
 
 (defun u32-rem (x y)
   (if (eql y 0)
-      (fail (err-failure))
-    (let ((r (rem x y))) (if (u32p r) (ok r) (fail (err-failure))))))
+      (result-fail (err-failure))
+    (let ((r (rem x y))) (if (u32p r) (ok r) (result-fail (err-failure))))))
 
 (defun i32-add (x y)
-  (let ((r (+ x y))) (if (i32p r) (ok r) (fail (err-failure)))))
+  (let ((r (+ x y))) (if (i32p r) (ok r) (result-fail (err-failure)))))
 
 (defun i32-sub (x y)
-  (let ((r (- x y))) (if (i32p r) (ok r) (fail (err-failure)))))
+  (let ((r (- x y))) (if (i32p r) (ok r) (result-fail (err-failure)))))
 
 ;; i32::MIN / -1 overflows: captured uniformly by the range check on r.
 (defun i32-div (x y)
   (if (eql y 0)
-      (fail (err-failure))
-    (let ((r (truncate x y))) (if (i32p r) (ok r) (fail (err-failure))))))
+      (result-fail (err-failure))
+    (let ((r (truncate x y))) (if (i32p r) (ok r) (result-fail (err-failure))))))
 
 ;; Casts for the hand-written u32/i32 (the macro supplies the rest).
 ;; `x as u32` = mk_scalar u32 x, etc. -- see the macro comment above.
-(defun u32-cast (x) (if (u32p x) (ok x) (fail (err-failure))))
+(defun u32-cast (x) (if (u32p x) (ok x) (result-fail (err-failure))))
 (defun u32-cast-bool (x) (ok (if x 1 0)))
-(defun i32-cast (x) (if (i32p x) (ok x) (fail (err-failure))))
+(defun i32-cast (x) (if (i32p x) (ok x) (result-fail (err-failure))))
 (defun i32-cast-bool (x) (ok (if x 1 0)))
 
 ;; ---------------------------------------------------------------- misc
@@ -101,7 +100,7 @@
 (defmacro unit () :unit)
 
 (defun massert (b)
-  (if b (ok (unit)) (fail (err-failure))))
+  (if b (ok (unit)) (result-fail (err-failure))))
 
 ;; ---------------------------------------------------- all integer types
 ;; Macro-generated recognizers and checked ops for the remaining Rust
@@ -131,22 +130,22 @@
            (declare (xargs :guard t))
            (and (integerp x) (<= ,min x) (<= x ,max)))
          (defun ,add (x y)
-           (let ((r (+ x y))) (if (,pred r) (ok r) (fail (err-failure)))))
+           (let ((r (+ x y))) (if (,pred r) (ok r) (result-fail (err-failure)))))
          (defun ,sub (x y)
-           (let ((r (- x y))) (if (,pred r) (ok r) (fail (err-failure)))))
+           (let ((r (- x y))) (if (,pred r) (ok r) (result-fail (err-failure)))))
          (defun ,mul (x y)
-           (let ((r (* x y))) (if (,pred r) (ok r) (fail (err-failure)))))
+           (let ((r (* x y))) (if (,pred r) (ok r) (result-fail (err-failure)))))
          (defun ,dv (x y)
-           (if (eql y 0) (fail (err-failure))
+           (if (eql y 0) (result-fail (err-failure))
              (let ((r (truncate x y)))
-               (if (,pred r) (ok r) (fail (err-failure))))))
+               (if (,pred r) (ok r) (result-fail (err-failure))))))
          (defun ,rm (x y)
-           (if (eql y 0) (fail (err-failure))
+           (if (eql y 0) (result-fail (err-failure))
              (let ((r (rem x y)))
-               (if (,pred r) (ok r) (fail (err-failure))))))
+               (if (,pred r) (ok r) (result-fail (err-failure))))))
          ;; `x as <name>`: mirrors Primitives.scalar_cast = mk_scalar name x
          ;; (ok x when x fits the target, else a checked panic).
-         (defun ,cast (x) (if (,pred x) (ok x) (fail (err-failure))))
+         (defun ,cast (x) (if (,pred x) (ok x) (result-fail (err-failure))))
          ;; `b as <name>` for a bool b: mk_scalar name (if b 1 0); 0 and 1
          ;; are in range for every integer type, so it never fails.
          (defun ,castb (x) (ok (if x 1 0)))
@@ -155,13 +154,13 @@
                     (equal (,add x y) (ok (+ x y)))))
          (defthm ,add-fail
            (implies (and (,pred x) (,pred y) (not (,pred (+ x y))))
-                    (equal (,add x y) (fail (err-failure)))))
+                    (equal (,add x y) (result-fail (err-failure)))))
          (defthm ,sub-ok
            (implies (and (,pred x) (,pred y) (,pred (- x y)))
                     (equal (,sub x y) (ok (- x y)))))
          (defthm ,sub-fail
            (implies (and (,pred x) (,pred y) (not (,pred (- x y))))
-                    (equal (,sub x y) (fail (err-failure)))))
+                    (equal (,sub x y) (result-fail (err-failure)))))
          (defthm ,mul-ok
            (implies (and (,pred x) (,pred y) (,pred (* x y)))
                     (equal (,mul x y) (ok (* x y)))))
@@ -196,11 +195,11 @@
          (defun ,shl (x n)
            (if (< (nfix n) ,width)
                (ok (mod (ash x (nfix n)) ,m))
-             (fail (err-failure))))
+             (result-fail (err-failure))))
          (defun ,shr (x n)
            (if (< (nfix n) ,width)
                (ok (ash x (- (nfix n))))
-             (fail (err-failure))))
+             (result-fail (err-failure))))
          (defun ,wadd (x y) (ok (mod (+ x y) ,m)))
          (defun ,wsub (x y) (ok (mod (- x y) ,m)))
          (defun ,wmul (x y) (ok (mod (* x y) ,m)))))))
@@ -261,12 +260,12 @@
 (defun array-index (a i)
   (if (and (natp i) (< i (len a)))
       (ok (nth i a))
-    (fail (err-failure))))
+    (result-fail (err-failure))))
 
 (defun array-update (a i v)
   (if (and (natp i) (< i (len a)))
       (ok (update-nth i v a))
-    (fail (err-failure))))
+    (result-fail (err-failure))))
 
 (defun array-len (a) (len a))
 
@@ -277,7 +276,7 @@
 (defun array-subslice (a i j)
   (if (and (natp i) (natp j) (<= i j) (<= j (len a)))
       (ok (nthcdr i (take j a)))
-    (fail (err-failure))))
+    (result-fail (err-failure))))
 
 ;; A few rules the proofs want.
 (defthm array-index-ok
@@ -286,7 +285,7 @@
 
 (defthm array-index-oob
   (implies (not (and (natp i) (< i (len a))))
-           (equal (array-index a i) (fail (err-failure)))))
+           (equal (array-index a i) (result-fail (err-failure)))))
 
 (defthm array-update-ok
   (implies (and (natp i) (< i (len a)))
@@ -306,7 +305,7 @@
 (defun vec-insert (v i x)
   (if (and (natp i) (<= i (len v)))
       (ok (append (take i v) (cons x (nthcdr i v))))
-    (fail (err-failure))))
+    (result-fail (err-failure))))
 
 (defthm len-of-vec-push
   (equal (len (result-ok->val (vec-push v x))) (+ 1 (len v))))
@@ -325,7 +324,7 @@
 
 (defthm u32-add-overflow
   (implies (and (u32p x) (u32p y) (> (+ x y) *u32-max*))
-           (equal (u32-add x y) (fail (err-failure)))))
+           (equal (u32-add x y) (result-fail (err-failure)))))
 
 (defthm u32-sub-ok
   (implies (and (u32p x) (u32p y) (<= y x))
@@ -333,7 +332,7 @@
 
 (defthm u32-sub-underflow
   (implies (and (u32p x) (u32p y) (< x y))
-           (equal (u32-sub x y) (fail (err-failure)))))
+           (equal (u32-sub x y) (result-fail (err-failure)))))
 
 (defthm u32-mul-ok
   (implies (and (u32p x) (u32p y) (<= (* x y) *u32-max*))
@@ -355,16 +354,16 @@
 
 ;; Sanity checks (concrete execution, incl. panic edges).
 (assert-event (equal (u32-add 1 2) (ok 3)))
-(assert-event (equal (u32-add *u32-max* 1) (fail (err-failure))))
-(assert-event (equal (u32-sub 0 1) (fail (err-failure))))
+(assert-event (equal (u32-add *u32-max* 1) (result-fail (err-failure))))
+(assert-event (equal (u32-sub 0 1) (result-fail (err-failure))))
 (assert-event (equal (u32-div 7 2) (ok 3)))
 (assert-event (equal (u32-rem 7 2) (ok 1)))
-(assert-event (equal (u32-div 7 0) (fail (err-failure))))
+(assert-event (equal (u32-div 7 0) (result-fail (err-failure))))
 (assert-event (equal (i32-div -7 2) (ok -3)))     ; truncation toward zero
-(assert-event (equal (i32-div *i32-min* -1) (fail (err-failure)))) ; MIN / -1
+(assert-event (equal (i32-div *i32-min* -1) (result-fail (err-failure)))) ; MIN / -1
 ;; Casts: widening is identity-ok; narrowing out-of-range panics; bool->int.
 (assert-event (equal (usize-cast 200) (ok 200)))        ; u8 value as usize
-(assert-event (equal (u8-cast 300) (fail (err-failure)))) ; 300 doesn't fit u8
+(assert-event (equal (u8-cast 300) (result-fail (err-failure)))) ; 300 doesn't fit u8
 (assert-event (equal (u8-cast 255) (ok 255)))
 (assert-event (equal (u32-cast 7) (ok 7)))
 (assert-event (equal (u8-cast-bool t) (ok 1)))

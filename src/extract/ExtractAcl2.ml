@@ -398,7 +398,7 @@ and qualif_app_to_acl2 (span : Meta.span) (ctx : actx) (_env : venv)
   | FunOrOp (Fun (FromLlbc (TraitMethod _, _))) ->
       [%craise] span "ACL2: trait method call; run charon with --monomorphize"
   | FunOrOp (Fun (Pure Return)) -> sexp ("ok" :: args_s)
-  | FunOrOp (Fun (Pure Fail)) -> sexp ("fail" :: args_s)
+  | FunOrOp (Fun (Pure Fail)) -> sexp ("result-fail" :: args_s)
   | FunOrOp (Fun (Pure Assert)) -> sexp ("massert" :: args_s)
   | FunOrOp (Fun (Pure FuelDecrease)) -> sexp ("1-" :: args_s)
   | FunOrOp (Fun (Pure FuelEqZero)) -> sexp ("zp" :: args_s)
@@ -452,7 +452,7 @@ and adt_cons_to_acl2 (span : Meta.span) (ctx : actx) (adt_id : type_id)
   match adt_id with
   | TBuiltin TResult ->
       if variant_id = Some result_ok_id then sexp ("ok" :: args_s)
-      else if variant_id = Some result_fail_id then sexp ("fail" :: args_s)
+      else if variant_id = Some result_fail_id then sexp ("result-fail" :: args_s)
       else [%craise] span "ACL2: ill-formed result"
   | TBuiltin TError ->
       if variant_id = Some error_failure_id then "(err-failure)"

@@ -799,8 +799,9 @@
   (array-update state-var_716 7 v719_719))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
 
 (defun aes-fixslice-core-add-round-key-loop0 (n iter state-var rkey)
-  (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_720 (1- n)))
+  (declare (xargs :measure (nfix n)
+                  :hints (("Goal" :in-theory (theory 'ground-zero)))))
+  (if (zp n) (result-fail (err-out-of-fuel)) (b* ((n_720 (1- n)))
   (b* (((ok v721_721) (core-iter-range-impl-core-iter-traits-iterator-iterator-for-core-ops-range-range-usize-next-usize- iter)))
   (b* ((acl2tmp722 v721_721)
      (v723_723 (car acl2tmp722))

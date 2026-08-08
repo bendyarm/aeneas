@@ -26,8 +26,9 @@
 (defun core-iter-traits-collect-impl-core-iter-traits-collect-intoiterator-for-core-ops-range-range-usize-into-iter-core-ops-range-range-usize- (self) (ok self))
 
 (defun iterators-scalar-iter-loop0 (n iter x)
-  (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_1 (1- n)))
+  (declare (xargs :measure (nfix n)
+                  :hints (("Goal" :in-theory (theory 'ground-zero)))))
+  (if (zp n) (result-fail (err-out-of-fuel)) (b* ((n_1 (1- n)))
   (b* (((ok v2_2) (core-iter-range-impl-core-iter-traits-iterator-iterator-for-core-ops-range-range-usize-next-usize- iter)))
   (b* ((acl2tmp3 v2_2)
      (v4_4 (car acl2tmp3))

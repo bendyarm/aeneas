@@ -32,22 +32,24 @@
   :xvar the-demo-clist)
 
 (defun demo-list-nth (n l i)
-  (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_5 (1- n)))
+  (declare (xargs :measure (nfix n)
+                  :hints (("Goal" :in-theory (theory 'ground-zero)))))
+  (if (zp n) (result-fail (err-out-of-fuel)) (b* ((n_5 (1- n)))
   (b* ((acl2tmp6 l))
   (demo-clist-case acl2tmp6
     :ccons (b* ((x_7 (demo-clist-ccons->f0 acl2tmp6)) (tl_8 (demo-clist-ccons->f1 acl2tmp6))) (if (equal i 0) (ok x_7) (b* (((ok v9_9) (u32-sub i 1)))
   (demo-list-nth n_5 tl_8 v9_9))))
-    :cnil (fail (err-failure)))))))
+    :cnil (result-fail (err-failure)))))))
 
 (defun demo-list-nth1-loop0 (n l i)
-  (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_10 (1- n)))
+  (declare (xargs :measure (nfix n)
+                  :hints (("Goal" :in-theory (theory 'ground-zero)))))
+  (if (zp n) (result-fail (err-out-of-fuel)) (b* ((n_10 (1- n)))
   (b* ((acl2tmp11 l))
   (demo-clist-case acl2tmp11
     :ccons (b* ((x_12 (demo-clist-ccons->f0 acl2tmp11)) (tl_13 (demo-clist-ccons->f1 acl2tmp11))) (if (equal i 0) (ok x_12) (b* (((ok i_14) (u32-sub i 1)))
   (demo-list-nth1-loop0 n_10 tl_13 i_14))))
-    :cnil (fail (err-failure)))))))
+    :cnil (result-fail (err-failure)))))))
 
 (defun demo-list-nth1 (n l i)
   (demo-list-nth1-loop0 n l i))
@@ -55,8 +57,9 @@
 ;; SKIPPED function demo-list-nth-mut: ACL2: lambda in output (backward function or closure); not supported in v0 -- see the defunctionalization plan
 
 (defun demo-i32-id (n i)
-  (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_24 (1- n)))
+  (declare (xargs :measure (nfix n)
+                  :hints (("Goal" :in-theory (theory 'ground-zero)))))
+  (if (zp n) (result-fail (err-out-of-fuel)) (b* ((n_24 (1- n)))
   (if (equal i 0) (ok 0) (b* (((ok v25_25) (i32-sub i 1)))
   (b* (((ok v26_26) (demo-i32-id n_24 v25_25)))
   (i32-add v26_26 1)))))))

@@ -26,8 +26,9 @@
 (defun core-iter-traits-collect-impl-core-iter-traits-collect-intoiterator-for-core-ops-range-range-usize-into-iter-core-ops-range-range-usize- (self) (ok self))
 
 (defun range-for-add-rk-loop0 (n iter state-var rk)
-  (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_1 (1- n)))
+  (declare (xargs :measure (nfix n)
+                  :hints (("Goal" :in-theory (theory 'ground-zero)))))
+  (if (zp n) (result-fail (err-out-of-fuel)) (b* ((n_1 (1- n)))
   (b* (((ok v2_2) (core-iter-range-impl-core-iter-traits-iterator-iterator-for-core-ops-range-range-usize-next-usize- iter)))
   (b* ((acl2tmp3 v2_2)
      (v4_4 (car acl2tmp3))
@@ -46,8 +47,9 @@
   (range-for-add-rk-loop0 n iter_12 state-var rk)))
 
 (defun range-for-sum-to-loop0 (n iter s)
-  (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_13 (1- n)))
+  (declare (xargs :measure (nfix n)
+                  :hints (("Goal" :in-theory (theory 'ground-zero)))))
+  (if (zp n) (result-fail (err-out-of-fuel)) (b* ((n_13 (1- n)))
   (b* (((ok v14_14) (core-iter-range-impl-core-iter-traits-iterator-iterator-for-core-ops-range-range-usize-next-usize- iter)))
   (b* ((acl2tmp15 v14_14)
      (v16_16 (car acl2tmp15))

@@ -106,7 +106,7 @@
   (b* ((acl2tmp7 l))
   (no-nested-borrows-list-case acl2tmp7
     :cons (b* ((hd_8 (no-nested-borrows-list-cons->f0 acl2tmp7)) (tl_9 (no-nested-borrows-list-cons->f1 acl2tmp7))) (ok (cons hd_8 tl_9)))
-    :nil (fail (err-failure)))))
+    :nil (result-fail (err-failure)))))
 
 (defun no-nested-borrows-test-split-list ()
   (b* (((ok v10_10) (no-nested-borrows-split-list (no-nested-borrows-list-cons 0 (no-nested-borrows-list-nil)))))
@@ -121,13 +121,14 @@
 ;; SKIPPED function no-nested-borrows-test-char: ACL2: unsupported literal (char/str/float)
 
 (defun no-nested-borrows-panic-mut-borrow (v0)
-  (fail (err-failure)))
+  (result-fail (err-failure)))
 
 ;; SKIPPED mutually recursive type group
 
 (defun no-nested-borrows-list-length (n l)
-  (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_13 (1- n)))
+  (declare (xargs :measure (nfix n)
+                  :hints (("Goal" :in-theory (theory 'ground-zero)))))
+  (if (zp n) (result-fail (err-out-of-fuel)) (b* ((n_13 (1- n)))
   (b* ((acl2tmp14 l))
   (no-nested-borrows-list-case acl2tmp14
     :cons (b* ((l1_15 (no-nested-borrows-list-cons->f1 acl2tmp14))) (b* (((ok v16_16) (no-nested-borrows-list-length n_13 l1_15)))
@@ -135,19 +136,21 @@
     :nil (ok 0))))))
 
 (defun no-nested-borrows-list-nth-shared (n l i)
-  (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_17 (1- n)))
+  (declare (xargs :measure (nfix n)
+                  :hints (("Goal" :in-theory (theory 'ground-zero)))))
+  (if (zp n) (result-fail (err-out-of-fuel)) (b* ((n_17 (1- n)))
   (b* ((acl2tmp18 l))
   (no-nested-borrows-list-case acl2tmp18
     :cons (b* ((x_19 (no-nested-borrows-list-cons->f0 acl2tmp18)) (tl_20 (no-nested-borrows-list-cons->f1 acl2tmp18))) (if (equal i 0) (ok x_19) (b* (((ok v21_21) (u32-sub i 1)))
   (no-nested-borrows-list-nth-shared n_17 tl_20 v21_21))))
-    :nil (fail (err-failure)))))))
+    :nil (result-fail (err-failure)))))))
 
 ;; SKIPPED function no-nested-borrows-list-nth-mut: ACL2: lambda in output (backward function or closure); not supported in v0 -- see the defunctionalization plan
 
 (defun no-nested-borrows-list-rev-aux (n li lo)
-  (declare (xargs :measure (nfix n)))
-  (if (zp n) (fail (err-out-of-fuel)) (b* ((n_31 (1- n)))
+  (declare (xargs :measure (nfix n)
+                  :hints (("Goal" :in-theory (theory 'ground-zero)))))
+  (if (zp n) (result-fail (err-out-of-fuel)) (b* ((n_31 (1- n)))
   (b* ((acl2tmp32 li))
   (no-nested-borrows-list-case acl2tmp32
     :cons (b* ((hd_33 (no-nested-borrows-list-cons->f0 acl2tmp32)) (tl_34 (no-nested-borrows-list-cons->f1 acl2tmp32))) (no-nested-borrows-list-rev-aux n_31 tl_34 (no-nested-borrows-list-cons hd_33 lo)))
