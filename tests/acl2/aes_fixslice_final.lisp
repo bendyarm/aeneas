@@ -17,6 +17,7 @@
 ; driver, key schedule included -- equals aes::aes-128-encrypt.
 (in-package "ACL2")
 (include-book "aes_fixslice_ladder")
+(include-book "aes_fixslice_keymain")
 (local (include-book "std/lists/nth" :dir :system))
 (local (in-theory (disable len-when-wstatep true-listp-when-wstatep nth-when-zp)))
 (local (in-theory (disable keyexpansion-open kk-iter-step ks-decomp enc-collapse

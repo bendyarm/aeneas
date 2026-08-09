@@ -11,7 +11,7 @@
 ;    kr-spec-bytes(b, xpow c); chaining the 10 disjoint windows then yields
 ;    inv_bitslice(window r) = kk(r) for every round key.
 (in-package "ACL2")
-(include-book "aes_fixslice_keycore")
+(include-book "aes_fixslice_correspondence")
 (local (include-book "arithmetic-5/top" :dir :system))
 (local (include-book "std/lists/update-nth" :dir :system))
 (local (include-book "std/lists/nth" :dir :system))

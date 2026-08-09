@@ -9,7 +9,7 @@
 ; keys enter only through add_round_key's window reads, captured by arkw
 ; (word-wise xor against rd8), so the schedule windows plug in directly.
 (in-package "ACL2")
-(include-book "aes_fixslice_keymain")
+(include-book "aes_fixslice_keyread")
 (local (include-book "std/lists/nth" :dir :system))
 (local (include-book "kestrel/bv/logand" :dir :system))
 (local (in-theory (disable len-when-wstatep true-listp-when-wstatep nth-when-zp)))

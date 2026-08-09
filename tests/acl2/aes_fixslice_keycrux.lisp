@@ -34,6 +34,7 @@
 ; to get inv_bitslice(window r) = kk(r), r=0..10 -- the full key schedule.
 (in-package "ACL2")
 (include-book "aes_fixslice_keyround")
+(include-book "aes_fixslice_keycore")
 (local (include-book "std/lists/nth" :dir :system))
 (local (include-book "std/lists/take" :dir :system))
 (local (include-book "std/lists/nthcdr" :dir :system))
