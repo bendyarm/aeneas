@@ -156,12 +156,32 @@ recursive extraction admits fast and re-certifies the whole chain including the
 FIPS-197 executable checks — evidence that the "unrollings are required" caveat
 was about a pipeline limitation that no longer exists for factored loop bodies.
 
-## Extraction naming bug found during the fold re-roll
+## Resolved: extraction naming collision on mixed Range instantiations
 
 Instantiating BOTH `Range<usize>` and `Range<i32>` in one crate (an
 unannotated `for _i in 1..11` defaults to i32 when nothing constrains the
-type) makes name registration fail: "The chosen name is already in the names
-set: core_ops_range_Range_Insts_CoreIterTraitsIteratorIterator_next" -- the
-type argument is not part of the registered key.  Worked around by annotating
-the loops `usize`; the backend fix is to include instantiation types in the
-name key.
+type) used to make extraction exit nonzero with "The chosen name is already
+in the names set: core_ops_range_Range_t".
+
+Root cause, found by reproduction (`tests/src/range_both.rs`): the failure
+was in ExtractBase's name REGISTRATION, which Translate.ml runs for every
+backend before routing to the printer.  Those names are computed through
+charon-ml's pattern machinery, whose `path_elem_with_generic_args_to_pattern`
+deliberately drops `PeInstantiated` elements ("patterns match the logical
+structure, not the instantiation") -- correct for name MATCHING, wrong when
+the same path is reused to generate extraction names for monomorphized
+instances.  The ACL2 printer was never affected: it builds its own name maps
+from the pretty-printed item name (which keeps `::<usize>`), and the emitted
+book was already complete and correct -- only the vestigial registration
+errored and failed the run.
+
+Fork fix (landed): Translate.ml skips all five `*_register_names` folds when
+the backend is Acl2; the printer's own maps are the single source of truth.
+All golden books regenerate byte-identically; `range_both.rs` (+ its
+known-answer proofs book) is a permanent regression test.  The `usize` loop
+annotations in the vendored AES source are no longer load-bearing.
+
+Upstream-facing fix (for the tracking issue): render `PeInstantiated`
+arguments in name generation -- either a `to_pat_config` flag in charon-ml's
+NameMatcher or a post-pass in aeneas's ExtractName -- so every backend gets
+collision-free names under `--monomorphize`.

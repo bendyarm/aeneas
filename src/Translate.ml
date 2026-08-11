@@ -1582,6 +1582,13 @@ let extract_translated_crate (filename : string) (dest_dir : string)
      For this reason, we need to generate names for the types *before* generating
      names for the functions (which include the method definitions). *)
   let ctx =
+    (* The ACL2 printer builds its own name maps (see
+       ExtractAcl2.extract_crate); computing the foreign-backend
+       names here can only produce spurious collisions (e.g. on
+       monomorphized instances, whose instantiation the pattern
+       machinery drops).  Skip registration entirely. *)
+    if Config.backend () = Acl2 then ctx
+    else
     List.fold_left
       (fun ctx def ->
         try Extract.extract_type_decl_register_names ctx def
@@ -1607,6 +1614,13 @@ let extract_translated_crate (filename : string) (dest_dir : string)
   in
 
   let ctx =
+    (* The ACL2 printer builds its own name maps (see
+       ExtractAcl2.extract_crate); computing the foreign-backend
+       names here can only produce spurious collisions (e.g. on
+       monomorphized instances, whose instantiation the pattern
+       machinery drops).  Skip registration entirely. *)
+    if Config.backend () = Acl2 then ctx
+    else
     List.fold_left
       (fun ctx (trans : pure_fun_translation) ->
         try
@@ -1647,6 +1661,13 @@ let extract_translated_crate (filename : string) (dest_dir : string)
   in
 
   let ctx =
+    (* The ACL2 printer builds its own name maps (see
+       ExtractAcl2.extract_crate); computing the foreign-backend
+       names here can only produce spurious collisions (e.g. on
+       monomorphized instances, whose instantiation the pattern
+       machinery drops).  Skip registration entirely. *)
+    if Config.backend () = Acl2 then ctx
+    else
     List.fold_left
       (fun ctx def ->
         try Extract.extract_global_decl_register_names ctx def
@@ -1671,6 +1692,13 @@ let extract_translated_crate (filename : string) (dest_dir : string)
   in
 
   let ctx =
+    (* The ACL2 printer builds its own name maps (see
+       ExtractAcl2.extract_crate); computing the foreign-backend
+       names here can only produce spurious collisions (e.g. on
+       monomorphized instances, whose instantiation the pattern
+       machinery drops).  Skip registration entirely. *)
+    if Config.backend () = Acl2 then ctx
+    else
     List.fold_left
       (fun ctx def ->
         try Extract.extract_trait_decl_register_names ctx def
@@ -1696,6 +1724,13 @@ let extract_translated_crate (filename : string) (dest_dir : string)
   in
 
   let ctx =
+    (* The ACL2 printer builds its own name maps (see
+       ExtractAcl2.extract_crate); computing the foreign-backend
+       names here can only produce spurious collisions (e.g. on
+       monomorphized instances, whose instantiation the pattern
+       machinery drops).  Skip registration entirely. *)
+    if Config.backend () = Acl2 then ctx
+    else
     List.fold_left
       (fun ctx def ->
         try Extract.extract_trait_impl_register_names ctx def
