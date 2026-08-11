@@ -132,8 +132,16 @@ deleted and the audited subject moves toward verbatim upstream:
    round loops the same way (`-loops-to-rec` + opaque round fns admit fine);
    requires reworking the Phase-3 round-unfold proofs to the recursive form.
    Medium, proof-side only.
-4. `Rev<Range<usize>>` iterator (restores `memshift32`'s `.rev()`): synthesize
-   `next` like the existing `Range` support. Small.
+4. DONE -- `Rev<Range<usize>>` iterator (restores `memshift32`'s `.rev()`):
+   `Iterator::rev` and `Rev::next` turn out to have real bodies under
+   `--monomorphize` and translate as-is; the backend synthesizes only the
+   two opaque leaves, `Range::next_back` (reverse advance, mirroring the
+   `next` synthesis) and the blanket `IntoIterator for Rev<_>` identity.
+   Regression crate `tests/src/rev_range.rs` (+ known-answer proofs book)
+   covers both, including the exact upstream memshift32 shape.  The
+   vendored `memshift32`'s forward-loop delta can now be reverted in a
+   source-touching pass (proof impact: keychain's ms-spec collapse lemmas
+   assume forward iteration order).
 5. `u32 as u8` narrowing casts: the runtime currently models narrowing casts as
    checked; Rust `as` truncates totally. Fix the cast primitive to truncating
    semantics; the masked-cast delta then disappears. Small, and a semantic-

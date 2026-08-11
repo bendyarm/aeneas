@@ -228,8 +228,22 @@ let is_range_iter_into_iter (name : string) : bool =
   str_contains name "intoiterator-for-core-ops-range-range"
   && str_contains name "into-iter"
 
+(* `(a..b).rev()` additionally needs: Range's DoubleEndedIterator::next_back
+   (the reverse advance -- opaque in core for the same ub_checks reason as
+   `next`) and the blanket `IntoIterator for Rev<_>` into_iter (identity).
+   `Iterator::rev` and `Rev::next` have real bodies and translate as-is. *)
+let is_range_iter_next_back (name : string) : bool =
+  str_contains name "doubleendediterator-for-core-ops-range-range"
+  && str_contains name "next-back"
+
+let is_rev_into_iter (name : string) : bool =
+  str_contains name "intoiterator-for-core-iter-adapters-rev-rev"
+  && str_contains name "into-iter"
+
 let is_range_iter_method (name : string) : bool =
   is_range_iter_next name || is_range_iter_into_iter name
+  || is_range_iter_next_back name
+  || is_rev_into_iter name
 
 let fun_name (span : Meta.span) (ctx : actx) (id : FunDeclId.id) : string =
   match FunDeclId.Map.find_opt id ctx.fun_names with
@@ -787,7 +801,8 @@ let group_to_sccs (decls : Pure.fun_decl list) : fun_scc list =
    match the generated deftagsum/defprod exactly. *)
 let synth_range_iter_body (span : Meta.span) (ctx : actx) (decl : Pure.fun_decl)
     (name : string) : string =
-  if is_range_iter_into_iter name then "(defun " ^ name ^ " (self) (ok self))"
+  if is_range_iter_into_iter name || is_rev_into_iter name then
+    "(defun " ^ name ^ " (self) (ok self))"
   else
     let range_id =
       match decl.signature.inputs with
@@ -816,15 +831,28 @@ let synth_range_iter_body (span : Meta.span) (ctx : actx) (decl : Pure.fun_decl)
           | _ -> [%craise] span "ACL2: Range has unexpected fields")
       | _ -> [%craise] span "ACL2: Range is not a struct"
     in
-    String.concat "\n"
-      [
-        "(defun " ^ name ^ " (self)";
-        "  (b* ((s (" ^ rname ^ "->" ^ fstart ^ " self))";
-        "       (e (" ^ rname ^ "->" ^ fend ^ " self)))";
-        "  (if (< s e)";
-        "      (ok (cons (" ^ oname ^ "-some s) (" ^ rname ^ " (+ s 1) e)))";
-        "    (ok (cons (" ^ oname ^ "-none) self)))))";
-      ]
+    if is_range_iter_next_back name then
+      (* Rust: if start < end { end -= 1; Some(end) } else { None } *)
+      String.concat "\n"
+        [
+          "(defun " ^ name ^ " (self)";
+          "  (b* ((s (" ^ rname ^ "->" ^ fstart ^ " self))";
+          "       (e (" ^ rname ^ "->" ^ fend ^ " self)))";
+          "  (if (< s e)";
+          "      (ok (cons (" ^ oname ^ "-some (- e 1)) (" ^ rname
+          ^ " s (- e 1))))";
+          "    (ok (cons (" ^ oname ^ "-none) self)))))";
+        ]
+    else
+      String.concat "\n"
+        [
+          "(defun " ^ name ^ " (self)";
+          "  (b* ((s (" ^ rname ^ "->" ^ fstart ^ " self))";
+          "       (e (" ^ rname ^ "->" ^ fend ^ " self)))";
+          "  (if (< s e)";
+          "      (ok (cons (" ^ oname ^ "-some s) (" ^ rname ^ " (+ s 1) e)))";
+          "    (ok (cons (" ^ oname ^ "-none) self)))))";
+        ]
 
 let fun_decl_to_acl2 (ctx : actx) (is_rec : bool) (decl : Pure.fun_decl) :
     string =

@@ -52,6 +52,11 @@ regen:
 	  --monomorphize -- $(SRC)/aes_probe.rs --crate-name=aes_probe \
 	  --crate-type=rlib --allow=unused --allow=non_snake_case >/dev/null 2>&1
 	@$(AENEAS) $(AENEAS_FLAGS) -dest . $(LLBC)/aes_probe.llbc || true
+	@# Reversed ranges (`for i in (a..b).rev()`) -- the upstream memshift32 shape.
+	@$(CHARON) rustc --dest-file $(LLBC)/rev_range.llbc --preset=aeneas \
+	  --monomorphize -- $(SRC)/rev_range.rs --crate-name=rev_range \
+	  --crate-type=rlib --allow=unused --allow=non_snake_case >/dev/null 2>&1
+	@$(AENEAS) $(AENEAS_FLAGS) -dest . $(LLBC)/rev_range.llbc || true
 	@# Mixed Range<usize>/Range<i32> in one crate (naming-collision regression).
 	@$(CHARON) rustc --dest-file $(LLBC)/range_both.llbc --preset=aeneas \
 	  --monomorphize -- $(SRC)/range_both.rs --crate-name=range_both \
@@ -85,7 +90,7 @@ verify:
 	  rust_tea_arr tea_arr-vectors tea-arr-equiv \
 	  vec_demo vec_demo-proofs vec_sum vec_sum-proofs \
 	  aes_probe aes_probe-proofs \
-	  iterators_scalar range_for range_for-proofs range_both range_both-proofs \
+	  iterators_scalar range_for range_for-proofs range_both range_both-proofs rev_range rev_range-proofs \
 	  aes_fixslice_core aes_fixslice_core-proofs \
 	  aes_fixslice_encrypt aes_fixslice_encrypt-proofs \
 	  aes_fixslice_bijection \
