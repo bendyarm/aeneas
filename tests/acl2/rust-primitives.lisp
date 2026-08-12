@@ -7,6 +7,7 @@
 
 (include-book "centaur/fty/top" :dir :system)
 (include-book "std/util/bstar" :dir :system)
+(local (include-book "arithmetic-5/top" :dir :system))
 
 ;; ---------------------------------------------------------------- errors
 
@@ -88,11 +89,26 @@
     (let ((r (truncate x y))) (if (i32p r) (ok r) (result-fail (err-failure))))))
 
 ;; Casts for the hand-written u32/i32 (the macro supplies the rest).
-;; `x as u32` = mk_scalar u32 x, etc. -- see the macro comment above.
-(defun u32-cast (x) (if (u32p x) (ok x) (result-fail (err-failure))))
+;; Rust `as` between integer types TRUNCATES (two's-complement wrap); it
+;; never fails.  (This deliberately diverges from the checked mk_scalar
+;; model: `as` is total in Rust -- de-vendoring roadmap item 5.)
+(defun u32-cast (x) (ok (mod (ifix x) 4294967296)))
 (defun u32-cast-bool (x) (ok (if x 1 0)))
-(defun i32-cast (x) (if (i32p x) (ok x) (result-fail (err-failure))))
+(defun i32-cast (x)
+  (let ((r (mod (ifix x) 4294967296)))
+    (ok (if (> r 2147483647) (- r 4294967296) r))))
 (defun i32-cast-bool (x) (ok (if x 1 0)))
+(defthm u32-cast-rk (equal (result-kind (u32-cast x)) :ok))
+(defthm u32-cast-range (u32p (result-ok->val (u32-cast x))))
+(defthm u32-cast-ok (implies (u32p x) (equal (u32-cast x) (ok x))))
+(defthm i32-cast-rk (equal (result-kind (i32-cast x)) :ok))
+(defthm i32-cast-range (i32p (result-ok->val (i32-cast x))))
+(defthm i32-cast-ok (implies (i32p x) (equal (i32-cast x) (ok x))))
+;; casts stay DISABLED: total truncating definitions would otherwise open on
+;; symbolic arguments and spill mod/ifix arithmetic into every goal (ground
+;; calls still compute via the executable counterparts; the -rk/-range/-ok
+;; rules above are the reasoning interface).
+(in-theory (disable u32-cast i32-cast))
 
 ;; ---------------------------------------------------------------- misc
 ;; Rust unit value, and Aeneas's massert (used by extracted unit tests).
@@ -124,7 +140,9 @@
           (sub-ok (intern$ (concatenate 'string s "-SUB-OK") "ACL2"))
           (sub-fail (intern$ (concatenate 'string s "-SUB-FAIL") "ACL2"))
           (mul-ok (intern$ (concatenate 'string s "-MUL-OK") "ACL2"))
-          (cast-ok (intern$ (concatenate 'string s "-CAST-OK") "ACL2")))
+          (cast-ok (intern$ (concatenate 'string s "-CAST-OK") "ACL2"))
+          (cast-rk (intern$ (concatenate 'string s "-CAST-RK") "ACL2"))
+          (cast-range (intern$ (concatenate 'string s "-CAST-RANGE") "ACL2")))
       `(progn
          (defun ,pred (x)
            (declare (xargs :guard t))
@@ -143,9 +161,11 @@
            (if (eql y 0) (result-fail (err-failure))
              (let ((r (rem x y)))
                (if (,pred r) (ok r) (result-fail (err-failure))))))
-         ;; `x as <name>`: mirrors Primitives.scalar_cast = mk_scalar name x
-         ;; (ok x when x fits the target, else a checked panic).
-         (defun ,cast (x) (if (,pred x) (ok x) (result-fail (err-failure))))
+         ;; `x as <name>`: Rust `as` TRUNCATES (two's-complement wrap
+         ;; into [min,max]); it is total and never fails (roadmap item 5).
+         (defun ,cast (x)
+           (let ((r (mod (ifix x) ,(+ 1 (- max min)))))
+             (ok (if (> r ,max) (- r ,(+ 1 (- max min))) r))))
          ;; `b as <name>` for a bool b: mk_scalar name (if b 1 0); 0 and 1
          ;; are in range for every integer type, so it never fails.
          (defun ,castb (x) (ok (if x 1 0)))
@@ -165,10 +185,14 @@
            (implies (and (,pred x) (,pred y) (,pred (* x y)))
                     (equal (,mul x y) (ok (* x y)))))
          ;; Widening / in-range cast is the identity (the AES S-box index
-         ;; case: a byte cast to usize). Fires on the target recognizer so
-         ;; proofs never open the cast definition.
+         ;; case: a byte cast to usize); truncation is total and lands in
+         ;; range.  All three fire without opening the cast definition.
          (defthm ,cast-ok
-           (implies (,pred x) (equal (,cast x) (ok x))))))))
+           (implies (,pred x) (equal (,cast x) (ok x))))
+         (defthm ,cast-rk (equal (result-kind (,cast x)) :ok))
+         (defthm ,cast-range (,pred (result-ok->val (,cast x))))
+         ;; keep the truncating definition closed (see the u32-cast note)
+         (in-theory (disable ,cast))))))
 
 ;; Bitwise, shift and wrapping ops for UNSIGNED Rust integer types.
 ;; - xor/and/or: total, plain value (bit width preserved).
@@ -361,11 +385,15 @@
 (assert-event (equal (u32-div 7 0) (result-fail (err-failure))))
 (assert-event (equal (i32-div -7 2) (ok -3)))     ; truncation toward zero
 (assert-event (equal (i32-div *i32-min* -1) (result-fail (err-failure)))) ; MIN / -1
-;; Casts: widening is identity-ok; narrowing out-of-range panics; bool->int.
+;; Casts: Rust `as` truncates (two's-complement wrap) and never fails.
 (assert-event (equal (usize-cast 200) (ok 200)))        ; u8 value as usize
-(assert-event (equal (u8-cast 300) (result-fail (err-failure)))) ; 300 doesn't fit u8
+(assert-event (equal (u8-cast 300) (ok 44)))            ; 300 as u8 = 300 mod 256
 (assert-event (equal (u8-cast 255) (ok 255)))
 (assert-event (equal (u32-cast 7) (ok 7)))
+(assert-event (equal (i8-cast 255) (ok -1)))            ; 255u8 as i8 = -1
+(assert-event (equal (u8-cast -1) (ok 255)))            ; -1i32 as u8 = 255
+(assert-event (equal (i8-cast 128) (ok -128)))          ; 128 as i8 wraps
+(assert-event (equal (u32-cast -1) (ok 4294967295)))    ; -1i32 as u32
 (assert-event (equal (u8-cast-bool t) (ok 1)))
 (assert-event (equal (u8-cast-bool nil) (ok 0)))
 ;; Rotations (RotWord and friends): wrap-around at the word boundary.

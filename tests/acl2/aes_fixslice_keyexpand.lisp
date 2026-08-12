@@ -82,7 +82,10 @@
 ;; lockstep (off by 8, i by 1), so NO (* 8 i) appears inside the induction --
 ;; the caller supplies off = 8i, keeping all offset arithmetic linear.
 (defun wok (rk key off i)
-  (declare (xargs :measure (nfix i)))
+  ;; measure hint pinned: the governing bitslice-window hypothesis otherwise
+  ;; drags the whole gate network into the (trivial) measure conjecture.
+  (declare (xargs :measure (nfix i)
+                  :hints (("Goal" :in-theory (theory 'ground-zero)))))
   (if (zp i)
       (equal (rd8 rk off)
              (result-ok->val (aes-fixslice-encrypt-bitslice (kk-iter key 0) (kk-iter key 0))))

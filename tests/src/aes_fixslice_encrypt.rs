@@ -3,9 +3,8 @@
 // cipher-crate API stripped. Gate logic VERBATIM; documented de-sugarings:
 //  * &mut [u32] -> &mut State ([u32;8]) on sub_bytes/mix_columns/shift_rows
 //  * from_le_bytes(x[a..b].try_into().unwrap())  -> ld_le() explicit LE assembly
-//  * to_le_bytes()+copy_from_slice()             -> explicit byte array (masked
-//      narrowing casts `(w>>k) as u8` -> `((w>>k)&0xff) as u8` to match the
-//      checked-cast model; semantically identical truncation)
+//  * to_le_bytes()+copy_from_slice()             -> explicit byte array of
+//      upstream's own `(w>>k) as u8` truncating casts
 //  * add_round_key(&mut rkeys[o..o+8]) -> (rkeys:&[u32;88], off) + index
 //  * shift_rows_* / add_round_key iter_mut/zip -> `for i in 0..8`
 //  * memshift32 body is now VERBATIM upstream (.rev() + debug_asserts
@@ -299,16 +298,16 @@ fn inv_bitslice(input: &State) -> [[u8; 16]; 2] {
     delta_swap_2(&mut t6, &mut t2, 4, m2);
     delta_swap_2(&mut t7, &mut t3, 4, m2);
     let o0 = [
-        (t0 & 0xff) as u8, ((t0 >> 8) & 0xff) as u8, ((t0 >> 16) & 0xff) as u8, ((t0 >> 24) & 0xff) as u8,
-        (t2 & 0xff) as u8, ((t2 >> 8) & 0xff) as u8, ((t2 >> 16) & 0xff) as u8, ((t2 >> 24) & 0xff) as u8,
-        (t4 & 0xff) as u8, ((t4 >> 8) & 0xff) as u8, ((t4 >> 16) & 0xff) as u8, ((t4 >> 24) & 0xff) as u8,
-        (t6 & 0xff) as u8, ((t6 >> 8) & 0xff) as u8, ((t6 >> 16) & 0xff) as u8, ((t6 >> 24) & 0xff) as u8,
+        t0 as u8, (t0 >> 8) as u8, (t0 >> 16) as u8, (t0 >> 24) as u8,
+        t2 as u8, (t2 >> 8) as u8, (t2 >> 16) as u8, (t2 >> 24) as u8,
+        t4 as u8, (t4 >> 8) as u8, (t4 >> 16) as u8, (t4 >> 24) as u8,
+        t6 as u8, (t6 >> 8) as u8, (t6 >> 16) as u8, (t6 >> 24) as u8,
     ];
     let o1 = [
-        (t1 & 0xff) as u8, ((t1 >> 8) & 0xff) as u8, ((t1 >> 16) & 0xff) as u8, ((t1 >> 24) & 0xff) as u8,
-        (t3 & 0xff) as u8, ((t3 >> 8) & 0xff) as u8, ((t3 >> 16) & 0xff) as u8, ((t3 >> 24) & 0xff) as u8,
-        (t5 & 0xff) as u8, ((t5 >> 8) & 0xff) as u8, ((t5 >> 16) & 0xff) as u8, ((t5 >> 24) & 0xff) as u8,
-        (t7 & 0xff) as u8, ((t7 >> 8) & 0xff) as u8, ((t7 >> 16) & 0xff) as u8, ((t7 >> 24) & 0xff) as u8,
+        t1 as u8, (t1 >> 8) as u8, (t1 >> 16) as u8, (t1 >> 24) as u8,
+        t3 as u8, (t3 >> 8) as u8, (t3 >> 16) as u8, (t3 >> 24) as u8,
+        t5 as u8, (t5 >> 8) as u8, (t5 >> 16) as u8, (t5 >> 24) as u8,
+        t7 as u8, (t7 >> 8) as u8, (t7 >> 16) as u8, (t7 >> 24) as u8,
     ];
     [o0, o1]
 }

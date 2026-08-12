@@ -291,10 +291,6 @@
 (local (defthm rk-of-u32-shr-lt
   (implies (< (nfix n) 32)
            (equal (result-kind (u32-shr x n)) :ok))))
-(local (defthm u8p-of-u32-and-255
-  (u8p (u32-and x 255))
-  :hints (("Goal" :use (:instance unsigned-byte-p-of-logand (n 8) (i x) (j 255))
-           :in-theory (e/d (unsigned-byte-p) (unsigned-byte-p-of-logand))))))
 (local (defthm len-ib-explicit
   (equal (len (result-ok->val (aes-fixslice-encrypt-inv-bitslice (list a0 a1 a2 a3 a4 a5 a6 a7)))) 2)
   :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-bitslice)

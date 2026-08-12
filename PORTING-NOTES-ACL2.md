@@ -115,7 +115,7 @@ script-verified against the reference copy):
 | Byte-identical | `ror`, `ror_distance`, `rotate_rows_*`, `rotate_rows_and_columns_*`, `delta_swap_1/2` (10 fns), and the whole `define_mix_columns!` macro | none |
 | Signature-only (`&mut [u32]` -> `&mut State`/`&[u32;88]`) | `sub_bytes` (the 113-gate S-box network: body verbatim, `debug_assert` restored), `sub_bytes_nots` (assert restored), `inv_sub_bytes` (assert restored), `add_round_constant_bit`, `xor_columns`, `inv_shift_rows_1/2/3` (no asserts upstream: thin wrappers) | zero gate changes |
 | `iter_mut`/`zip` -> indexed `for` | `shift_rows_1/2/3` (asserts restored), `add_round_key` (upstream's `rkey.len()` assert has no analog until the roadmap-#7 subslice signature returns) | same ops, indexed |
-| LE byte plumbing (`from_le_bytes`+`try_into` -> `ld_le`; `to_le_bytes`+`copy_from_slice` -> explicit arrays with masked `as u8` casts) | `bitslice` (both input asserts restored; the `output.len()` assert has no analog: ours returns `State` instead of taking `&mut [u32]`), `inv_bitslice` (assert restored) | endianness-explicit |
+| LE byte plumbing (`from_le_bytes`+`try_into` -> `ld_le`; `to_le_bytes`+`copy_from_slice` -> explicit arrays of upstream's own bare `as u8` truncating casts) | `bitslice` (both input asserts restored; the `output.len()` assert has no analog: ours returns `State` instead of taking `&mut [u32]`), `inv_bitslice` (assert restored) | endianness-explicit |
 | Subslice borrows -> `(array, offset)` + `read8`/`write8`/`*_at` wrappers | `aes128_key_schedule` call sites, `sub_bytes_at` etc. (vendored-only helpers) | structural |
 | Loop unrolls | ~~encrypt round loop~~ RESTORED (de-vendor pass 3): the bare `loop { ... if rk_off == 80 { break; } ... }` is verbatim upstream, extracted as a recursive loop function; key-schedule rcon loop re-rolled earlier; the decrypt loop arrives with the decrypt side | control flow |
 | ~~`memshift32` forward-loop delta~~ RESOLVED (de-vendor pass 1): body is now VERBATIM upstream -- `for i in (0..8).rev()` restored AND both `debug_assert`s restored (they survive the charon preset and extract as `massert`s, so the certified book carries upstream's own alignment/bounds checks as hypotheses) | `memshift32` | signature-only remains (`&mut [u32; 88]` vs upstream `&mut [u32]`) |
@@ -180,10 +180,17 @@ deleted and the audited subject moves toward verbatim upstream:
    Regression crate `tests/src/rev_range.rs` (+ known-answer proofs book)
    covers both iterator directions, including the exact upstream
    memshift32 shape, and certifies from the fallback syntheses alone.
-5. `u32 as u8` narrowing casts: the runtime currently models narrowing casts as
-   checked; Rust `as` truncates totally. Fix the cast primitive to truncating
-   semantics; the masked-cast delta then disappears. Small, and a semantic-
-   fidelity fix independent of AES.
+5. DONE -- truncating casts: every cast primitive (the def-rust-int-type
+   macro family plus the hand-written u32/i32) now models Rust `as` exactly:
+   total two's-complement truncation into the target range, never failing.
+   New -RK (always :ok), -RANGE (result is in range) and the existing -OK
+   (in-range identity) rules form the reasoning interface; the definitions
+   are DISABLED by default (a total definition otherwise opens on symbolic
+   arguments and spills mod/ifix arithmetic into every goal -- ground calls
+   still compute via the executable counterparts).  inv_bitslice's masked
+   casts `((w>>k) & 0xff) as u8` are reverted to upstream's bare
+   `(w>>k) as u8`.  Known-answer asserts in rust-primitives pin the wrap
+   behavior (300 as u8 = 44, 255 as i8 = -1, -1 as u32 = 2^32-1, ...).
 6. `from_le_bytes`/`to_le_bytes`/`try_into`/`copy_from_slice`: add runtime
    primitives (pure LE assembly + monadic length checks) and printer mappings.
    Small-medium.
