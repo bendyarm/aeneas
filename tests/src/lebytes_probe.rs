@@ -11,3 +11,9 @@ pub fn st(w: u32) -> [u8; 8] {
     out[2..6].copy_from_slice(&w.to_le_bytes());
     out
 }
+
+pub fn st2(w: u32) -> [[u8; 8]; 2] {
+    let mut out = [[0u8; 8]; 2];
+    out[1][2..6].copy_from_slice(&w.to_le_bytes());
+    out
+}

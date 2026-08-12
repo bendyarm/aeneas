@@ -198,9 +198,13 @@ deleted and the audited subject moves toward verbatim upstream:
    (constructing core's own monomorphic Result tagsum; the length is read
    off the Ok payload's array type) and Result::unwrap on it.  Validated by
    tests/src/lebytes_probe.rs + known-answer proofs incl. an LE round-trip
-   theorem.  bitslice/inv_bitslice body reversion rides on item 7's
-   subslice borrows (upstream reads `input0[o..o+4].try_into()` and writes
-   `output[k][o..o+4].copy_from_slice(...)`).
+   theorem.  The nested write shape upstream's inv_bitslice uses --
+   `output[k][o..o+4].copy_from_slice(...)`, a single-element mutable
+   index wrapping a range borrow -- is also supported (CloElemBack:
+   forward array-index, backward update-nth) and probe-validated
+   (st2-known-answer).  Remaining: swap the bitslice/inv_bitslice BODIES
+   to upstream text and re-blast the GL correspondence cruxes over the
+   new definitions.
 7. MACHINERY DONE (source reversion pending) -- subslice borrows: Aeneas
    splits `&mut a[lo..hi]` into a forward read returning a (subslice,
    backward-closure) pair, bound via an intermediate pair variable and a

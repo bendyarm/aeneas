@@ -22,3 +22,10 @@
   (implies (u32p w)
            (equal (u32-from-le-bytes (u32-to-le-bytes w)) w))
   :hints (("Goal" :in-theory (enable u32-from-le-bytes u32-to-le-bytes u32p))))
+
+;; nested single-element + range mutable borrow (the upstream inv_bitslice
+;; write shape: output[k][a..b].copy_from_slice(...)).
+(defthm st2-known-answer
+  (equal (lebytes-probe-st2 218893066)  ; #x0d0c0b0a
+         (ok (list (list 0 0 0 0 0 0 0 0)
+                   (list 0 0 10 11 12 13 0 0)))))

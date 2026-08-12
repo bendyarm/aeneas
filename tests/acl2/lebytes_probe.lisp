@@ -49,4 +49,21 @@
   (b* (((ok v13_13) (slice-copy-from-slice v9_9 v12_12)))
   (ok (vec-update-range acl2tmp5 (core-ops-range-range-usize-->start acl2tmp6) (core-ops-range-range-usize-->end acl2tmp6) v13_13)))))))))
 
+(defun lebytes-probe-st2 (w)
+  (b* ((v14_14 (array-repeat 8 0)))
+  (b* ((out_15 (array-repeat 2 v14_14)))
+  (b* ((acl2tmp16 out_15)
+     (acl2tmp17 1)
+     ((ok acl2tmp18) (array-index acl2tmp16 acl2tmp17)))
+  (b* ((v20_20 acl2tmp18))
+  (b* ((acl2tmp22 v20_20)
+     (acl2tmp23 (make-core-ops-range-range-usize- :start 2 :end 6))
+     ((ok acl2tmp24) (vec-index-range acl2tmp22 (core-ops-range-range-usize-->start acl2tmp23) (core-ops-range-range-usize-->end acl2tmp23))))
+  (b* ((v26_26 acl2tmp24))
+  (b* ((v28_28 (u32-to-le-bytes w)))
+  (b* ((v29_29 v28_28))
+  (b* (((ok v30_30) (slice-copy-from-slice v26_26 v29_29)))
+  (b* ((v31_31 (vec-update-range acl2tmp22 (core-ops-range-range-usize-->start acl2tmp23) (core-ops-range-range-usize-->end acl2tmp23) v30_30)))
+  (ok (update-nth acl2tmp17 v31_31 acl2tmp16)))))))))))))
+
 ;; END OF GENERATED FILE

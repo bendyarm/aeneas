@@ -75,6 +75,9 @@ type closure_kind =
   | CloRangeBack of { arr : string; lo : string; hi : string }
       (** [&mut a[lo..hi]]: applying to sub prints
           (vec-update-range arr lo hi sub) *)
+  | CloElemBack of { arr : string; idx : string }
+      (** [&mut a[i]] (single element): applying to v prints
+          (update-nth idx v arr) *)
   | CloIdentityBack
       (** [array_to_slice_mut]: the whole array IS the slice on the list
           model, so the write-back is the identity *)
@@ -296,6 +299,10 @@ let is_subslice_index_shared (name : string) : bool =
 let is_subslice_index_mut (name : string) : bool =
   str_contains name "-core-ops-index-indexmut-core-ops-range-range"
 
+(* single-element &mut a[i] as a monomorphized IndexMut<usize> decl *)
+let is_elem_index_mut (name : string) : bool =
+  str_contains name "-core-ops-index-indexmut-usize-"
+
 (* LE byte plumbing (de-vendoring roadmap item 6): `slice.try_into()` to a
    fixed-size byte array (returning core's own Result) and `Result::unwrap`
    on it.  Both synthesize to first-order bodies against the crate-local
@@ -433,6 +440,8 @@ and app_to_acl2 (span : Meta.span) (ctx : actx) (env : venv) (e : texpr) :
       match (Hashtbl.find_opt ctx.closures hname, args_s) with
       | Some (CloRangeBack { arr; lo; hi }), [ x ] ->
           sexp [ "vec-update-range"; arr; lo; hi; x ]
+      | Some (CloElemBack { arr; idx }), [ x ] ->
+          sexp [ "update-nth"; idx; x; arr ]
       | Some CloIdentityBack, [ x ] -> x
       | _ ->
           [%craise] span "ACL2: application of a function-typed variable (HO)")
@@ -762,13 +771,14 @@ and mut_borrow_pair_let (span : Meta.span) (ctx : actx) (env : venv)
   | PBound (_, _) when monadic -> (
       let head, args = destruct_apps (unmeta e1) in
       let head = unmeta head in
-      let is_mut_subslice =
+      let kind =
         match head.e with
         | Qualif { id = FunOrOp (Fun (FromLlbc (FunId (FRegular id), _))); _ }
           -> (
             match FunDeclId.Map.find_opt id ctx.fun_names with
-            | Some n -> is_subslice_index_mut n
-            | None -> false)
+            | Some n when is_subslice_index_mut n -> Some `Range
+            | Some n when is_elem_index_mut n -> Some `Elem
+            | _ -> None)
         | Qualif
             {
               id =
@@ -778,14 +788,14 @@ and mut_borrow_pair_let (span : Meta.span) (ctx : actx) (env : venv)
                         ( FunId
                             (FBuiltin
                                (Types.Index
-                                  { is_range = true; mutability = Types.RMut; _ })),
+                                  { is_range; mutability = Types.RMut; _ })),
                           _ )));
               _;
-            } -> true
-        | _ -> false
+            } -> if is_range then Some `Range else Some `Elem
+        | _ -> None
       in
-      match (is_mut_subslice, args) with
-      | true, [ arr; r ] ->
+      match (kind, args) with
+      | Some `Range, [ arr; r ] ->
           let arr_s = texpr_to_acl2 span ctx env arr in
           let r_s = texpr_to_acl2 span ctx env r in
           let a_tmp = fresh_tmp ctx in
@@ -806,6 +816,27 @@ and mut_borrow_pair_let (span : Meta.span) (ctx : actx) (env : venv)
             ("(b* ((" ^ a_tmp ^ " " ^ arr_s ^ ")\n     (" ^ r_tmp ^ " " ^ r_s
            ^ ")\n     ((ok " ^ sub_tmp ^ ") "
             ^ sexp [ "vec-index-range"; a_tmp; lo; hi ]
+            ^ "))\n  " ^ body ^ ")")
+      | Some `Elem, [ arr; i ] ->
+          let arr_s = texpr_to_acl2 span ctx env arr in
+          let i_s = texpr_to_acl2 span ctx env i in
+          let a_tmp = fresh_tmp ctx in
+          let i_tmp = fresh_tmp ctx in
+          let sub_tmp = fresh_tmp ctx in
+          let env', names = bind_tpats ctx env [ pat ] in
+          let pair_n =
+            match names with
+            | [ n ] -> n
+            | _ -> [%craise] span "ACL2: mut-borrow pair binder arity"
+          in
+          if pair_n <> "&" then
+            Hashtbl.replace ctx.pending_pairs pair_n
+              (CloElemBack { arr = a_tmp; idx = i_tmp }, sub_tmp);
+          let body = texpr_to_acl2 span ctx env' e2 in
+          Some
+            ("(b* ((" ^ a_tmp ^ " " ^ arr_s ^ ")\n     (" ^ i_tmp ^ " " ^ i_s
+           ^ ")\n     ((ok " ^ sub_tmp ^ ") "
+            ^ sexp [ "array-index"; a_tmp; i_tmp ]
             ^ "))\n  " ^ body ^ ")")
       | _ -> None)
   | _ -> None
