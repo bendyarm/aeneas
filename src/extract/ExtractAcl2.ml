@@ -65,6 +65,20 @@ let int_ty_name (int_ty : Values.integer_type) : string =
 
 (* ------------------------------------------------------------------ ctx *)
 
+(* A mutable-borrow backward closure we have delegated to data: the second
+   component of an [index_mut]/[array_to_slice_mut] pair, keyed by the
+   (globally unique) name of the variable it was bound to.  Applying it is
+   printed as the corresponding write-back; any other use of the variable
+   yields an unbound ACL2 variable, which fails certification loudly (never
+   a silent mistranslation). *)
+type closure_kind =
+  | CloRangeBack of { arr : string; lo : string; hi : string }
+      (** [&mut a[lo..hi]]: applying to sub prints
+          (vec-update-range arr lo hi sub) *)
+  | CloIdentityBack
+      (** [array_to_slice_mut]: the whole array IS the slice on the list
+          model, so the write-back is the identity *)
+
 type actx = {
   trans_ctx : trans_ctx;
   fun_names : string FunDeclId.Map.t;
@@ -76,6 +90,12 @@ type actx = {
   mutable gensym : int;
   mutable skipped : (FunDeclId.id * (LoopId.id * bool) option) list;
       (** Functions whose emission failed: calls to them must fail too *)
+  closures : (string, closure_kind) Hashtbl.t;
+      (** live backward closures, keyed by bound-variable name *)
+  pending_pairs : (string, closure_kind * string) Hashtbl.t;
+      (** (subslice, backward) pair variables awaiting destructuring: maps
+          the pair variable's name to the backward kind and the name the
+          forward value was bound to *)
 }
 
 (* Variable environment: a stack of binder groups (for BVar de Bruijn
@@ -207,6 +227,12 @@ let std_fun_mapping (mangled : string) : string option =
       else if starts "alloc-vec" && has "-len" then Some "vec-len"
       else if starts "core-slice" && has "-len" then Some "vec-len"
       else if starts "alloc-vec" && has "-index" then Some "array-index"
+      (* LE byte plumbing (roadmap item 6) *)
+      else if mangled = "core-num-u32-from-le-bytes" then
+        Some "u32-from-le-bytes"
+      else if mangled = "core-num-u32-to-le-bytes" then Some "u32-to-le-bytes"
+      else if starts "core-slice" && has "-copy-from-slice" then
+        Some "slice-copy-from-slice"
       else None)
 
 (* The monomorphized Range<_> iterator methods a `for i in a..b` loop lowers
@@ -257,10 +283,37 @@ let is_rev_next (name : string) : bool =
   str_contains name "iterator-iterator-for-core-iter-adapters-rev-rev"
   && str_contains name "-next-"
 
+(* Monomorphized subslice-borrow ops (de-vendoring roadmap item 7):
+   <[T; N] as Index<RangeX<usize>>>::index and the IndexMut counterpart
+   (array and slice impls; RangeX is Range, RangeTo or RangeFrom -- the
+   substring "core-ops-range-range" is a prefix of all three mangled type
+   names).  Shared reads synthesize to first-order defuns over
+   [vec-index-range]; the mutable ones return (subslice, backward) pairs
+   and are recognized at their let sites (see [let_to_acl2]). *)
+let is_subslice_index_shared (name : string) : bool =
+  str_contains name "-core-ops-index-index-core-ops-range-range"
+
+let is_subslice_index_mut (name : string) : bool =
+  str_contains name "-core-ops-index-indexmut-core-ops-range-range"
+
+(* LE byte plumbing (de-vendoring roadmap item 6): `slice.try_into()` to a
+   fixed-size byte array (returning core's own Result) and `Result::unwrap`
+   on it.  Both synthesize to first-order bodies against the crate-local
+   monomorphic Result tagsum. *)
+let is_try_into_array (name : string) : bool =
+  str_contains name "-core-convert-tryinto-" && str_contains name "-try-into-"
+
+let is_result_unwrap (name : string) : bool =
+  String.length name >= 12
+  && String.sub name 0 12 = "core-result-"
+  && str_contains name "-unwrap-"
+
 let is_range_iter_method (name : string) : bool =
   is_range_iter_next name || is_range_iter_into_iter name
   || is_range_iter_next_back name
   || is_rev_into_iter name || is_iter_rev_ctor name || is_rev_next name
+  || is_subslice_index_shared name
+  || is_try_into_array name || is_result_unwrap name
 
 let fun_name (span : Meta.span) (ctx : actx) (id : FunDeclId.id) : string =
   match FunDeclId.Map.find_opt id ctx.fun_names with
@@ -363,9 +416,26 @@ and app_to_acl2 (span : Meta.span) (ctx : actx) (env : venv) (e : texpr) :
   let args_s = List.map (texpr_to_acl2 span ctx env) args in
   match head.e with
   | Qualif q -> qualif_app_to_acl2 span ctx env q args args_s
-  | FVar _ | BVar _ ->
-      (* Application of a locally-bound function value: higher-order *)
-      [%craise] span "ACL2: application of a function-typed variable (HO)"
+  | FVar _ | BVar _ -> (
+      (* Application of a locally-bound function value.  The ONLY such
+         values we accept are the backward closures of mutable subslice /
+         array-to-slice borrows, recorded at their let sites: applying one
+         prints the corresponding write-back. *)
+      let hname =
+        match head.e with
+        | FVar id -> (
+            match FVarId.Map.find_opt id env.fvars with
+            | Some n -> n
+            | None -> [%craise] span "ACL2: unbound free variable")
+        | BVar v -> venv_bvar env v
+        | _ -> [%craise] span "ACL2: impossible application head"
+      in
+      match (Hashtbl.find_opt ctx.closures hname, args_s) with
+      | Some (CloRangeBack { arr; lo; hi }), [ x ] ->
+          sexp [ "vec-update-range"; arr; lo; hi; x ]
+      | Some CloIdentityBack, [ x ] -> x
+      | _ ->
+          [%craise] span "ACL2: application of a function-typed variable (HO)")
   | _ -> [%craise] span "ACL2: unsupported application head"
 
 and qualif_app_to_acl2 (span : Meta.span) (ctx : actx) (_env : venv)
@@ -397,12 +467,16 @@ and qualif_app_to_acl2 (span : Meta.span) (ctx : actx) (_env : venv)
           match args_s with
           | [ a ] -> a
           | _ -> [%craise] span "ACL2: ill-formed Box::new")
-      | Types.ArrayToSliceShared | Types.ArrayToSliceMut -> (
-          (* both are the identity on the list model; the mut backward
-             (if any) is handled by the usual lambda rejection upstream *)
+      | Types.ArrayToSliceShared -> (
+          (* identity on the list model *)
           match args_s with
           | [ a ] -> a
           | _ -> [%craise] span "ACL2: ill-formed array-to-slice")
+      | Types.ArrayToSliceMut ->
+          (* returns a (slice, backward) pair: only meaningful at a
+             pair-destructuring let, which [mut_borrow_let] intercepts *)
+          [%craise] span
+            "ACL2: array_to_slice_mut outside a pair-destructuring let"
       | Types.ArrayRepeat -> (
           (* [x; N]: N is a const generic. After --monomorphize it is a
              concrete literal, so we can build (array-repeat N x). *)
@@ -420,10 +494,19 @@ and qualif_app_to_acl2 (span : Meta.span) (ctx : actx) (_env : venv)
              backward function, which we reject *)
           [%craise] span
             "ACL2: &mut index survived to extraction (backward function)"
-      | Types.Index { is_range = true; mutability = Types.RShared; _ } ->
-          sexp ("array-subslice" :: args_s)
+      | Types.Index { is_range = true; mutability = Types.RShared; _ } -> (
+          (* a[r] shared: bounds-checked window read *)
+          match (args, args_s) with
+          | [ _; r ], [ a_s; r_s ] ->
+              let a_tmp = fresh_tmp ctx in
+              let r_tmp = fresh_tmp ctx in
+              let lo, hi = range_window_sexps span ctx r.ty a_tmp r_tmp in
+              "(b* ((" ^ a_tmp ^ " " ^ a_s ^ ") (" ^ r_tmp ^ " " ^ r_s
+              ^ ")) " ^ sexp [ "vec-index-range"; a_tmp; lo; hi ] ^ ")"
+          | _ -> [%craise] span "ACL2: ill-formed shared subslice index")
       | Types.Index { is_range = true; _ } ->
-          [%craise] span "ACL2: mutable subslice not supported"
+          [%craise] span
+            "ACL2: mutable subslice index outside a pair-destructuring let"
       | Types.PtrFromParts _ ->
           [%craise] span "ACL2: raw pointers not supported")
   | FunOrOp (Fun (FromLlbc (TraitMethod _, _))) ->
@@ -538,8 +621,232 @@ and proj_to_acl2 (span : Meta.span) (ctx : actx) (adt_id : type_id)
       | _ -> [%craise] span "ACL2: projection on a non-struct")
   | _ -> [%craise] span "ACL2: unsupported projection"
 
+(* The bounds of a (monomorphic) RangeX<usize> value [r_var], as sexps.
+   The missing bound of RangeTo/RangeFrom defaults to 0 / (len [arr_var]). *)
+and range_window_sexps (span : Meta.span) (ctx : actx) (rty : ty)
+    (arr_var : string) (r_var : string) : string * string =
+  let range_id =
+    match rty with
+    | TAdt (TAdtId id, _) -> id
+    | _ -> [%craise] span "ACL2: subslice borrow: range is not an ADT"
+  in
+  let rname = type_name span ctx range_id in
+  let rdecl = TypeDeclId.Map.find range_id ctx.types in
+  let fields =
+    match rdecl.kind with
+    | Struct fs -> field_names fs
+    | _ -> [%craise] span "ACL2: subslice borrow: range is not a struct"
+  in
+  if str_contains rname "-rangeto-" then
+    match fields with
+    | [ fe ] -> ("0", "(" ^ rname ^ "->" ^ fe ^ " " ^ r_var ^ ")")
+    | _ -> [%craise] span "ACL2: RangeTo has unexpected fields"
+  else if str_contains rname "-rangefrom-" then
+    match fields with
+    | [ fs ] ->
+        ("(" ^ rname ^ "->" ^ fs ^ " " ^ r_var ^ ")", "(len " ^ arr_var ^ ")")
+    | _ -> [%craise] span "ACL2: RangeFrom has unexpected fields"
+  else
+    match fields with
+    | [ fs; fe ] ->
+        ( "(" ^ rname ^ "->" ^ fs ^ " " ^ r_var ^ ")",
+          "(" ^ rname ^ "->" ^ fe ^ " " ^ r_var ^ ")" )
+    | _ -> [%craise] span "ACL2: Range has unexpected fields"
+
+(* Mutable subslice / array-to-slice borrows arrive as pair-lets
+     let (sub, back) = <borrow> in ...
+   where [back] is a first-class backward function.  We print the forward
+   read, bind BOTH pattern variables (de Bruijn alignment), and record
+   [back] in [ctx.closures]; its applications print as write-backs. *)
+and mut_borrow_let (span : Meta.span) (ctx : actx) (env : venv)
+    (monadic : bool) (pat : tpat) (e1 : texpr) (e2 : texpr) : string option =
+  match pat.pat with
+  | PAdt { variant_id = None; fields = [ f_sub; f_back ] } -> (
+      let head, args = destruct_apps (unmeta e1) in
+      let head = unmeta head in
+      (if Option.is_some (Sys.getenv_opt "ACL2_DEBUG_BORROW") then
+         let hs =
+           match head.e with
+           | Qualif { id = FunOrOp (Fun (FromLlbc (FunId (FRegular id), _))); _ }
+             -> (
+               match FunDeclId.Map.find_opt id ctx.fun_names with
+               | Some n -> "FRegular:" ^ n
+               | None -> "FRegular:?")
+           | Qualif _ -> "Qualif:other"
+           | _ -> "head:other"
+         in
+         Printf.eprintf "[borrow-dbg] pair-let head=%s args=%d\n%!" hs
+           (List.length args));
+      let shape =
+        match (head.e, args) with
+        | ( Qualif { id = FunOrOp (Fun (FromLlbc (FunId (FRegular id), _))); _ },
+            [ arr; r ] )
+          when (match FunDeclId.Map.find_opt id ctx.fun_names with
+               | Some n -> is_subslice_index_mut n
+               | None -> false) -> Some (`Subslice (arr, r))
+        | ( Qualif
+              {
+                id =
+                  FunOrOp
+                    (Fun
+                       (FromLlbc
+                          ( FunId
+                              (FBuiltin
+                                 (Types.Index
+                                    { is_range = true; mutability = Types.RMut; _ })),
+                            _ )));
+                _;
+              },
+            [ arr; r ] ) -> Some (`Subslice (arr, r))
+        | ( Qualif
+              {
+                id =
+                  FunOrOp
+                    (Fun (FromLlbc (FunId (FBuiltin Types.ArrayToSliceMut), _)));
+                _;
+              },
+            [ arr ] ) -> Some (`ArrToSlice arr)
+        | _ -> None
+      in
+      match shape with
+      | None -> None
+      | Some sh -> (
+          let env', names = bind_tpats ctx env [ f_sub; f_back ] in
+          let sub_n, back_n =
+            match names with
+            | [ a; b ] -> (a, b)
+            | _ -> [%craise] span "ACL2: mut-borrow pair arity"
+          in
+          match sh with
+          | `Subslice (arr, r) ->
+              if not monadic then
+                [%craise] span "ACL2: index_mut let is unexpectedly non-monadic";
+              let arr_s = texpr_to_acl2 span ctx env arr in
+              let r_s = texpr_to_acl2 span ctx env r in
+              let a_tmp = fresh_tmp ctx in
+              let r_tmp = fresh_tmp ctx in
+              let lo, hi = range_window_sexps span ctx r.ty a_tmp r_tmp in
+              if back_n <> "&" then
+                Hashtbl.replace ctx.closures back_n
+                  (CloRangeBack { arr = a_tmp; lo; hi });
+              let fwd = sexp [ "vec-index-range"; a_tmp; lo; hi ] in
+              let sub_bind =
+                "((ok " ^ (if sub_n = "&" then "&" else sub_n) ^ ") " ^ fwd ^ ")"
+              in
+              let body = texpr_to_acl2 span ctx env' e2 in
+              Some
+                ("(b* ((" ^ a_tmp ^ " " ^ arr_s ^ ")\n     (" ^ r_tmp ^ " "
+               ^ r_s ^ ")\n     " ^ sub_bind ^ ")\n  " ^ body ^ ")")
+          | `ArrToSlice arr ->
+              if monadic then
+                [%craise] span
+                  "ACL2: array_to_slice_mut let is unexpectedly monadic";
+              let arr_s = texpr_to_acl2 span ctx env arr in
+              if back_n <> "&" then
+                Hashtbl.replace ctx.closures back_n CloIdentityBack;
+              let body = texpr_to_acl2 span ctx env' e2 in
+              if sub_n = "&" then Some body
+              else Some ("(b* ((" ^ sub_n ^ " " ^ arr_s ^ "))\n  " ^ body ^ ")")))
+  | _ -> None
+
+(* Monadic borrows bind the (subslice, backward) PAIR to a plain variable
+   first and destructure it in a separate non-monadic let:
+     (pair : (Slice * (Slice -> Array))) <-- index_mut a r;
+     let (sub, back) = pair in ...
+   [mut_borrow_pair_let] handles the first form (emit the forward read,
+   remember the pair variable); [pending_pair_destructure] the second
+   (bind sub to the forward value, register back as a closure). *)
+and mut_borrow_pair_let (span : Meta.span) (ctx : actx) (env : venv)
+    (monadic : bool) (pat : tpat) (e1 : texpr) (e2 : texpr) : string option =
+  match pat.pat with
+  | PBound (_, _) when monadic -> (
+      let head, args = destruct_apps (unmeta e1) in
+      let head = unmeta head in
+      let is_mut_subslice =
+        match head.e with
+        | Qualif { id = FunOrOp (Fun (FromLlbc (FunId (FRegular id), _))); _ }
+          -> (
+            match FunDeclId.Map.find_opt id ctx.fun_names with
+            | Some n -> is_subslice_index_mut n
+            | None -> false)
+        | Qualif
+            {
+              id =
+                FunOrOp
+                  (Fun
+                     (FromLlbc
+                        ( FunId
+                            (FBuiltin
+                               (Types.Index
+                                  { is_range = true; mutability = Types.RMut; _ })),
+                          _ )));
+              _;
+            } -> true
+        | _ -> false
+      in
+      match (is_mut_subslice, args) with
+      | true, [ arr; r ] ->
+          let arr_s = texpr_to_acl2 span ctx env arr in
+          let r_s = texpr_to_acl2 span ctx env r in
+          let a_tmp = fresh_tmp ctx in
+          let r_tmp = fresh_tmp ctx in
+          let sub_tmp = fresh_tmp ctx in
+          let lo, hi = range_window_sexps span ctx r.ty a_tmp r_tmp in
+          let env', names = bind_tpats ctx env [ pat ] in
+          let pair_n =
+            match names with
+            | [ n ] -> n
+            | _ -> [%craise] span "ACL2: mut-borrow pair binder arity"
+          in
+          if pair_n <> "&" then
+            Hashtbl.replace ctx.pending_pairs pair_n
+              (CloRangeBack { arr = a_tmp; lo; hi }, sub_tmp);
+          let body = texpr_to_acl2 span ctx env' e2 in
+          Some
+            ("(b* ((" ^ a_tmp ^ " " ^ arr_s ^ ")\n     (" ^ r_tmp ^ " " ^ r_s
+           ^ ")\n     ((ok " ^ sub_tmp ^ ") "
+            ^ sexp [ "vec-index-range"; a_tmp; lo; hi ]
+            ^ "))\n  " ^ body ^ ")")
+      | _ -> None)
+  | _ -> None
+
+and pending_pair_destructure (span : Meta.span) (ctx : actx) (env : venv)
+    (monadic : bool) (pat : tpat) (e1 : texpr) (e2 : texpr) : string option =
+  match (pat.pat, monadic) with
+  | PAdt { variant_id = None; fields = [ f_sub; f_back ] }, false -> (
+      let rhs = unmeta e1 in
+      let pair_name =
+        match rhs.e with
+        | FVar id -> FVarId.Map.find_opt id env.fvars
+        | BVar v -> ( try Some (venv_bvar env v) with _ -> None)
+        | _ -> None
+      in
+      match Option.bind pair_name (Hashtbl.find_opt ctx.pending_pairs) with
+      | None -> None
+      | Some (kind, sub_tmp) ->
+          let env', names = bind_tpats ctx env [ f_sub; f_back ] in
+          let sub_n, back_n =
+            match names with
+            | [ a; b ] -> (a, b)
+            | _ -> [%craise] span "ACL2: pair destructure arity"
+          in
+          if back_n <> "&" then Hashtbl.replace ctx.closures back_n kind;
+          let body = texpr_to_acl2 span ctx env' e2 in
+          if sub_n = "&" then Some body
+          else Some ("(b* ((" ^ sub_n ^ " " ^ sub_tmp ^ "))\n  " ^ body ^ ")"))
+  | _ -> None
+
 and let_to_acl2 (span : Meta.span) (ctx : actx) (env : venv) (monadic : bool)
     (pat : tpat) (e1 : texpr) (e2 : texpr) : string =
+  match mut_borrow_let span ctx env monadic pat e1 e2 with
+  | Some s -> s
+  | None ->
+  match mut_borrow_pair_let span ctx env monadic pat e1 e2 with
+  | Some s -> s
+  | None ->
+  match pending_pair_destructure span ctx env monadic pat e1 e2 with
+  | Some s -> s
+  | None ->
   let e1_s = texpr_to_acl2 span ctx env e1 in
   (* Bind the pattern's variables (one binder group) *)
   match pat.pat with
@@ -818,7 +1125,76 @@ let group_to_sccs (decls : Pure.fun_decl list) : fun_scc list =
    match the generated deftagsum/defprod exactly. *)
 let synth_range_iter_body (span : Meta.span) (ctx : actx) (decl : Pure.fun_decl)
     (name : string) : string =
-  if
+  if is_try_into_array name then
+    (* <[u8; N] as TryFrom<&[u8]>>::try_into: Ok(the slice as an array) when
+       the length matches, Err(TryFromSliceError) otherwise -- core's OWN
+       Result value either way (the call itself never panics). *)
+    let result_id =
+      match decl.signature.output with
+      | TAdt (TBuiltin TResult, { types = [ TAdt (TAdtId id, _) ]; _ }) -> id
+      | _ -> [%craise] span "ACL2: try_into: unexpected output signature"
+    in
+    let rname = type_name span ctx result_id in
+    let rdecl = TypeDeclId.Map.find result_id ctx.types in
+    let n =
+      match rdecl.kind with
+      | Enum (okv :: _) -> (
+          match okv.fields with
+          | [ { field_ty = TAdt (TBuiltin TArray, generics); _ } ] -> (
+              match generics.const_generics with
+              | [ CgValue lit ] -> literal_to_acl2 span lit
+              | _ ->
+                  [%craise] span "ACL2: try_into: array length not a literal")
+          | _ -> [%craise] span "ACL2: try_into: unexpected Ok payload")
+      | _ -> [%craise] span "ACL2: try_into: result type is not an enum"
+    in
+    "(defun " ^ name ^ " (self)\n  (if (equal (len self) " ^ n ^ ")\n      (ok ("
+    ^ rname ^ "-ok self))\n    (ok (" ^ rname ^ "-err (unit)))))"
+  else if is_result_unwrap name then
+    (* core::result::Result::unwrap on a monomorphic Result: the Ok payload,
+       or a panic (= result-fail) on Err. *)
+    let result_id =
+      match decl.signature.inputs with
+      | TAdt (TAdtId id, _) :: _ -> id
+      | _ -> [%craise] span "ACL2: unwrap: unexpected input signature"
+    in
+    let rname = type_name span ctx result_id in
+    "(defun " ^ name ^ " (self)\n  (if (eq (" ^ rname
+    ^ "-kind self) :ok)\n      (ok (" ^ rname
+    ^ "-ok->f0 self))\n    (result-fail (err-failure))))"
+  else if is_subslice_index_shared name then
+    (* <[T;N] as Index<RangeX<usize>>>::index -- a[r] as a bounds-checked
+       window read.  RangeX's missing bound defaults to 0 / (len self). *)
+    let range_id =
+      match decl.signature.inputs with
+      | [ _; TAdt (TAdtId id, _) ] -> id
+      | _ -> [%craise] span "ACL2: subslice index: unexpected signature"
+    in
+    let rname = type_name span ctx range_id in
+    let rdecl = TypeDeclId.Map.find range_id ctx.types in
+    let fields =
+      match rdecl.kind with
+      | Struct fs -> field_names fs
+      | _ -> [%craise] span "ACL2: subslice index: range is not a struct"
+    in
+    let lo, hi =
+      if str_contains rname "-rangeto-" then
+        match fields with
+        | [ fe ] -> ("0", "(" ^ rname ^ "->" ^ fe ^ " r)")
+        | _ -> [%craise] span "ACL2: RangeTo has unexpected fields"
+      else if str_contains rname "-rangefrom-" then
+        match fields with
+        | [ fs ] -> ("(" ^ rname ^ "->" ^ fs ^ " r)", "(len self)")
+        | _ -> [%craise] span "ACL2: RangeFrom has unexpected fields"
+      else
+        match fields with
+        | [ fs; fe ] ->
+            ("(" ^ rname ^ "->" ^ fs ^ " r)", "(" ^ rname ^ "->" ^ fe ^ " r)")
+        | _ -> [%craise] span "ACL2: Range has unexpected fields"
+    in
+    "(defun " ^ name ^ " (self r) (vec-index-range self " ^ lo ^ " " ^ hi
+    ^ "))"
+  else if
     is_range_iter_into_iter name || is_rev_into_iter name
     || is_iter_rev_ctor name
   then "(defun " ^ name ^ " (self) (ok self))"
@@ -939,6 +1315,14 @@ let fun_decl_to_acl2 (ctx : actx) (is_rec : bool) (decl : Pure.fun_decl) :
         base ^ "-loop" ^ LoopId.to_string lp_id
         ^ if is_body then "-body" else ""
   in
+  (if Option.is_some (Sys.getenv_opt "ACL2_DEBUG_BODY") && str_contains name "-go"
+   then
+     match decl.body with
+     | Some _ ->
+         let fmt_env = PrintPure.decls_ctx_to_fmt_env ctx.trans_ctx in
+         Printf.eprintf "[body-dbg] %s:\n%s\n%!" name
+           (PrintPure.fun_decl_to_string fmt_env decl)
+     | None -> ());
   match decl.body with
   | None ->
       if is_range_iter_method name then synth_range_iter_body span ctx decl name
@@ -1063,6 +1447,8 @@ let extract_crate (out : out_channel) (rust_module_name : string)
       types = ctx.trans_types;
       gensym = 0;
       skipped = [];
+      closures = Hashtbl.create 16;
+      pending_pairs = Hashtbl.create 16;
     }
   in
   (* Header *)

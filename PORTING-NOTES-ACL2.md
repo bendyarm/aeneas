@@ -191,13 +191,34 @@ deleted and the audited subject moves toward verbatim upstream:
    casts `((w>>k) & 0xff) as u8` are reverted to upstream's bare
    `(w>>k) as u8`.  Known-answer asserts in rust-primitives pin the wrap
    behavior (300 as u8 = 44, 255 as i8 = -1, -1 as u32 = 2^32-1, ...).
-6. `from_le_bytes`/`to_le_bytes`/`try_into`/`copy_from_slice`: add runtime
-   primitives (pure LE assembly + monadic length checks) and printer mappings.
-   Small-medium.
-7. `&mut rkeys[a..b]` subslice borrows: Aeneas already splits these borrows;
-   the backend needs the monomorphized `Index/IndexMut<Range<usize>>` ops
-   (subrange read + write-back) as primitives. This deletes `read8`/`write8`/
-   the `*_at` wrappers — the largest structural delta. Medium.
+6. MACHINERY DONE (source reversion pending) -- LE byte plumbing:
+   runtime prims u32-from-le-bytes / u32-to-le-bytes (total, non-monadic:
+   Aeneas types them pure) and slice-copy-from-slice (fails unless lengths
+   agree); printer syntheses for slice.try_into() into a fixed byte array
+   (constructing core's own monomorphic Result tagsum; the length is read
+   off the Ok payload's array type) and Result::unwrap on it.  Validated by
+   tests/src/lebytes_probe.rs + known-answer proofs incl. an LE round-trip
+   theorem.  bitslice/inv_bitslice body reversion rides on item 7's
+   subslice borrows (upstream reads `input0[o..o+4].try_into()` and writes
+   `output[k][o..o+4].copy_from_slice(...)`).
+7. MACHINERY DONE (source reversion pending) -- subslice borrows: Aeneas
+   splits `&mut a[lo..hi]` into a forward read returning a (subslice,
+   backward-closure) pair, bound via an intermediate pair variable and a
+   tuple-destructuring let.  The printer now: synthesizes every shared
+   monomorphized `Index<RangeX<usize>>::index` to a first-order defun over
+   the new vec-index-range prim (RangeTo/RangeFrom default the missing
+   bound to 0 / (len a)); intercepts the mutable pair-lets, prints the
+   forward read, and delegates the backward closure to data -- applying it
+   prints the total vec-update-range splice (an escaping closure variable
+   yields an unbound-variable certification failure, never a silent
+   mistranslation).  &mut array-to-slice coercions are the identity with an
+   identity backward.  vec-index-range/vec-update-range come with the
+   window nth/len/true-listp interface rules.  Validated by
+   tests/src/subslice_probe.rs + known-answer AND symbolic proofs.
+   Remaining for the full delta deletion: rewrite the AES source to
+   upstream signatures/call sites (encrypt side, then the key schedule --
+   which also needs a StepBy<Range> synthesis for its (8..72).step_by(32)
+   fold) and rework the window-form proof layer accordingly.
 8. `iter_mut()`/`.zip()` over slices: needs `core::slice::IterMut` (and `Zip`)
    extraction — an Aeneas-core capability question, not just the printer.
    Probe first; possibly an upstream Aeneas contribution. Largest unknown.

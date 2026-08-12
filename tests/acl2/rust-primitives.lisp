@@ -8,6 +8,10 @@
 (include-book "centaur/fty/top" :dir :system)
 (include-book "std/util/bstar" :dir :system)
 (local (include-book "arithmetic-5/top" :dir :system))
+(local (include-book "std/lists/take" :dir :system))
+(local (include-book "std/lists/nthcdr" :dir :system))
+(local (include-book "std/lists/append" :dir :system))
+(local (include-book "std/lists/nth" :dir :system))
 
 ;; ---------------------------------------------------------------- errors
 
@@ -109,6 +113,34 @@
 ;; calls still compute via the executable counterparts; the -rk/-range/-ok
 ;; rules above are the reasoning interface).
 (in-theory (disable u32-cast i32-cast))
+
+;; --------------------------------------------- LE bytes (roadmap item 6)
+;; u32::from_le_bytes / to_le_bytes (total; bytes little-endian first) and
+;; <[T]>::copy_from_slice (panics -- fails -- unless the lengths agree;
+;; the value is then just the source window).
+(defun u32-from-le-bytes (bs)
+  (+ (nth 0 bs) (* 256 (nth 1 bs)) (* 65536 (nth 2 bs))
+     (* 16777216 (nth 3 bs))))
+(defun u32-to-le-bytes (w)
+  (list (mod w 256) (mod (floor w 256) 256)
+        (mod (floor w 65536) 256) (mod (floor w 16777216) 256)))
+(defun slice-copy-from-slice (self src)
+  (if (equal (len self) (len src))
+      (ok src)
+    (result-fail (err-failure))))
+(defthm len-of-u32-to-le-bytes
+  (equal (len (u32-to-le-bytes w)) 4))
+(defthm true-listp-of-u32-to-le-bytes
+  (true-listp (u32-to-le-bytes w)))
+(defthm rk-of-slice-copy-from-slice
+  (implies (equal (len self) (len src))
+           (equal (slice-copy-from-slice self src) (ok src))))
+
+;; result-kind of the constructors, as rewrite rules (fty's own :kind
+;; machinery does not export these in a form the rewriter picks up).
+(defthm result-kind-of-result-ok (equal (result-kind (result-ok x)) :ok))
+(defthm result-kind-of-result-fail
+  (equal (result-kind (result-fail e)) :fail))
 
 ;; ---------------------------------------------------------------- misc
 ;; Rust unit value, and Aeneas's massert (used by extracted unit tests).
@@ -301,6 +333,56 @@
   (if (and (natp i) (natp j) (<= i j) (<= j (len a)))
       (ok (nthcdr i (take j a)))
     (result-fail (err-failure))))
+
+;; ------------------------------------------- subslice borrows (roadmap #7)
+;; a[lo..hi] -- the bounds-checked window read every Index/IndexMut<RangeX>
+;; instance synthesizes to (RangeTo/RangeFrom default the missing bound to
+;; 0 / (len a) at the printer level).
+(defun vec-index-range (v lo hi)
+  (if (and (natp lo) (natp hi) (<= lo hi) (<= hi (len v)))
+      (ok (take (- hi lo) (nthcdr lo v)))
+    (result-fail (err-failure))))
+;; The backward function of &mut a[lo..hi]: splice the updated window back.
+;; TOTAL -- Aeneas backward functions are pure (the forward read already
+;; performed the bounds check on the ok path where this is applied).
+(defun vec-update-range (v lo hi sub)
+  (append (take lo v) sub (nthcdr hi v)))
+
+;; interface rules (the window-spec bridge the proofs use)
+(defthm rk-of-vec-index-range
+  (implies (and (natp lo) (natp hi) (<= lo hi) (<= hi (len v)))
+           (equal (result-kind (vec-index-range v lo hi)) :ok)))
+(defthm val-of-vec-index-range
+  (implies (and (natp lo) (natp hi) (<= lo hi) (<= hi (len v)))
+           (equal (result-ok->val (vec-index-range v lo hi))
+                  (take (- hi lo) (nthcdr lo v)))))
+(defthm vec-index-range-oob
+  (implies (not (and (natp lo) (natp hi) (<= lo hi) (<= hi (len v))))
+           (equal (vec-index-range v lo hi) (result-fail (err-failure)))))
+(defthm len-of-vec-index-range-val
+  (implies (and (natp lo) (natp hi) (<= lo hi) (<= hi (len v)))
+           (equal (len (result-ok->val (vec-index-range v lo hi))) (- hi lo))))
+(defthm true-listp-of-vec-index-range-val
+  (true-listp (result-ok->val (vec-index-range v lo hi))))
+(defthm len-of-vec-update-range
+  (implies (and (natp lo) (natp hi) (<= lo hi) (<= hi (len v))
+                (equal (len sub) (- hi lo)))
+           (equal (len (vec-update-range v lo hi sub)) (len v))))
+(defthm true-listp-of-vec-update-range
+  (implies (and (true-listp v) (true-listp sub))
+           (true-listp (vec-update-range v lo hi sub))))
+(defthm nth-of-vec-index-range-val
+  (implies (and (natp lo) (natp hi) (<= lo hi) (<= hi (len v)) (natp k)
+                (< k (- hi lo)))
+           (equal (nth k (result-ok->val (vec-index-range v lo hi)))
+                  (nth (+ lo k) v))))
+(defthm nth-of-vec-update-range
+  (implies (and (natp lo) (natp hi) (<= lo hi) (<= hi (len v))
+                (equal (len sub) (- hi lo)) (natp k) (< k (len v)))
+           (equal (nth k (vec-update-range v lo hi sub))
+                  (cond ((< k lo) (nth k v))
+                        ((< k hi) (nth (- k lo) sub))
+                        (t (nth k v))))))
 
 ;; A few rules the proofs want.
 (defthm array-index-ok
