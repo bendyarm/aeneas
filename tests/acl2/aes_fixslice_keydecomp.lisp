@@ -31,13 +31,15 @@
                                       (result-ok->val (u32-shl (u32-and (u32-xor a (result-ok->val (u32-shr a shift))) mask) shift))))))
   :hints (("Goal" :in-theory (enable aes-fixslice-encrypt-delta-swap-1))))
 
-;; ---- sub_bytes_nots: straight-line (indices 0,1,5,6); :ok and len for len>=7 ----
+;; ---- sub_bytes_nots: straight-line (indices 0,1,5,6).  The gate network only
+;; needs len>=7, but upstream's restored debug_assert demands len == 8 exactly
+;; -- so the :ok/len characterization now requires (and gets) the exact length.
 (defthm result-kind-of-sub-bytes-nots-len
-  (implies (and (true-listp s) (<= 7 (len s)))
+  (implies (and (true-listp s) (equal (len s) 8))
            (equal (result-kind (aes-fixslice-encrypt-sub-bytes-nots s)) :ok))
   :hints (("Goal" :in-theory (enable aes-fixslice-encrypt-sub-bytes-nots))))
 (defthm len-of-sub-bytes-nots-len
-  (implies (and (true-listp s) (<= 7 (len s)))
+  (implies (and (true-listp s) (equal (len s) 8))
            (equal (len (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots s))) (len s)))
   :hints (("Goal" :in-theory (enable aes-fixslice-encrypt-sub-bytes-nots))))
 

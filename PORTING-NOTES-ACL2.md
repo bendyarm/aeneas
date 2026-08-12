@@ -113,23 +113,32 @@ script-verified against the reference copy):
 | Delta class | Functions | Nature |
 |---|---|---|
 | Byte-identical | `ror`, `ror_distance`, `rotate_rows_*`, `rotate_rows_and_columns_*`, `delta_swap_1/2` (10 fns), and the whole `define_mix_columns!` macro | none |
-| Signature-only (`&mut [u32]` -> `&mut State`/`&[u32;88]`; `debug_assert` dropped) | `sub_bytes` (the 113-gate S-box network: body verbatim), `sub_bytes_nots`, `inv_sub_bytes`, `add_round_constant_bit`, `xor_columns`, `inv_shift_rows_1/2/3` | zero gate changes |
-| `iter_mut`/`zip` -> indexed `for` | `shift_rows_1/2/3`, `add_round_key` | same ops, indexed |
-| LE byte plumbing (`from_le_bytes`+`try_into` -> `ld_le`; `to_le_bytes`+`copy_from_slice` -> explicit arrays with masked `as u8` casts) | `bitslice`, `inv_bitslice` | endianness-explicit |
+| Signature-only (`&mut [u32]` -> `&mut State`/`&[u32;88]`) | `sub_bytes` (the 113-gate S-box network: body verbatim, `debug_assert` restored), `sub_bytes_nots` (assert restored), `inv_sub_bytes` (assert restored), `add_round_constant_bit`, `xor_columns`, `inv_shift_rows_1/2/3` (no asserts upstream: thin wrappers) | zero gate changes |
+| `iter_mut`/`zip` -> indexed `for` | `shift_rows_1/2/3` (asserts restored), `add_round_key` (upstream's `rkey.len()` assert has no analog until the roadmap-#7 subslice signature returns) | same ops, indexed |
+| LE byte plumbing (`from_le_bytes`+`try_into` -> `ld_le`; `to_le_bytes`+`copy_from_slice` -> explicit arrays with masked `as u8` casts) | `bitslice` (both input asserts restored; the `output.len()` assert has no analog: ours returns `State` instead of taking `&mut [u32]`), `inv_bitslice` (assert restored) | endianness-explicit |
 | Subslice borrows -> `(array, offset)` + `read8`/`write8`/`*_at` wrappers | `aes128_key_schedule` call sites, `sub_bytes_at` etc. (vendored-only helpers) | structural |
 | Loop unrolls | encrypt/decrypt round loops (still unrolled); key-schedule rcon loop (RE-ROLLED, recursive extraction) | control flow |
 | ~~`memshift32` forward-loop delta~~ RESOLVED (de-vendor pass 1): body is now VERBATIM upstream -- `for i in (0..8).rev()` restored AND both `debug_assert`s restored (they survive the charon preset and extract as `massert`s, so the certified book carries upstream's own alignment/bounds checks as hypotheses) | `memshift32` | signature-only remains (`&mut [u32; 88]` vs upstream `&mut [u32]`) |
-| Dropped | `aes192_*`/`aes256_*`, cipher-crate API, `cfg(aes_backend_soft = "compact")` branches (non-compact path vendored), `debug_assert`s outside `memshift32` | scope reduction |
+| Dropped | `aes192_*`/`aes256_*`, cipher-crate API, `cfg(aes_backend_soft = "compact")` branches (non-compact path vendored) | scope reduction |
 
 **De-vendoring roadmap** — what the toolchain needs so each delta can be
 deleted and the audited subject moves toward verbatim upstream:
 
 1. FREE / already zero: macros (rustc expands pre-MIR); `cfg` selection
    (rustc resolves); those deltas need no toolchain work.
-2. `debug_assert!`: PROBED -- the charon preset KEEPS them (they extract as
-   `(massert ...)` ok-binders). `memshift32`'s two are restored (see item 4);
-   restoring the rest is the same mechanical move per function, each adding
-   its assert as a hypothesis to that function's interface lemma. Small.
+2. DONE -- `debug_assert!`: the charon preset KEEPS them (they extract as
+   `(massert ...)` ok-binders).  All 11 restorable asserts are restored
+   verbatim: memshift32's two (pass 1) plus the nine length asserts on
+   sub_bytes / sub_bytes_nots / inv_sub_bytes / shift_rows_1/2/3 /
+   bitslice (input0, input1) / inv_bitslice (pass 2).  Proof impact was one
+   lemma pair: sub_bytes_nots's :ok/len characterization needed only
+   len >= 7 (it touches indices 0,1,5,6) but upstream's assert demands
+   len == 8 exactly -- the hypothesis tightened to match, and every call
+   site already reads exact-length windows.  The two upstream asserts NOT
+   restored bind variables that do not exist under remaining signature
+   deltas: bitslice's `output.len()` (ours returns `State` by value) and
+   add_round_key's `rkey.len()` (returns with the roadmap-#7 subslice
+   signature).
 3. Loop re-rolls: key schedule DONE (see below); re-roll the encrypt/decrypt
    round loops the same way (`-loops-to-rec` + opaque round fns admit fine);
    requires reworking the Phase-3 round-unfold proofs to the recursive form.

@@ -14,7 +14,11 @@
 //      count); the key-schedule rcon + fold loops are `for` loops (recursive
 //      extraction; the fold's (8..72).step_by(32) -> plain-range equivalent)
 //  * State::default()/BatchBlocks -> explicit [u32;8] / [[u8;16];2] literals
-//  * debug_assert!s dropped (except memshift32's, restored); cfg(aes_backend_soft="compact") branches resolved
+//  * ALL upstream debug_assert!s RESTORED verbatim, except two whose bound
+//      variable no longer exists under a signature delta: bitslice's
+//      output.len() (ours returns State instead of taking &mut [u32]) and
+//      add_round_key's rkey.len() (ours takes (rkeys,off), see roadmap #7)
+//  * cfg(aes_backend_soft="compact") branches resolved
 //      to the non-compact path; aes192/aes256 and the cipher-crate API omitted
 // Pristine upstream reference: tests/src/reference/fixslice32-aes-v0.9.1.rs;
 // per-function audit + de-vendoring roadmap: PORTING-NOTES-ACL2.md.
@@ -49,6 +53,8 @@ fn delta_swap_2(a: &mut u32, b: &mut u32, shift: u32, mask: u32) {
 }
 
 fn sub_bytes(state: &mut State) {
+    debug_assert_eq!(state.len(), 8);
+
     let u7 = state[0];
     let u6 = state[1];
     let u5 = state[2];
@@ -216,6 +222,7 @@ fn sub_bytes(state: &mut State) {
 
 
 fn sub_bytes_nots(state: &mut State) {
+    debug_assert_eq!(state.len(), 8);
     state[0] ^= 0xffffffff;
     state[1] ^= 0xffffffff;
     state[5] ^= 0xffffffff;
@@ -223,6 +230,7 @@ fn sub_bytes_nots(state: &mut State) {
 }
 
 fn shift_rows_2(state: &mut State) {
+    debug_assert_eq!(state.len(), 8);
     for i in 0..8 {
         let mut x = state[i];
         delta_swap_1(&mut x, 4, 0x0f000f00);
@@ -235,6 +243,9 @@ fn ld_le(x: &[u8; 16], o: usize) -> u32 {
 }
 
 fn bitslice(input0: &[u8; 16], input1: &[u8; 16]) -> State {
+    debug_assert_eq!(input0.len(), 16);
+    debug_assert_eq!(input1.len(), 16);
+
     let mut t0 = ld_le(input0, 0x00);
     let mut t2 = ld_le(input0, 0x04);
     let mut t4 = ld_le(input0, 0x08);
@@ -262,6 +273,8 @@ fn bitslice(input0: &[u8; 16], input1: &[u8; 16]) -> State {
 }
 
 fn inv_bitslice(input: &State) -> [[u8; 16]; 2] {
+    debug_assert_eq!(input.len(), 8);
+
     let mut t0 = input[0];
     let mut t1 = input[1];
     let mut t2 = input[2];
@@ -471,6 +484,7 @@ pub fn encrypt_block(rkeys: [u32; 88], block: [u8; 16]) -> [u8; 16] {
 // the (8..72).step_by(32) adjustment loop -> `while`. Gate logic verbatim.
 
 fn shift_rows_1(state: &mut State) {
+    debug_assert_eq!(state.len(), 8);
     for i in 0..8 {
         let mut x = state[i];
         delta_swap_1(&mut x, 4, 0x0c0f0300);
@@ -479,6 +493,7 @@ fn shift_rows_1(state: &mut State) {
     }
 }
 fn shift_rows_3(state: &mut State) {
+    debug_assert_eq!(state.len(), 8);
     for i in 0..8 {
         let mut x = state[i];
         delta_swap_1(&mut x, 4, 0x030f0c00);
@@ -636,6 +651,8 @@ pub fn encrypt(key: [u8; 16], block: [u8; 16]) -> [u8; 16] {
 // 10-round `loop{...break}` is unrolled (fixed count), like encrypt.
 
 fn inv_sub_bytes(state: &mut State) {
+    debug_assert_eq!(state.len(), 8);
+
     let u7 = state[0];
     let u6 = state[1];
     let u5 = state[2];
