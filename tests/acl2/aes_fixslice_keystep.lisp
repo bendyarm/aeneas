@@ -78,22 +78,22 @@
   :hyp (and (unsigned-byte-p 8 a0) (unsigned-byte-p 8 a1) (unsigned-byte-p 8 a2) (unsigned-byte-p 8 a3) (unsigned-byte-p 8 a4) (unsigned-byte-p 8 a5) (unsigned-byte-p 8 a6) (unsigned-byte-p 8 a7) (unsigned-byte-p 8 a8) (unsigned-byte-p 8 a9) (unsigned-byte-p 8 a10) (unsigned-byte-p 8 a11) (unsigned-byte-p 8 a12) (unsigned-byte-p 8 a13) (unsigned-byte-p 8 a14) (unsigned-byte-p 8 a15))
   :concl
   (let* ((b (list a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15)))
-    (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 0)
-           (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes b 1) (kr-spec-bytes b 1)))))
+    (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 0)
+           (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes b 1) (kr-spec-bytes b 1)))))
   :g-bindings (gl::auto-bindings (:nat a0 8) (:nat a1 8) (:nat a2 8) (:nat a3 8) (:nat a4 8) (:nat a5 8) (:nat a6 8) (:nat a7 8) (:nat a8 8) (:nat a9 8) (:nat a10 8) (:nat a11 8) (:nat a12 8) (:nat a13 8) (:nat a14 8) (:nat a15 8)))
 
 (defthm step-star-0-bytes
   (implies (and (unsigned-byte-p 8 (nth 0 b)) (unsigned-byte-p 8 (nth 1 b)) (unsigned-byte-p 8 (nth 2 b)) (unsigned-byte-p 8 (nth 3 b)) (unsigned-byte-p 8 (nth 4 b)) (unsigned-byte-p 8 (nth 5 b)) (unsigned-byte-p 8 (nth 6 b)) (unsigned-byte-p 8 (nth 7 b)) (unsigned-byte-p 8 (nth 8 b)) (unsigned-byte-p 8 (nth 9 b)) (unsigned-byte-p 8 (nth 10 b)) (unsigned-byte-p 8 (nth 11 b)) (unsigned-byte-p 8 (nth 12 b)) (unsigned-byte-p 8 (nth 13 b)) (unsigned-byte-p 8 (nth 14 b)) (unsigned-byte-p 8 (nth 15 b)))
-           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)))) 0)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 1) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 1)))))
+           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)))) 0)
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 1) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 1)))))
   :hints (("Goal" :do-not-induct t
            :use ((:instance step-star-0-gl (a0 (nth 0 b)) (a1 (nth 1 b)) (a2 (nth 2 b)) (a3 (nth 3 b)) (a4 (nth 4 b)) (a5 (nth 5 b)) (a6 (nth 6 b)) (a7 (nth 7 b)) (a8 (nth 8 b)) (a9 (nth 9 b)) (a10 (nth 10 b)) (a11 (nth 11 b)) (a12 (nth 12 b)) (a13 (nth 13 b)) (a14 (nth 14 b)) (a15 (nth 15 b))))
            :in-theory (union-theories (theory 'ground-zero) '()))))
 
 (defthm step-star-0-general
   (implies (aes::inp b)
-           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 0)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes b 1) (kr-spec-bytes b 1)))))
+           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 0)
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes b 1) (kr-spec-bytes b 1)))))
   :hints (("Goal" :do-not-induct t
            :use (step-star-0-bytes (:instance expand-len-16 (x b)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 0)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 1)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 2)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 3)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 4)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 5)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 6)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 7)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 8)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 9)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 10)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 11)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 12)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 13)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 14)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 15)))
            :in-theory (union-theories (theory 'ground-zero)
@@ -104,22 +104,22 @@
   :hyp (and (unsigned-byte-p 8 a0) (unsigned-byte-p 8 a1) (unsigned-byte-p 8 a2) (unsigned-byte-p 8 a3) (unsigned-byte-p 8 a4) (unsigned-byte-p 8 a5) (unsigned-byte-p 8 a6) (unsigned-byte-p 8 a7) (unsigned-byte-p 8 a8) (unsigned-byte-p 8 a9) (unsigned-byte-p 8 a10) (unsigned-byte-p 8 a11) (unsigned-byte-p 8 a12) (unsigned-byte-p 8 a13) (unsigned-byte-p 8 a14) (unsigned-byte-p 8 a15))
   :concl
   (let* ((b (list a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15)))
-    (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 1)
-           (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes b 2) (kr-spec-bytes b 2)))))
+    (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 1)
+           (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes b 2) (kr-spec-bytes b 2)))))
   :g-bindings (gl::auto-bindings (:nat a0 8) (:nat a1 8) (:nat a2 8) (:nat a3 8) (:nat a4 8) (:nat a5 8) (:nat a6 8) (:nat a7 8) (:nat a8 8) (:nat a9 8) (:nat a10 8) (:nat a11 8) (:nat a12 8) (:nat a13 8) (:nat a14 8) (:nat a15 8)))
 
 (defthm step-star-1-bytes
   (implies (and (unsigned-byte-p 8 (nth 0 b)) (unsigned-byte-p 8 (nth 1 b)) (unsigned-byte-p 8 (nth 2 b)) (unsigned-byte-p 8 (nth 3 b)) (unsigned-byte-p 8 (nth 4 b)) (unsigned-byte-p 8 (nth 5 b)) (unsigned-byte-p 8 (nth 6 b)) (unsigned-byte-p 8 (nth 7 b)) (unsigned-byte-p 8 (nth 8 b)) (unsigned-byte-p 8 (nth 9 b)) (unsigned-byte-p 8 (nth 10 b)) (unsigned-byte-p 8 (nth 11 b)) (unsigned-byte-p 8 (nth 12 b)) (unsigned-byte-p 8 (nth 13 b)) (unsigned-byte-p 8 (nth 14 b)) (unsigned-byte-p 8 (nth 15 b)))
-           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)))) 1)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 2) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 2)))))
+           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)))) 1)
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 2) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 2)))))
   :hints (("Goal" :do-not-induct t
            :use ((:instance step-star-1-gl (a0 (nth 0 b)) (a1 (nth 1 b)) (a2 (nth 2 b)) (a3 (nth 3 b)) (a4 (nth 4 b)) (a5 (nth 5 b)) (a6 (nth 6 b)) (a7 (nth 7 b)) (a8 (nth 8 b)) (a9 (nth 9 b)) (a10 (nth 10 b)) (a11 (nth 11 b)) (a12 (nth 12 b)) (a13 (nth 13 b)) (a14 (nth 14 b)) (a15 (nth 15 b))))
            :in-theory (union-theories (theory 'ground-zero) '()))))
 
 (defthm step-star-1-general
   (implies (aes::inp b)
-           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 1)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes b 2) (kr-spec-bytes b 2)))))
+           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 1)
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes b 2) (kr-spec-bytes b 2)))))
   :hints (("Goal" :do-not-induct t
            :use (step-star-1-bytes (:instance expand-len-16 (x b)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 0)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 1)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 2)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 3)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 4)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 5)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 6)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 7)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 8)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 9)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 10)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 11)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 12)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 13)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 14)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 15)))
            :in-theory (union-theories (theory 'ground-zero)
@@ -130,22 +130,22 @@
   :hyp (and (unsigned-byte-p 8 a0) (unsigned-byte-p 8 a1) (unsigned-byte-p 8 a2) (unsigned-byte-p 8 a3) (unsigned-byte-p 8 a4) (unsigned-byte-p 8 a5) (unsigned-byte-p 8 a6) (unsigned-byte-p 8 a7) (unsigned-byte-p 8 a8) (unsigned-byte-p 8 a9) (unsigned-byte-p 8 a10) (unsigned-byte-p 8 a11) (unsigned-byte-p 8 a12) (unsigned-byte-p 8 a13) (unsigned-byte-p 8 a14) (unsigned-byte-p 8 a15))
   :concl
   (let* ((b (list a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15)))
-    (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 2)
-           (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes b 4) (kr-spec-bytes b 4)))))
+    (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 2)
+           (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes b 4) (kr-spec-bytes b 4)))))
   :g-bindings (gl::auto-bindings (:nat a0 8) (:nat a1 8) (:nat a2 8) (:nat a3 8) (:nat a4 8) (:nat a5 8) (:nat a6 8) (:nat a7 8) (:nat a8 8) (:nat a9 8) (:nat a10 8) (:nat a11 8) (:nat a12 8) (:nat a13 8) (:nat a14 8) (:nat a15 8)))
 
 (defthm step-star-2-bytes
   (implies (and (unsigned-byte-p 8 (nth 0 b)) (unsigned-byte-p 8 (nth 1 b)) (unsigned-byte-p 8 (nth 2 b)) (unsigned-byte-p 8 (nth 3 b)) (unsigned-byte-p 8 (nth 4 b)) (unsigned-byte-p 8 (nth 5 b)) (unsigned-byte-p 8 (nth 6 b)) (unsigned-byte-p 8 (nth 7 b)) (unsigned-byte-p 8 (nth 8 b)) (unsigned-byte-p 8 (nth 9 b)) (unsigned-byte-p 8 (nth 10 b)) (unsigned-byte-p 8 (nth 11 b)) (unsigned-byte-p 8 (nth 12 b)) (unsigned-byte-p 8 (nth 13 b)) (unsigned-byte-p 8 (nth 14 b)) (unsigned-byte-p 8 (nth 15 b)))
-           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)))) 2)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 4) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 4)))))
+           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)))) 2)
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 4) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 4)))))
   :hints (("Goal" :do-not-induct t
            :use ((:instance step-star-2-gl (a0 (nth 0 b)) (a1 (nth 1 b)) (a2 (nth 2 b)) (a3 (nth 3 b)) (a4 (nth 4 b)) (a5 (nth 5 b)) (a6 (nth 6 b)) (a7 (nth 7 b)) (a8 (nth 8 b)) (a9 (nth 9 b)) (a10 (nth 10 b)) (a11 (nth 11 b)) (a12 (nth 12 b)) (a13 (nth 13 b)) (a14 (nth 14 b)) (a15 (nth 15 b))))
            :in-theory (union-theories (theory 'ground-zero) '()))))
 
 (defthm step-star-2-general
   (implies (aes::inp b)
-           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 2)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes b 4) (kr-spec-bytes b 4)))))
+           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 2)
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes b 4) (kr-spec-bytes b 4)))))
   :hints (("Goal" :do-not-induct t
            :use (step-star-2-bytes (:instance expand-len-16 (x b)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 0)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 1)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 2)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 3)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 4)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 5)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 6)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 7)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 8)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 9)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 10)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 11)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 12)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 13)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 14)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 15)))
            :in-theory (union-theories (theory 'ground-zero)
@@ -156,22 +156,22 @@
   :hyp (and (unsigned-byte-p 8 a0) (unsigned-byte-p 8 a1) (unsigned-byte-p 8 a2) (unsigned-byte-p 8 a3) (unsigned-byte-p 8 a4) (unsigned-byte-p 8 a5) (unsigned-byte-p 8 a6) (unsigned-byte-p 8 a7) (unsigned-byte-p 8 a8) (unsigned-byte-p 8 a9) (unsigned-byte-p 8 a10) (unsigned-byte-p 8 a11) (unsigned-byte-p 8 a12) (unsigned-byte-p 8 a13) (unsigned-byte-p 8 a14) (unsigned-byte-p 8 a15))
   :concl
   (let* ((b (list a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15)))
-    (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 3)
-           (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes b 8) (kr-spec-bytes b 8)))))
+    (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 3)
+           (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes b 8) (kr-spec-bytes b 8)))))
   :g-bindings (gl::auto-bindings (:nat a0 8) (:nat a1 8) (:nat a2 8) (:nat a3 8) (:nat a4 8) (:nat a5 8) (:nat a6 8) (:nat a7 8) (:nat a8 8) (:nat a9 8) (:nat a10 8) (:nat a11 8) (:nat a12 8) (:nat a13 8) (:nat a14 8) (:nat a15 8)))
 
 (defthm step-star-3-bytes
   (implies (and (unsigned-byte-p 8 (nth 0 b)) (unsigned-byte-p 8 (nth 1 b)) (unsigned-byte-p 8 (nth 2 b)) (unsigned-byte-p 8 (nth 3 b)) (unsigned-byte-p 8 (nth 4 b)) (unsigned-byte-p 8 (nth 5 b)) (unsigned-byte-p 8 (nth 6 b)) (unsigned-byte-p 8 (nth 7 b)) (unsigned-byte-p 8 (nth 8 b)) (unsigned-byte-p 8 (nth 9 b)) (unsigned-byte-p 8 (nth 10 b)) (unsigned-byte-p 8 (nth 11 b)) (unsigned-byte-p 8 (nth 12 b)) (unsigned-byte-p 8 (nth 13 b)) (unsigned-byte-p 8 (nth 14 b)) (unsigned-byte-p 8 (nth 15 b)))
-           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)))) 3)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 8) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 8)))))
+           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)))) 3)
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 8) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 8)))))
   :hints (("Goal" :do-not-induct t
            :use ((:instance step-star-3-gl (a0 (nth 0 b)) (a1 (nth 1 b)) (a2 (nth 2 b)) (a3 (nth 3 b)) (a4 (nth 4 b)) (a5 (nth 5 b)) (a6 (nth 6 b)) (a7 (nth 7 b)) (a8 (nth 8 b)) (a9 (nth 9 b)) (a10 (nth 10 b)) (a11 (nth 11 b)) (a12 (nth 12 b)) (a13 (nth 13 b)) (a14 (nth 14 b)) (a15 (nth 15 b))))
            :in-theory (union-theories (theory 'ground-zero) '()))))
 
 (defthm step-star-3-general
   (implies (aes::inp b)
-           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 3)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes b 8) (kr-spec-bytes b 8)))))
+           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 3)
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes b 8) (kr-spec-bytes b 8)))))
   :hints (("Goal" :do-not-induct t
            :use (step-star-3-bytes (:instance expand-len-16 (x b)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 0)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 1)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 2)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 3)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 4)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 5)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 6)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 7)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 8)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 9)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 10)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 11)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 12)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 13)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 14)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 15)))
            :in-theory (union-theories (theory 'ground-zero)
@@ -182,22 +182,22 @@
   :hyp (and (unsigned-byte-p 8 a0) (unsigned-byte-p 8 a1) (unsigned-byte-p 8 a2) (unsigned-byte-p 8 a3) (unsigned-byte-p 8 a4) (unsigned-byte-p 8 a5) (unsigned-byte-p 8 a6) (unsigned-byte-p 8 a7) (unsigned-byte-p 8 a8) (unsigned-byte-p 8 a9) (unsigned-byte-p 8 a10) (unsigned-byte-p 8 a11) (unsigned-byte-p 8 a12) (unsigned-byte-p 8 a13) (unsigned-byte-p 8 a14) (unsigned-byte-p 8 a15))
   :concl
   (let* ((b (list a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15)))
-    (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 4)
-           (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes b 16) (kr-spec-bytes b 16)))))
+    (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 4)
+           (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes b 16) (kr-spec-bytes b 16)))))
   :g-bindings (gl::auto-bindings (:nat a0 8) (:nat a1 8) (:nat a2 8) (:nat a3 8) (:nat a4 8) (:nat a5 8) (:nat a6 8) (:nat a7 8) (:nat a8 8) (:nat a9 8) (:nat a10 8) (:nat a11 8) (:nat a12 8) (:nat a13 8) (:nat a14 8) (:nat a15 8)))
 
 (defthm step-star-4-bytes
   (implies (and (unsigned-byte-p 8 (nth 0 b)) (unsigned-byte-p 8 (nth 1 b)) (unsigned-byte-p 8 (nth 2 b)) (unsigned-byte-p 8 (nth 3 b)) (unsigned-byte-p 8 (nth 4 b)) (unsigned-byte-p 8 (nth 5 b)) (unsigned-byte-p 8 (nth 6 b)) (unsigned-byte-p 8 (nth 7 b)) (unsigned-byte-p 8 (nth 8 b)) (unsigned-byte-p 8 (nth 9 b)) (unsigned-byte-p 8 (nth 10 b)) (unsigned-byte-p 8 (nth 11 b)) (unsigned-byte-p 8 (nth 12 b)) (unsigned-byte-p 8 (nth 13 b)) (unsigned-byte-p 8 (nth 14 b)) (unsigned-byte-p 8 (nth 15 b)))
-           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)))) 4)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 16) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 16)))))
+           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)))) 4)
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 16) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 16)))))
   :hints (("Goal" :do-not-induct t
            :use ((:instance step-star-4-gl (a0 (nth 0 b)) (a1 (nth 1 b)) (a2 (nth 2 b)) (a3 (nth 3 b)) (a4 (nth 4 b)) (a5 (nth 5 b)) (a6 (nth 6 b)) (a7 (nth 7 b)) (a8 (nth 8 b)) (a9 (nth 9 b)) (a10 (nth 10 b)) (a11 (nth 11 b)) (a12 (nth 12 b)) (a13 (nth 13 b)) (a14 (nth 14 b)) (a15 (nth 15 b))))
            :in-theory (union-theories (theory 'ground-zero) '()))))
 
 (defthm step-star-4-general
   (implies (aes::inp b)
-           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 4)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes b 16) (kr-spec-bytes b 16)))))
+           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 4)
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes b 16) (kr-spec-bytes b 16)))))
   :hints (("Goal" :do-not-induct t
            :use (step-star-4-bytes (:instance expand-len-16 (x b)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 0)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 1)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 2)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 3)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 4)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 5)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 6)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 7)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 8)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 9)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 10)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 11)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 12)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 13)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 14)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 15)))
            :in-theory (union-theories (theory 'ground-zero)
@@ -208,22 +208,22 @@
   :hyp (and (unsigned-byte-p 8 a0) (unsigned-byte-p 8 a1) (unsigned-byte-p 8 a2) (unsigned-byte-p 8 a3) (unsigned-byte-p 8 a4) (unsigned-byte-p 8 a5) (unsigned-byte-p 8 a6) (unsigned-byte-p 8 a7) (unsigned-byte-p 8 a8) (unsigned-byte-p 8 a9) (unsigned-byte-p 8 a10) (unsigned-byte-p 8 a11) (unsigned-byte-p 8 a12) (unsigned-byte-p 8 a13) (unsigned-byte-p 8 a14) (unsigned-byte-p 8 a15))
   :concl
   (let* ((b (list a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15)))
-    (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 5)
-           (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes b 32) (kr-spec-bytes b 32)))))
+    (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 5)
+           (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes b 32) (kr-spec-bytes b 32)))))
   :g-bindings (gl::auto-bindings (:nat a0 8) (:nat a1 8) (:nat a2 8) (:nat a3 8) (:nat a4 8) (:nat a5 8) (:nat a6 8) (:nat a7 8) (:nat a8 8) (:nat a9 8) (:nat a10 8) (:nat a11 8) (:nat a12 8) (:nat a13 8) (:nat a14 8) (:nat a15 8)))
 
 (defthm step-star-5-bytes
   (implies (and (unsigned-byte-p 8 (nth 0 b)) (unsigned-byte-p 8 (nth 1 b)) (unsigned-byte-p 8 (nth 2 b)) (unsigned-byte-p 8 (nth 3 b)) (unsigned-byte-p 8 (nth 4 b)) (unsigned-byte-p 8 (nth 5 b)) (unsigned-byte-p 8 (nth 6 b)) (unsigned-byte-p 8 (nth 7 b)) (unsigned-byte-p 8 (nth 8 b)) (unsigned-byte-p 8 (nth 9 b)) (unsigned-byte-p 8 (nth 10 b)) (unsigned-byte-p 8 (nth 11 b)) (unsigned-byte-p 8 (nth 12 b)) (unsigned-byte-p 8 (nth 13 b)) (unsigned-byte-p 8 (nth 14 b)) (unsigned-byte-p 8 (nth 15 b)))
-           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)))) 5)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 32) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 32)))))
+           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)))) 5)
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 32) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 32)))))
   :hints (("Goal" :do-not-induct t
            :use ((:instance step-star-5-gl (a0 (nth 0 b)) (a1 (nth 1 b)) (a2 (nth 2 b)) (a3 (nth 3 b)) (a4 (nth 4 b)) (a5 (nth 5 b)) (a6 (nth 6 b)) (a7 (nth 7 b)) (a8 (nth 8 b)) (a9 (nth 9 b)) (a10 (nth 10 b)) (a11 (nth 11 b)) (a12 (nth 12 b)) (a13 (nth 13 b)) (a14 (nth 14 b)) (a15 (nth 15 b))))
            :in-theory (union-theories (theory 'ground-zero) '()))))
 
 (defthm step-star-5-general
   (implies (aes::inp b)
-           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 5)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes b 32) (kr-spec-bytes b 32)))))
+           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 5)
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes b 32) (kr-spec-bytes b 32)))))
   :hints (("Goal" :do-not-induct t
            :use (step-star-5-bytes (:instance expand-len-16 (x b)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 0)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 1)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 2)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 3)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 4)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 5)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 6)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 7)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 8)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 9)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 10)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 11)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 12)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 13)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 14)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 15)))
            :in-theory (union-theories (theory 'ground-zero)
@@ -234,22 +234,22 @@
   :hyp (and (unsigned-byte-p 8 a0) (unsigned-byte-p 8 a1) (unsigned-byte-p 8 a2) (unsigned-byte-p 8 a3) (unsigned-byte-p 8 a4) (unsigned-byte-p 8 a5) (unsigned-byte-p 8 a6) (unsigned-byte-p 8 a7) (unsigned-byte-p 8 a8) (unsigned-byte-p 8 a9) (unsigned-byte-p 8 a10) (unsigned-byte-p 8 a11) (unsigned-byte-p 8 a12) (unsigned-byte-p 8 a13) (unsigned-byte-p 8 a14) (unsigned-byte-p 8 a15))
   :concl
   (let* ((b (list a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15)))
-    (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 6)
-           (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes b 64) (kr-spec-bytes b 64)))))
+    (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 6)
+           (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes b 64) (kr-spec-bytes b 64)))))
   :g-bindings (gl::auto-bindings (:nat a0 8) (:nat a1 8) (:nat a2 8) (:nat a3 8) (:nat a4 8) (:nat a5 8) (:nat a6 8) (:nat a7 8) (:nat a8 8) (:nat a9 8) (:nat a10 8) (:nat a11 8) (:nat a12 8) (:nat a13 8) (:nat a14 8) (:nat a15 8)))
 
 (defthm step-star-6-bytes
   (implies (and (unsigned-byte-p 8 (nth 0 b)) (unsigned-byte-p 8 (nth 1 b)) (unsigned-byte-p 8 (nth 2 b)) (unsigned-byte-p 8 (nth 3 b)) (unsigned-byte-p 8 (nth 4 b)) (unsigned-byte-p 8 (nth 5 b)) (unsigned-byte-p 8 (nth 6 b)) (unsigned-byte-p 8 (nth 7 b)) (unsigned-byte-p 8 (nth 8 b)) (unsigned-byte-p 8 (nth 9 b)) (unsigned-byte-p 8 (nth 10 b)) (unsigned-byte-p 8 (nth 11 b)) (unsigned-byte-p 8 (nth 12 b)) (unsigned-byte-p 8 (nth 13 b)) (unsigned-byte-p 8 (nth 14 b)) (unsigned-byte-p 8 (nth 15 b)))
-           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)))) 6)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 64) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 64)))))
+           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)))) 6)
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 64) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 64)))))
   :hints (("Goal" :do-not-induct t
            :use ((:instance step-star-6-gl (a0 (nth 0 b)) (a1 (nth 1 b)) (a2 (nth 2 b)) (a3 (nth 3 b)) (a4 (nth 4 b)) (a5 (nth 5 b)) (a6 (nth 6 b)) (a7 (nth 7 b)) (a8 (nth 8 b)) (a9 (nth 9 b)) (a10 (nth 10 b)) (a11 (nth 11 b)) (a12 (nth 12 b)) (a13 (nth 13 b)) (a14 (nth 14 b)) (a15 (nth 15 b))))
            :in-theory (union-theories (theory 'ground-zero) '()))))
 
 (defthm step-star-6-general
   (implies (aes::inp b)
-           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 6)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes b 64) (kr-spec-bytes b 64)))))
+           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 6)
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes b 64) (kr-spec-bytes b 64)))))
   :hints (("Goal" :do-not-induct t
            :use (step-star-6-bytes (:instance expand-len-16 (x b)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 0)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 1)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 2)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 3)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 4)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 5)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 6)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 7)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 8)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 9)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 10)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 11)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 12)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 13)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 14)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 15)))
            :in-theory (union-theories (theory 'ground-zero)
@@ -260,22 +260,22 @@
   :hyp (and (unsigned-byte-p 8 a0) (unsigned-byte-p 8 a1) (unsigned-byte-p 8 a2) (unsigned-byte-p 8 a3) (unsigned-byte-p 8 a4) (unsigned-byte-p 8 a5) (unsigned-byte-p 8 a6) (unsigned-byte-p 8 a7) (unsigned-byte-p 8 a8) (unsigned-byte-p 8 a9) (unsigned-byte-p 8 a10) (unsigned-byte-p 8 a11) (unsigned-byte-p 8 a12) (unsigned-byte-p 8 a13) (unsigned-byte-p 8 a14) (unsigned-byte-p 8 a15))
   :concl
   (let* ((b (list a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15)))
-    (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 7)
-           (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes b 128) (kr-spec-bytes b 128)))))
+    (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 7)
+           (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes b 128) (kr-spec-bytes b 128)))))
   :g-bindings (gl::auto-bindings (:nat a0 8) (:nat a1 8) (:nat a2 8) (:nat a3 8) (:nat a4 8) (:nat a5 8) (:nat a6 8) (:nat a7 8) (:nat a8 8) (:nat a9 8) (:nat a10 8) (:nat a11 8) (:nat a12 8) (:nat a13 8) (:nat a14 8) (:nat a15 8)))
 
 (defthm step-star-7-bytes
   (implies (and (unsigned-byte-p 8 (nth 0 b)) (unsigned-byte-p 8 (nth 1 b)) (unsigned-byte-p 8 (nth 2 b)) (unsigned-byte-p 8 (nth 3 b)) (unsigned-byte-p 8 (nth 4 b)) (unsigned-byte-p 8 (nth 5 b)) (unsigned-byte-p 8 (nth 6 b)) (unsigned-byte-p 8 (nth 7 b)) (unsigned-byte-p 8 (nth 8 b)) (unsigned-byte-p 8 (nth 9 b)) (unsigned-byte-p 8 (nth 10 b)) (unsigned-byte-p 8 (nth 11 b)) (unsigned-byte-p 8 (nth 12 b)) (unsigned-byte-p 8 (nth 13 b)) (unsigned-byte-p 8 (nth 14 b)) (unsigned-byte-p 8 (nth 15 b)))
-           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)))) 7)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 128) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 128)))))
+           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)))) 7)
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 128) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 128)))))
   :hints (("Goal" :do-not-induct t
            :use ((:instance step-star-7-gl (a0 (nth 0 b)) (a1 (nth 1 b)) (a2 (nth 2 b)) (a3 (nth 3 b)) (a4 (nth 4 b)) (a5 (nth 5 b)) (a6 (nth 6 b)) (a7 (nth 7 b)) (a8 (nth 8 b)) (a9 (nth 9 b)) (a10 (nth 10 b)) (a11 (nth 11 b)) (a12 (nth 12 b)) (a13 (nth 13 b)) (a14 (nth 14 b)) (a15 (nth 15 b))))
            :in-theory (union-theories (theory 'ground-zero) '()))))
 
 (defthm step-star-7-general
   (implies (aes::inp b)
-           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 7)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes b 128) (kr-spec-bytes b 128)))))
+           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 7)
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes b 128) (kr-spec-bytes b 128)))))
   :hints (("Goal" :do-not-induct t
            :use (step-star-7-bytes (:instance expand-len-16 (x b)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 0)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 1)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 2)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 3)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 4)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 5)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 6)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 7)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 8)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 9)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 10)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 11)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 12)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 13)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 14)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 15)))
            :in-theory (union-theories (theory 'ground-zero)
@@ -286,22 +286,22 @@
   :hyp (and (unsigned-byte-p 8 a0) (unsigned-byte-p 8 a1) (unsigned-byte-p 8 a2) (unsigned-byte-p 8 a3) (unsigned-byte-p 8 a4) (unsigned-byte-p 8 a5) (unsigned-byte-p 8 a6) (unsigned-byte-p 8 a7) (unsigned-byte-p 8 a8) (unsigned-byte-p 8 a9) (unsigned-byte-p 8 a10) (unsigned-byte-p 8 a11) (unsigned-byte-p 8 a12) (unsigned-byte-p 8 a13) (unsigned-byte-p 8 a14) (unsigned-byte-p 8 a15))
   :concl
   (let* ((b (list a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15)))
-    (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 8)
-           (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes b 27) (kr-spec-bytes b 27)))))
+    (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 8)
+           (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes b 27) (kr-spec-bytes b 27)))))
   :g-bindings (gl::auto-bindings (:nat a0 8) (:nat a1 8) (:nat a2 8) (:nat a3 8) (:nat a4 8) (:nat a5 8) (:nat a6 8) (:nat a7 8) (:nat a8 8) (:nat a9 8) (:nat a10 8) (:nat a11 8) (:nat a12 8) (:nat a13 8) (:nat a14 8) (:nat a15 8)))
 
 (defthm step-star-8-bytes
   (implies (and (unsigned-byte-p 8 (nth 0 b)) (unsigned-byte-p 8 (nth 1 b)) (unsigned-byte-p 8 (nth 2 b)) (unsigned-byte-p 8 (nth 3 b)) (unsigned-byte-p 8 (nth 4 b)) (unsigned-byte-p 8 (nth 5 b)) (unsigned-byte-p 8 (nth 6 b)) (unsigned-byte-p 8 (nth 7 b)) (unsigned-byte-p 8 (nth 8 b)) (unsigned-byte-p 8 (nth 9 b)) (unsigned-byte-p 8 (nth 10 b)) (unsigned-byte-p 8 (nth 11 b)) (unsigned-byte-p 8 (nth 12 b)) (unsigned-byte-p 8 (nth 13 b)) (unsigned-byte-p 8 (nth 14 b)) (unsigned-byte-p 8 (nth 15 b)))
-           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)))) 8)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 27) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 27)))))
+           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)))) 8)
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 27) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 27)))))
   :hints (("Goal" :do-not-induct t
            :use ((:instance step-star-8-gl (a0 (nth 0 b)) (a1 (nth 1 b)) (a2 (nth 2 b)) (a3 (nth 3 b)) (a4 (nth 4 b)) (a5 (nth 5 b)) (a6 (nth 6 b)) (a7 (nth 7 b)) (a8 (nth 8 b)) (a9 (nth 9 b)) (a10 (nth 10 b)) (a11 (nth 11 b)) (a12 (nth 12 b)) (a13 (nth 13 b)) (a14 (nth 14 b)) (a15 (nth 15 b))))
            :in-theory (union-theories (theory 'ground-zero) '()))))
 
 (defthm step-star-8-general
   (implies (aes::inp b)
-           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 8)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes b 27) (kr-spec-bytes b 27)))))
+           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 8)
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes b 27) (kr-spec-bytes b 27)))))
   :hints (("Goal" :do-not-induct t
            :use (step-star-8-bytes (:instance expand-len-16 (x b)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 0)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 1)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 2)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 3)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 4)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 5)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 6)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 7)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 8)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 9)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 10)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 11)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 12)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 13)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 14)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 15)))
            :in-theory (union-theories (theory 'ground-zero)
@@ -312,22 +312,22 @@
   :hyp (and (unsigned-byte-p 8 a0) (unsigned-byte-p 8 a1) (unsigned-byte-p 8 a2) (unsigned-byte-p 8 a3) (unsigned-byte-p 8 a4) (unsigned-byte-p 8 a5) (unsigned-byte-p 8 a6) (unsigned-byte-p 8 a7) (unsigned-byte-p 8 a8) (unsigned-byte-p 8 a9) (unsigned-byte-p 8 a10) (unsigned-byte-p 8 a11) (unsigned-byte-p 8 a12) (unsigned-byte-p 8 a13) (unsigned-byte-p 8 a14) (unsigned-byte-p 8 a15))
   :concl
   (let* ((b (list a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15)))
-    (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 9)
-           (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes b 54) (kr-spec-bytes b 54)))))
+    (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 9)
+           (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes b 54) (kr-spec-bytes b 54)))))
   :g-bindings (gl::auto-bindings (:nat a0 8) (:nat a1 8) (:nat a2 8) (:nat a3 8) (:nat a4 8) (:nat a5 8) (:nat a6 8) (:nat a7 8) (:nat a8 8) (:nat a9 8) (:nat a10 8) (:nat a11 8) (:nat a12 8) (:nat a13 8) (:nat a14 8) (:nat a15 8)))
 
 (defthm step-star-9-bytes
   (implies (and (unsigned-byte-p 8 (nth 0 b)) (unsigned-byte-p 8 (nth 1 b)) (unsigned-byte-p 8 (nth 2 b)) (unsigned-byte-p 8 (nth 3 b)) (unsigned-byte-p 8 (nth 4 b)) (unsigned-byte-p 8 (nth 5 b)) (unsigned-byte-p 8 (nth 6 b)) (unsigned-byte-p 8 (nth 7 b)) (unsigned-byte-p 8 (nth 8 b)) (unsigned-byte-p 8 (nth 9 b)) (unsigned-byte-p 8 (nth 10 b)) (unsigned-byte-p 8 (nth 11 b)) (unsigned-byte-p 8 (nth 12 b)) (unsigned-byte-p 8 (nth 13 b)) (unsigned-byte-p 8 (nth 14 b)) (unsigned-byte-p 8 (nth 15 b)))
-           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)))) 9)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 54) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 54)))))
+           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)))) 9)
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 54) (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 54)))))
   :hints (("Goal" :do-not-induct t
            :use ((:instance step-star-9-gl (a0 (nth 0 b)) (a1 (nth 1 b)) (a2 (nth 2 b)) (a3 (nth 3 b)) (a4 (nth 4 b)) (a5 (nth 5 b)) (a6 (nth 6 b)) (a7 (nth 7 b)) (a8 (nth 8 b)) (a9 (nth 9 b)) (a10 (nth 10 b)) (a11 (nth 11 b)) (a12 (nth 12 b)) (a13 (nth 13 b)) (a14 (nth 14 b)) (a15 (nth 15 b))))
            :in-theory (union-theories (theory 'ground-zero) '()))))
 
 (defthm step-star-9-general
   (implies (aes::inp b)
-           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 9)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (kr-spec-bytes b 54) (kr-spec-bytes b 54)))))
+           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 9)
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kr-spec-bytes b 54) (kr-spec-bytes b 54)))))
   :hints (("Goal" :do-not-induct t
            :use (step-star-9-bytes (:instance expand-len-16 (x b)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 0)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 1)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 2)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 3)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 4)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 5)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 6)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 7)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 8)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 9)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 10)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 11)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 12)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 13)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 14)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b) (i 15)))
            :in-theory (union-theories (theory 'ground-zero)

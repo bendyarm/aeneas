@@ -24,7 +24,7 @@
   :hyp (and (unsigned-byte-p 8 a0) (unsigned-byte-p 8 a1) (unsigned-byte-p 8 a2) (unsigned-byte-p 8 a3) (unsigned-byte-p 8 a4) (unsigned-byte-p 8 a5) (unsigned-byte-p 8 a6) (unsigned-byte-p 8 a7) (unsigned-byte-p 8 a8) (unsigned-byte-p 8 a9) (unsigned-byte-p 8 a10) (unsigned-byte-p 8 a11) (unsigned-byte-p 8 a12) (unsigned-byte-p 8 a13) (unsigned-byte-p 8 a14) (unsigned-byte-p 8 a15))
   :concl
   (let* ((b (list a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15))
-         (rk0 (append (result-ok->val (aes-fixslice-encrypt-bitslice b b)) (make-list 80 :initial-element 0)))
+         (rk0 (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) (make-list 80 :initial-element 0)))
          (rk1 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rk0 0 0)))))
     (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice (take 8 (nthcdr 8 rk1)))))
            (kr-spec-bytes b 1)))
@@ -34,7 +34,7 @@
   :hyp (and (unsigned-byte-p 8 a0) (unsigned-byte-p 8 a1) (unsigned-byte-p 8 a2) (unsigned-byte-p 8 a3) (unsigned-byte-p 8 a4) (unsigned-byte-p 8 a5) (unsigned-byte-p 8 a6) (unsigned-byte-p 8 a7) (unsigned-byte-p 8 a8) (unsigned-byte-p 8 a9) (unsigned-byte-p 8 a10) (unsigned-byte-p 8 a11) (unsigned-byte-p 8 a12) (unsigned-byte-p 8 a13) (unsigned-byte-p 8 a14) (unsigned-byte-p 8 a15))
   :concl
   (let* ((b (list a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15))
-         (rk0 (append (result-ok->val (aes-fixslice-encrypt-bitslice b b)) (make-list 80 :initial-element 0)))
+         (rk0 (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) (make-list 80 :initial-element 0)))
          (rk1 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rk0 0 1)))))
     (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice (take 8 (nthcdr 8 rk1)))))
            (kr-spec-bytes b 2)))
@@ -44,7 +44,7 @@
   :hyp (and (unsigned-byte-p 8 a0) (unsigned-byte-p 8 a1) (unsigned-byte-p 8 a2) (unsigned-byte-p 8 a3) (unsigned-byte-p 8 a4) (unsigned-byte-p 8 a5) (unsigned-byte-p 8 a6) (unsigned-byte-p 8 a7) (unsigned-byte-p 8 a8) (unsigned-byte-p 8 a9) (unsigned-byte-p 8 a10) (unsigned-byte-p 8 a11) (unsigned-byte-p 8 a12) (unsigned-byte-p 8 a13) (unsigned-byte-p 8 a14) (unsigned-byte-p 8 a15))
   :concl
   (let* ((b (list a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15))
-         (rk0 (append (result-ok->val (aes-fixslice-encrypt-bitslice b b)) (make-list 80 :initial-element 0)))
+         (rk0 (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) (make-list 80 :initial-element 0)))
          (rk1 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rk0 0 2)))))
     (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice (take 8 (nthcdr 8 rk1)))))
            (kr-spec-bytes b 4)))
@@ -54,7 +54,7 @@
   :hyp (and (unsigned-byte-p 8 a0) (unsigned-byte-p 8 a1) (unsigned-byte-p 8 a2) (unsigned-byte-p 8 a3) (unsigned-byte-p 8 a4) (unsigned-byte-p 8 a5) (unsigned-byte-p 8 a6) (unsigned-byte-p 8 a7) (unsigned-byte-p 8 a8) (unsigned-byte-p 8 a9) (unsigned-byte-p 8 a10) (unsigned-byte-p 8 a11) (unsigned-byte-p 8 a12) (unsigned-byte-p 8 a13) (unsigned-byte-p 8 a14) (unsigned-byte-p 8 a15))
   :concl
   (let* ((b (list a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15))
-         (rk0 (append (result-ok->val (aes-fixslice-encrypt-bitslice b b)) (make-list 80 :initial-element 0)))
+         (rk0 (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) (make-list 80 :initial-element 0)))
          (rk1 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rk0 0 3)))))
     (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice (take 8 (nthcdr 8 rk1)))))
            (kr-spec-bytes b 8)))
@@ -64,7 +64,7 @@
   :hyp (and (unsigned-byte-p 8 a0) (unsigned-byte-p 8 a1) (unsigned-byte-p 8 a2) (unsigned-byte-p 8 a3) (unsigned-byte-p 8 a4) (unsigned-byte-p 8 a5) (unsigned-byte-p 8 a6) (unsigned-byte-p 8 a7) (unsigned-byte-p 8 a8) (unsigned-byte-p 8 a9) (unsigned-byte-p 8 a10) (unsigned-byte-p 8 a11) (unsigned-byte-p 8 a12) (unsigned-byte-p 8 a13) (unsigned-byte-p 8 a14) (unsigned-byte-p 8 a15))
   :concl
   (let* ((b (list a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15))
-         (rk0 (append (result-ok->val (aes-fixslice-encrypt-bitslice b b)) (make-list 80 :initial-element 0)))
+         (rk0 (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) (make-list 80 :initial-element 0)))
          (rk1 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rk0 0 4)))))
     (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice (take 8 (nthcdr 8 rk1)))))
            (kr-spec-bytes b 16)))
@@ -74,7 +74,7 @@
   :hyp (and (unsigned-byte-p 8 a0) (unsigned-byte-p 8 a1) (unsigned-byte-p 8 a2) (unsigned-byte-p 8 a3) (unsigned-byte-p 8 a4) (unsigned-byte-p 8 a5) (unsigned-byte-p 8 a6) (unsigned-byte-p 8 a7) (unsigned-byte-p 8 a8) (unsigned-byte-p 8 a9) (unsigned-byte-p 8 a10) (unsigned-byte-p 8 a11) (unsigned-byte-p 8 a12) (unsigned-byte-p 8 a13) (unsigned-byte-p 8 a14) (unsigned-byte-p 8 a15))
   :concl
   (let* ((b (list a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15))
-         (rk0 (append (result-ok->val (aes-fixslice-encrypt-bitslice b b)) (make-list 80 :initial-element 0)))
+         (rk0 (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) (make-list 80 :initial-element 0)))
          (rk1 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rk0 0 5)))))
     (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice (take 8 (nthcdr 8 rk1)))))
            (kr-spec-bytes b 32)))
@@ -84,7 +84,7 @@
   :hyp (and (unsigned-byte-p 8 a0) (unsigned-byte-p 8 a1) (unsigned-byte-p 8 a2) (unsigned-byte-p 8 a3) (unsigned-byte-p 8 a4) (unsigned-byte-p 8 a5) (unsigned-byte-p 8 a6) (unsigned-byte-p 8 a7) (unsigned-byte-p 8 a8) (unsigned-byte-p 8 a9) (unsigned-byte-p 8 a10) (unsigned-byte-p 8 a11) (unsigned-byte-p 8 a12) (unsigned-byte-p 8 a13) (unsigned-byte-p 8 a14) (unsigned-byte-p 8 a15))
   :concl
   (let* ((b (list a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15))
-         (rk0 (append (result-ok->val (aes-fixslice-encrypt-bitslice b b)) (make-list 80 :initial-element 0)))
+         (rk0 (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) (make-list 80 :initial-element 0)))
          (rk1 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rk0 0 6)))))
     (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice (take 8 (nthcdr 8 rk1)))))
            (kr-spec-bytes b 64)))
@@ -94,7 +94,7 @@
   :hyp (and (unsigned-byte-p 8 a0) (unsigned-byte-p 8 a1) (unsigned-byte-p 8 a2) (unsigned-byte-p 8 a3) (unsigned-byte-p 8 a4) (unsigned-byte-p 8 a5) (unsigned-byte-p 8 a6) (unsigned-byte-p 8 a7) (unsigned-byte-p 8 a8) (unsigned-byte-p 8 a9) (unsigned-byte-p 8 a10) (unsigned-byte-p 8 a11) (unsigned-byte-p 8 a12) (unsigned-byte-p 8 a13) (unsigned-byte-p 8 a14) (unsigned-byte-p 8 a15))
   :concl
   (let* ((b (list a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15))
-         (rk0 (append (result-ok->val (aes-fixslice-encrypt-bitslice b b)) (make-list 80 :initial-element 0)))
+         (rk0 (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) (make-list 80 :initial-element 0)))
          (rk1 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rk0 0 7)))))
     (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice (take 8 (nthcdr 8 rk1)))))
            (kr-spec-bytes b 128)))
@@ -104,7 +104,7 @@
   :hyp (and (unsigned-byte-p 8 a0) (unsigned-byte-p 8 a1) (unsigned-byte-p 8 a2) (unsigned-byte-p 8 a3) (unsigned-byte-p 8 a4) (unsigned-byte-p 8 a5) (unsigned-byte-p 8 a6) (unsigned-byte-p 8 a7) (unsigned-byte-p 8 a8) (unsigned-byte-p 8 a9) (unsigned-byte-p 8 a10) (unsigned-byte-p 8 a11) (unsigned-byte-p 8 a12) (unsigned-byte-p 8 a13) (unsigned-byte-p 8 a14) (unsigned-byte-p 8 a15))
   :concl
   (let* ((b (list a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15))
-         (rk0 (append (result-ok->val (aes-fixslice-encrypt-bitslice b b)) (make-list 80 :initial-element 0)))
+         (rk0 (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) (make-list 80 :initial-element 0)))
          (rk1 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rk0 0 8)))))
     (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice (take 8 (nthcdr 8 rk1)))))
            (kr-spec-bytes b 27)))
@@ -114,7 +114,7 @@
   :hyp (and (unsigned-byte-p 8 a0) (unsigned-byte-p 8 a1) (unsigned-byte-p 8 a2) (unsigned-byte-p 8 a3) (unsigned-byte-p 8 a4) (unsigned-byte-p 8 a5) (unsigned-byte-p 8 a6) (unsigned-byte-p 8 a7) (unsigned-byte-p 8 a8) (unsigned-byte-p 8 a9) (unsigned-byte-p 8 a10) (unsigned-byte-p 8 a11) (unsigned-byte-p 8 a12) (unsigned-byte-p 8 a13) (unsigned-byte-p 8 a14) (unsigned-byte-p 8 a15))
   :concl
   (let* ((b (list a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15))
-         (rk0 (append (result-ok->val (aes-fixslice-encrypt-bitslice b b)) (make-list 80 :initial-element 0)))
+         (rk0 (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) (make-list 80 :initial-element 0)))
          (rk1 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rk0 0 9)))))
     (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice (take 8 (nthcdr 8 rk1)))))
            (kr-spec-bytes b 54)))

@@ -11,6 +11,7 @@
 (in-package "ACL2")
 (include-book "aes_fixslice_keyread")
 (local (include-book "std/lists/nth" :dir :system))
+(local (include-book "std/lists/update-nth" :dir :system))
 (local (include-book "kestrel/bv/logand" :dir :system))
 (local (in-theory (disable len-when-wstatep true-listp-when-wstatep nth-when-zp)))
 
@@ -183,13 +184,19 @@
 (local (defthm rk-invb-explicit
   (equal (result-kind (aes-fixslice-encrypt-inv-bitslice (list a0 a1 a2 a3 a4 a5 a6 a7))) :ok)
   :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-bitslice)
-                                  (u32-xor u32-and u32-or u32-shl u32-shr u8-cast
-                                   aes-fixslice-encrypt-delta-swap-2))))))
+                                  (u32-xor u32-and u32-or u32-shl u32-shr
+                                   aes-fixslice-encrypt-delta-swap-2
+                                   vec-index-range vec-update-range
+                                   slice-copy-from-slice u32-to-le-bytes
+                                   take nthcdr append update-nth))))))
 (local (defthm rp-invb-explicit
   (result-p (aes-fixslice-encrypt-inv-bitslice (list a0 a1 a2 a3 a4 a5 a6 a7)))
   :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-bitslice)
-                                  (u32-xor u32-and u32-or u32-shl u32-shr u8-cast
-                                   aes-fixslice-encrypt-delta-swap-2))))))
+                                  (u32-xor u32-and u32-or u32-shl u32-shr
+                                   aes-fixslice-encrypt-delta-swap-2
+                                   vec-index-range vec-update-range
+                                   slice-copy-from-slice u32-to-le-bytes
+                                   take nthcdr append update-nth))))))
 (defthm result-kind-of-inv-bitslice-len
   (implies (and (true-listp s) (equal (len s) 8))
            (equal (result-kind (aes-fixslice-encrypt-inv-bitslice s)) :ok))
@@ -269,7 +276,7 @@
   :hints (("Goal" :in-theory (enable st8p)))))
 (defthm st8p-of-bitslice
   (implies (and (aes::inp b0) (aes::inp b1))
-           (st8p (result-ok->val (aes-fixslice-encrypt-bitslice b0 b1))))
+           (st8p (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b0 b1))))
   :hints (("Goal" :in-theory (e/d (st8p len-when-wstatep true-listp-when-wstatep)
                                   (aes-fixslice-encrypt-bitslice))
            :use (:instance wstatep-of-bitslice))))
@@ -438,13 +445,14 @@
                 (true-listp rk) (equal (len rk) 88))
            (equal (aes-fixslice-encrypt-aes128-encrypt 100 rk b0 b1)
                   (aes-fixslice-encrypt-inv-bitslice
-                    (enc-chain rk (result-ok->val (aes-fixslice-encrypt-bitslice b0 b1))))))
+                    (enc-chain rk (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b0 b1))))))
   :hints (("Goal" :do-not-induct t
            :in-theory (union-theories (theory 'ground-zero)
                         '((:definition aes-fixslice-encrypt-aes128-encrypt)
                           (:definition enc-chain)
                           (:definition not)
                           (:rewrite bitslice-ok) (:rewrite st8p-of-bitslice)
+                          (:executable-counterpart array-repeat)
                           (:rewrite st8p-of-arkw-spec) (:rewrite st8p-of-sb)
                           (:rewrite st8p-of-mc0) (:rewrite st8p-of-mc1)
                           (:rewrite st8p-of-mc2) (:rewrite st8p-of-mc3)
@@ -480,7 +488,7 @@
                                       aes-fixslice-encrypt-inv-bitslice enc-chain
                                       aes-fixslice-encrypt-bitslice st8p))
            :use (enc-collapse
-                 (:instance st8p-of-enc-chain (s (result-ok->val (aes-fixslice-encrypt-bitslice b0 b1))))
-                 (:instance st8p-open (s (enc-chain rk (result-ok->val (aes-fixslice-encrypt-bitslice b0 b1)))))
+                 (:instance st8p-of-enc-chain (s (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b0 b1))))
+                 (:instance st8p-open (s (enc-chain rk (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b0 b1)))))
                  (:instance result-kind-of-inv-bitslice-len
-                   (s (enc-chain rk (result-ok->val (aes-fixslice-encrypt-bitslice b0 b1)))))))))
+                   (s (enc-chain rk (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b0 b1)))))))))

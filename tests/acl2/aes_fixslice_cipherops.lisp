@@ -28,7 +28,7 @@
   (let ((blk0 (list a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15)) (blk1 (list b0 b1 b2 b3 b4 b5 b6 b7 b8 b9 b10 b11 b12 b13 b14 b15)))
     (equal (result-ok->val
              (aes-fixslice-encrypt-inv-bitslice
-               (result-ok->val (aes-fixslice-encrypt-sub-bytes (result-ok->val (aes-fixslice-encrypt-bitslice blk0 blk1))))))
+               (result-ok->val (aes-fixslice-encrypt-sub-bytes (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) blk0 blk1))))))
            (list (sub-bytes-nots-bytes (map-sbox16 blk0))
                  (sub-bytes-nots-bytes (map-sbox16 blk1)))))
   :g-bindings (gl::auto-bindings (:nat a0 8) (:nat a1 8) (:nat a2 8) (:nat a3 8) (:nat a4 8) (:nat a5 8) (:nat a6 8) (:nat a7 8) (:nat a8 8) (:nat a9 8) (:nat a10 8) (:nat a11 8) (:nat a12 8) (:nat a13 8) (:nat a14 8) (:nat a15 8) (:nat b0 8) (:nat b1 8) (:nat b2 8) (:nat b3 8) (:nat b4 8) (:nat b5 8) (:nat b6 8) (:nat b7 8) (:nat b8 8) (:nat b9 8) (:nat b10 8) (:nat b11 8) (:nat b12 8) (:nat b13 8) (:nat b14 8) (:nat b15 8)))
@@ -36,7 +36,7 @@
   (implies (and (aes::inp b0) (aes::inp b1))
            (equal (result-ok->val
                     (aes-fixslice-encrypt-inv-bitslice
-                      (result-ok->val (aes-fixslice-encrypt-sub-bytes (result-ok->val (aes-fixslice-encrypt-bitslice b0 b1))))))
+                      (result-ok->val (aes-fixslice-encrypt-sub-bytes (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b0 b1))))))
                   (list (sub-bytes-nots-bytes (map-sbox16 b0))
                         (sub-bytes-nots-bytes (map-sbox16 b1)))))
   :hints (("Goal"

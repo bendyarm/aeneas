@@ -20,7 +20,7 @@
 (defthm window-bitslice-0
   (implies (aes::inp key)
            (equal (rd8 (result-ok->val (aes-fixslice-encrypt-aes128-key-schedule 100 key)) 0)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (kk-iter key 0) (kk-iter key 0)))))
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kk-iter key 0) (kk-iter key 0)))))
   :hints (("Goal" :do-not-induct t
            :use (core-windows-are-bitslice-of-keyexpansion)
            :in-theory (union-theories (theory 'ground-zero)
@@ -64,7 +64,7 @@
 (defthm window-bitslice-1
   (implies (aes::inp key)
            (equal (rd8 (result-ok->val (aes-fixslice-encrypt-aes128-key-schedule 100 key)) 8)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (sub-bytes-nots-bytes (inv-shift-rows-1-bytes (kk-iter key 1))) (sub-bytes-nots-bytes (inv-shift-rows-1-bytes (kk-iter key 1)))))))
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (sub-bytes-nots-bytes (inv-shift-rows-1-bytes (kk-iter key 1))) (sub-bytes-nots-bytes (inv-shift-rows-1-bytes (kk-iter key 1)))))))
   :hints (("Goal" :do-not-induct t
            :use (core-windows-are-bitslice-of-keyexpansion)
            :in-theory (union-theories (theory 'ground-zero)
@@ -112,7 +112,7 @@
 (defthm window-bitslice-2
   (implies (aes::inp key)
            (equal (rd8 (result-ok->val (aes-fixslice-encrypt-aes128-key-schedule 100 key)) 16)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (sub-bytes-nots-bytes (inv-shift-rows-2-bytes (kk-iter key 2))) (sub-bytes-nots-bytes (inv-shift-rows-2-bytes (kk-iter key 2)))))))
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (sub-bytes-nots-bytes (inv-shift-rows-2-bytes (kk-iter key 2))) (sub-bytes-nots-bytes (inv-shift-rows-2-bytes (kk-iter key 2)))))))
   :hints (("Goal" :do-not-induct t
            :use (core-windows-are-bitslice-of-keyexpansion)
            :in-theory (union-theories (theory 'ground-zero)
@@ -160,7 +160,7 @@
 (defthm window-bitslice-3
   (implies (aes::inp key)
            (equal (rd8 (result-ok->val (aes-fixslice-encrypt-aes128-key-schedule 100 key)) 24)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (sub-bytes-nots-bytes (inv-shift-rows-3-bytes (kk-iter key 3))) (sub-bytes-nots-bytes (inv-shift-rows-3-bytes (kk-iter key 3)))))))
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (sub-bytes-nots-bytes (inv-shift-rows-3-bytes (kk-iter key 3))) (sub-bytes-nots-bytes (inv-shift-rows-3-bytes (kk-iter key 3)))))))
   :hints (("Goal" :do-not-induct t
            :use (core-windows-are-bitslice-of-keyexpansion)
            :in-theory (union-theories (theory 'ground-zero)
@@ -208,7 +208,7 @@
 (defthm window-bitslice-4
   (implies (aes::inp key)
            (equal (rd8 (result-ok->val (aes-fixslice-encrypt-aes128-key-schedule 100 key)) 32)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (sub-bytes-nots-bytes (kk-iter key 4)) (sub-bytes-nots-bytes (kk-iter key 4))))))
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (sub-bytes-nots-bytes (kk-iter key 4)) (sub-bytes-nots-bytes (kk-iter key 4))))))
   :hints (("Goal" :do-not-induct t
            :use (core-windows-are-bitslice-of-keyexpansion)
            :in-theory (union-theories (theory 'ground-zero)
@@ -254,7 +254,7 @@
 (defthm window-bitslice-5
   (implies (aes::inp key)
            (equal (rd8 (result-ok->val (aes-fixslice-encrypt-aes128-key-schedule 100 key)) 40)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (sub-bytes-nots-bytes (inv-shift-rows-1-bytes (kk-iter key 5))) (sub-bytes-nots-bytes (inv-shift-rows-1-bytes (kk-iter key 5)))))))
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (sub-bytes-nots-bytes (inv-shift-rows-1-bytes (kk-iter key 5))) (sub-bytes-nots-bytes (inv-shift-rows-1-bytes (kk-iter key 5)))))))
   :hints (("Goal" :do-not-induct t
            :use (core-windows-are-bitslice-of-keyexpansion)
            :in-theory (union-theories (theory 'ground-zero)
@@ -302,7 +302,7 @@
 (defthm window-bitslice-6
   (implies (aes::inp key)
            (equal (rd8 (result-ok->val (aes-fixslice-encrypt-aes128-key-schedule 100 key)) 48)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (sub-bytes-nots-bytes (inv-shift-rows-2-bytes (kk-iter key 6))) (sub-bytes-nots-bytes (inv-shift-rows-2-bytes (kk-iter key 6)))))))
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (sub-bytes-nots-bytes (inv-shift-rows-2-bytes (kk-iter key 6))) (sub-bytes-nots-bytes (inv-shift-rows-2-bytes (kk-iter key 6)))))))
   :hints (("Goal" :do-not-induct t
            :use (core-windows-are-bitslice-of-keyexpansion)
            :in-theory (union-theories (theory 'ground-zero)
@@ -350,7 +350,7 @@
 (defthm window-bitslice-7
   (implies (aes::inp key)
            (equal (rd8 (result-ok->val (aes-fixslice-encrypt-aes128-key-schedule 100 key)) 56)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (sub-bytes-nots-bytes (inv-shift-rows-3-bytes (kk-iter key 7))) (sub-bytes-nots-bytes (inv-shift-rows-3-bytes (kk-iter key 7)))))))
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (sub-bytes-nots-bytes (inv-shift-rows-3-bytes (kk-iter key 7))) (sub-bytes-nots-bytes (inv-shift-rows-3-bytes (kk-iter key 7)))))))
   :hints (("Goal" :do-not-induct t
            :use (core-windows-are-bitslice-of-keyexpansion)
            :in-theory (union-theories (theory 'ground-zero)
@@ -398,7 +398,7 @@
 (defthm window-bitslice-8
   (implies (aes::inp key)
            (equal (rd8 (result-ok->val (aes-fixslice-encrypt-aes128-key-schedule 100 key)) 64)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (sub-bytes-nots-bytes (kk-iter key 8)) (sub-bytes-nots-bytes (kk-iter key 8))))))
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (sub-bytes-nots-bytes (kk-iter key 8)) (sub-bytes-nots-bytes (kk-iter key 8))))))
   :hints (("Goal" :do-not-induct t
            :use (core-windows-are-bitslice-of-keyexpansion)
            :in-theory (union-theories (theory 'ground-zero)
@@ -444,7 +444,7 @@
 (defthm window-bitslice-9
   (implies (aes::inp key)
            (equal (rd8 (result-ok->val (aes-fixslice-encrypt-aes128-key-schedule 100 key)) 72)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (sub-bytes-nots-bytes (inv-shift-rows-1-bytes (kk-iter key 9))) (sub-bytes-nots-bytes (inv-shift-rows-1-bytes (kk-iter key 9)))))))
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (sub-bytes-nots-bytes (inv-shift-rows-1-bytes (kk-iter key 9))) (sub-bytes-nots-bytes (inv-shift-rows-1-bytes (kk-iter key 9)))))))
   :hints (("Goal" :do-not-induct t
            :use (core-windows-are-bitslice-of-keyexpansion)
            :in-theory (union-theories (theory 'ground-zero)
@@ -492,7 +492,7 @@
 (defthm window-bitslice-10
   (implies (aes::inp key)
            (equal (rd8 (result-ok->val (aes-fixslice-encrypt-aes128-key-schedule 100 key)) 80)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (sub-bytes-nots-bytes (kk-iter key 10)) (sub-bytes-nots-bytes (kk-iter key 10))))))
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (sub-bytes-nots-bytes (kk-iter key 10)) (sub-bytes-nots-bytes (kk-iter key 10))))))
   :hints (("Goal" :do-not-induct t
            :use (core-windows-are-bitslice-of-keyexpansion)
            :in-theory (union-theories (theory 'ground-zero)

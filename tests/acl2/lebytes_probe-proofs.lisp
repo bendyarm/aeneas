@@ -4,6 +4,7 @@
 ; through copy_from_slice on a mutable subslice borrow.
 (in-package "ACL2")
 (include-book "lebytes_probe")
+(include-book "centaur/gl/gl" :dir :system)
 (local (include-book "arithmetic-5/top" :dir :system))
 
 ;; ld: bytes 2..6 of the array, little-endian.
@@ -17,11 +18,11 @@
   (equal (lebytes-probe-st 218893066)  ; #x0d0c0b0a
          (ok (list 0 0 10 11 12 13 0 0))))
 
-;; round trip at the u32 level.
-(defthm le-round-trip
-  (implies (u32p w)
-           (equal (u32-from-le-bytes (u32-to-le-bytes w)) w))
-  :hints (("Goal" :in-theory (enable u32-from-le-bytes u32-to-le-bytes u32p))))
+;; round trip at the u32 level (GL: the definitions are bit-level).
+(gl::def-gl-thm le-round-trip-gl
+  :hyp (unsigned-byte-p 32 w)
+  :concl (equal (u32-from-le-bytes (u32-to-le-bytes w)) w)
+  :g-bindings (gl::auto-bindings (:nat w 32)))
 
 ;; nested single-element + range mutable borrow (the upstream inv_bitslice
 ;; write shape: output[k][a..b].copy_from_slice(...)).

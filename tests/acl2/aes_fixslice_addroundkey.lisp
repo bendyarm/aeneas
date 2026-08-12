@@ -36,7 +36,7 @@
   (b* ((s0 (list a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15)) (s1 (list b0 b1 b2 b3 b4 b5 b6 b7 b8 b9 b10 b11 b12 b13 b14 b15)) (kk (list k0 k1 k2 k3 k4 k5 k6 k7))
        (out (result-ok->val (aes-fixslice-encrypt-inv-bitslice
               (result-ok->val (aes-fixslice-encrypt-add-round-key 100
-                (result-ok->val (aes-fixslice-encrypt-bitslice s0 s1)) kk)))))
+                (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) s0 s1)) kk)))))
        (ik (result-ok->val (aes-fixslice-encrypt-inv-bitslice kk))))
     (equal out (list (xorbytes s0 (car ik)) (xorbytes s1 (cadr ik)))))
   :g-bindings (gl::auto-bindings (:nat a0 8) (:nat a1 8) (:nat a2 8) (:nat a3 8) (:nat a4 8) (:nat a5 8) (:nat a6 8) (:nat a7 8) (:nat a8 8) (:nat a9 8) (:nat a10 8) (:nat a11 8) (:nat a12 8) (:nat a13 8) (:nat a14 8) (:nat a15 8) (:nat b0 8) (:nat b1 8) (:nat b2 8) (:nat b3 8) (:nat b4 8) (:nat b5 8) (:nat b6 8) (:nat b7 8) (:nat b8 8) (:nat b9 8) (:nat b10 8) (:nat b11 8) (:nat b12 8) (:nat b13 8) (:nat b14 8) (:nat b15 8) (:nat k0 32) (:nat k1 32) (:nat k2 32) (:nat k3 32) (:nat k4 32) (:nat k5 32) (:nat k6 32) (:nat k7 32)))
@@ -58,7 +58,7 @@
            (equal (result-ok->val
                     (aes-fixslice-encrypt-inv-bitslice
                       (result-ok->val (aes-fixslice-encrypt-add-round-key 100
-                        (result-ok->val (aes-fixslice-encrypt-bitslice s0 s1)) (list k0 k1 k2 k3 k4 k5 k6 k7)))))
+                        (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) s0 s1)) (list k0 k1 k2 k3 k4 k5 k6 k7)))))
                   (list (xorbytes s0 (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice (list k0 k1 k2 k3 k4 k5 k6 k7)))))
                         (xorbytes s1 (cadr (result-ok->val (aes-fixslice-encrypt-inv-bitslice (list k0 k1 k2 k3 k4 k5 k6 k7))))))))
   :hints (("Goal"
@@ -123,7 +123,7 @@
   (implies (and (aes::inp s0) (aes::inp s1) (unsigned-byte-p 32 k0) (unsigned-byte-p 32 k1) (unsigned-byte-p 32 k2) (unsigned-byte-p 32 k3) (unsigned-byte-p 32 k4) (unsigned-byte-p 32 k5) (unsigned-byte-p 32 k6) (unsigned-byte-p 32 k7))
            (equal (fixslice->statep
                     (result-ok->val (aes-fixslice-encrypt-add-round-key 100
-                      (result-ok->val (aes-fixslice-encrypt-bitslice s0 s1)) (list k0 k1 k2 k3 k4 k5 k6 k7)))
+                      (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) s0 s1)) (list k0 k1 k2 k3 k4 k5 k6 k7)))
                     0)
                   (aes::addroundkey
                     (aes::copyarraytostate s0)

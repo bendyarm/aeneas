@@ -60,7 +60,7 @@
 ;; bitslice of two 16-byte blocks is a wstate (8 u32) -- lift the GL fact to inp.
 (defthm wstatep-of-bitslice
   (implies (and (aes::inp b0) (aes::inp b1))
-           (wstatep (result-ok->val (aes-fixslice-encrypt-bitslice b0 b1))))
+           (wstatep (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b0 b1))))
   :hints (("Goal"
            :in-theory (e/d (expand-len-16)
                            (wstatep-of-bitslice-gl aes-fixslice-encrypt-bitslice wstatep nth aes::inp))
@@ -87,7 +87,7 @@
   (implies (and (unsigned-byte-p 8 (nth 0 b)) (unsigned-byte-p 8 (nth 1 b)) (unsigned-byte-p 8 (nth 2 b)) (unsigned-byte-p 8 (nth 3 b)) (unsigned-byte-p 8 (nth 4 b)) (unsigned-byte-p 8 (nth 5 b)) (unsigned-byte-p 8 (nth 6 b)) (unsigned-byte-p 8 (nth 7 b)) (unsigned-byte-p 8 (nth 8 b)) (unsigned-byte-p 8 (nth 9 b)) (unsigned-byte-p 8 (nth 10 b)) (unsigned-byte-p 8 (nth 11 b)) (unsigned-byte-p 8 (nth 12 b)) (unsigned-byte-p 8 (nth 13 b)) (unsigned-byte-p 8 (nth 14 b)) (unsigned-byte-p 8 (nth 15 b)))
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
                           (take 8 (nthcdr 8 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100
-                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice
+                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0)
                                              (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b))
                                              (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b))))
                                            (make-list 80 :initial-element 0)) 0 0))))))))
@@ -104,7 +104,7 @@
   (implies (aes::inp b)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
                           (take 8 (nthcdr 8 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100
-                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                            (make-list 80 :initial-element 0)) 0 0))))))))
                   (kr-spec-bytes b 1)))
   :hints (("Goal" :do-not-induct t
@@ -124,30 +124,30 @@
 ;; W := (bitslice b b) is a wstate, hence true-listp and len 8.
 (defthm wstate-bb
   (implies (aes::inp b)
-           (wstatep (result-ok->val (aes-fixslice-encrypt-bitslice b b))))
+           (wstatep (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))))
   :hints (("Goal" :use (:instance wstatep-of-bitslice (b0 b) (b1 b))
            :in-theory (theory 'ground-zero))))
 
 (defthm len-bb
   (implies (aes::inp b)
-           (equal (len (result-ok->val (aes-fixslice-encrypt-bitslice b b))) 8))
+           (equal (len (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))) 8))
   :hints (("Goal" :use (wstate-bb
                         (:instance len-when-wstatep
-                          (x (result-ok->val (aes-fixslice-encrypt-bitslice b b)))))
+                          (x (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)))))
            :in-theory (theory 'ground-zero))))
 
 (defthm tl-bb
   (implies (aes::inp b)
-           (true-listp (result-ok->val (aes-fixslice-encrypt-bitslice b b))))
+           (true-listp (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))))
   :hints (("Goal" :use (wstate-bb
                         (:instance true-listp-when-wstatep
-                          (x (result-ok->val (aes-fixslice-encrypt-bitslice b b)))))
+                          (x (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)))))
            :in-theory (theory 'ground-zero))))
 
 ;; rk0 length and shape (bitslice closed).
 (defthm len-rk0
   (implies (aes::inp b)
-           (equal (len (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+           (equal (len (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                (make-list 80 :initial-element 0)))
                   88))
   :hints (("Goal" :use len-bb
@@ -155,7 +155,7 @@
                            (aes-fixslice-encrypt-bitslice)))))
 
 (defthm tl-rk0
-  (true-listp (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+  (true-listp (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                       (make-list 80 :initial-element 0)))
   :hints (("Goal" :in-theory (e/d (true-listp-of-append)
                                   (aes-fixslice-encrypt-bitslice)))))
@@ -163,18 +163,18 @@
 ;; window 0 of rk0 reads back the bitslice.
 (defthm rd8-rk0
   (implies (aes::inp b)
-           (equal (rd8 (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+           (equal (rd8 (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                (make-list 80 :initial-element 0)) 0)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice b b))))
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))))
   :hints (("Goal" :use (tl-bb len-bb
                         (:instance rd8-of-append-8
-                          (s (result-ok->val (aes-fixslice-encrypt-bitslice b b)))
+                          (s (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)))
                           (z (make-list 80 :initial-element 0))))
            :in-theory (disable aes-fixslice-encrypt-bitslice rd8))))
 
 (defthm wstate-rd8-rk0
   (implies (aes::inp b)
-           (wstatep (rd8 (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+           (wstatep (rd8 (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                  (make-list 80 :initial-element 0)) 0)))
   :hints (("Goal" :use (wstate-bb rd8-rk0)
            :in-theory (disable aes-fixslice-encrypt-bitslice rd8 wstatep))))
@@ -184,13 +184,13 @@
   (implies (aes::inp b)
            (equal (len (cdr (result-ok->val
                      (aes-fixslice-encrypt-key-round 100
-                       (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                       (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                (make-list 80 :initial-element 0)) 0 0))))
                   88))
   :hints (("Goal" :do-not-induct t
            :use (len-rk0 tl-rk0 wstate-rd8-rk0
                         (:instance key-round-len
-                          (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                          (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                          (make-list 80 :initial-element 0)))
                           (off 0) (c 0)))
            :in-theory (theory 'ground-zero))))
@@ -201,19 +201,19 @@
            (equal (take 8 (nthcdr 8
                     (cdr (result-ok->val
                       (aes-fixslice-encrypt-key-round 100
-                        (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                        (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                 (make-list 80 :initial-element 0)) 0 0)))))
-                  (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 0)))
+                  (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 0)))
   :hints (("Goal" :do-not-induct t
            :use (len-cdr-kr0 len-rk0 tl-rk0 wstate-rd8-rk0 rd8-rk0
                  (:instance take-nthcdr-is-rd8
                    (off 8)
                    (l (cdr (result-ok->val
                         (aes-fixslice-encrypt-key-round 100
-                          (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                          (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                   (make-list 80 :initial-element 0)) 0 0)))))
                  (:instance key-round-window
-                   (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                   (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                   (make-list 80 :initial-element 0)))
                    (off 0) (c 0)))
            :in-theory (theory 'ground-zero))))
@@ -222,7 +222,7 @@
 (defthm krw8-crux-0
   (implies (aes::inp b)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
-                          (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 0))))
+                          (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 0))))
                   (kr-spec-bytes b 1)))
   :hints (("Goal" :do-not-induct t
            :use (crux0-general window-eq-0)
@@ -236,7 +236,7 @@
   (implies (and (unsigned-byte-p 8 (nth 0 b)) (unsigned-byte-p 8 (nth 1 b)) (unsigned-byte-p 8 (nth 2 b)) (unsigned-byte-p 8 (nth 3 b)) (unsigned-byte-p 8 (nth 4 b)) (unsigned-byte-p 8 (nth 5 b)) (unsigned-byte-p 8 (nth 6 b)) (unsigned-byte-p 8 (nth 7 b)) (unsigned-byte-p 8 (nth 8 b)) (unsigned-byte-p 8 (nth 9 b)) (unsigned-byte-p 8 (nth 10 b)) (unsigned-byte-p 8 (nth 11 b)) (unsigned-byte-p 8 (nth 12 b)) (unsigned-byte-p 8 (nth 13 b)) (unsigned-byte-p 8 (nth 14 b)) (unsigned-byte-p 8 (nth 15 b)))
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
                           (take 8 (nthcdr 8 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100
-                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b))))
+                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b))))
                                     (make-list 80 :initial-element 0)) 0 1))))))))
                   (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 2)))
   :hints (("Goal" :do-not-induct t
@@ -247,7 +247,7 @@
   (implies (aes::inp b)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
                           (take 8 (nthcdr 8 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100
-                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 1))))))))
                   (kr-spec-bytes b 2)))
   :hints (("Goal" :do-not-induct t
@@ -259,13 +259,13 @@
   (implies (aes::inp b)
            (equal (len (cdr (result-ok->val
                      (aes-fixslice-encrypt-key-round 100
-                       (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                       (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 1))))
                   88))
   :hints (("Goal" :do-not-induct t
            :use (len-rk0 tl-rk0 wstate-rd8-rk0
                         (:instance key-round-len
-                          (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                          (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)))
                           (off 0) (c 1)))
            :in-theory (theory 'ground-zero))))
@@ -275,19 +275,19 @@
            (equal (take 8 (nthcdr 8
                     (cdr (result-ok->val
                       (aes-fixslice-encrypt-key-round 100
-                        (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                        (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 1)))))
-                  (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 1)))
+                  (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 1)))
   :hints (("Goal" :do-not-induct t
            :use (len-cdr-kr1 len-rk0 tl-rk0 wstate-rd8-rk0 rd8-rk0
                  (:instance take-nthcdr-is-rd8
                    (off 8)
                    (l (cdr (result-ok->val
                         (aes-fixslice-encrypt-key-round 100
-                          (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                          (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 1)))))
                  (:instance key-round-window
-                   (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                   (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)))
                    (off 0) (c 1)))
            :in-theory (theory 'ground-zero))))
@@ -295,7 +295,7 @@
 (defthm krw8-crux-1
   (implies (aes::inp b)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
-                          (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 1))))
+                          (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 1))))
                   (kr-spec-bytes b 2)))
   :hints (("Goal" :do-not-induct t
            :use (crux1-general window-eq-1)
@@ -306,7 +306,7 @@
   (implies (and (unsigned-byte-p 8 (nth 0 b)) (unsigned-byte-p 8 (nth 1 b)) (unsigned-byte-p 8 (nth 2 b)) (unsigned-byte-p 8 (nth 3 b)) (unsigned-byte-p 8 (nth 4 b)) (unsigned-byte-p 8 (nth 5 b)) (unsigned-byte-p 8 (nth 6 b)) (unsigned-byte-p 8 (nth 7 b)) (unsigned-byte-p 8 (nth 8 b)) (unsigned-byte-p 8 (nth 9 b)) (unsigned-byte-p 8 (nth 10 b)) (unsigned-byte-p 8 (nth 11 b)) (unsigned-byte-p 8 (nth 12 b)) (unsigned-byte-p 8 (nth 13 b)) (unsigned-byte-p 8 (nth 14 b)) (unsigned-byte-p 8 (nth 15 b)))
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
                           (take 8 (nthcdr 8 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100
-                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b))))
+                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b))))
                                     (make-list 80 :initial-element 0)) 0 2))))))))
                   (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 4)))
   :hints (("Goal" :do-not-induct t
@@ -317,7 +317,7 @@
   (implies (aes::inp b)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
                           (take 8 (nthcdr 8 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100
-                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 2))))))))
                   (kr-spec-bytes b 4)))
   :hints (("Goal" :do-not-induct t
@@ -329,13 +329,13 @@
   (implies (aes::inp b)
            (equal (len (cdr (result-ok->val
                      (aes-fixslice-encrypt-key-round 100
-                       (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                       (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 2))))
                   88))
   :hints (("Goal" :do-not-induct t
            :use (len-rk0 tl-rk0 wstate-rd8-rk0
                         (:instance key-round-len
-                          (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                          (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)))
                           (off 0) (c 2)))
            :in-theory (theory 'ground-zero))))
@@ -345,19 +345,19 @@
            (equal (take 8 (nthcdr 8
                     (cdr (result-ok->val
                       (aes-fixslice-encrypt-key-round 100
-                        (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                        (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 2)))))
-                  (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 2)))
+                  (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 2)))
   :hints (("Goal" :do-not-induct t
            :use (len-cdr-kr2 len-rk0 tl-rk0 wstate-rd8-rk0 rd8-rk0
                  (:instance take-nthcdr-is-rd8
                    (off 8)
                    (l (cdr (result-ok->val
                         (aes-fixslice-encrypt-key-round 100
-                          (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                          (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 2)))))
                  (:instance key-round-window
-                   (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                   (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)))
                    (off 0) (c 2)))
            :in-theory (theory 'ground-zero))))
@@ -365,7 +365,7 @@
 (defthm krw8-crux-2
   (implies (aes::inp b)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
-                          (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 2))))
+                          (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 2))))
                   (kr-spec-bytes b 4)))
   :hints (("Goal" :do-not-induct t
            :use (crux2-general window-eq-2)
@@ -376,7 +376,7 @@
   (implies (and (unsigned-byte-p 8 (nth 0 b)) (unsigned-byte-p 8 (nth 1 b)) (unsigned-byte-p 8 (nth 2 b)) (unsigned-byte-p 8 (nth 3 b)) (unsigned-byte-p 8 (nth 4 b)) (unsigned-byte-p 8 (nth 5 b)) (unsigned-byte-p 8 (nth 6 b)) (unsigned-byte-p 8 (nth 7 b)) (unsigned-byte-p 8 (nth 8 b)) (unsigned-byte-p 8 (nth 9 b)) (unsigned-byte-p 8 (nth 10 b)) (unsigned-byte-p 8 (nth 11 b)) (unsigned-byte-p 8 (nth 12 b)) (unsigned-byte-p 8 (nth 13 b)) (unsigned-byte-p 8 (nth 14 b)) (unsigned-byte-p 8 (nth 15 b)))
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
                           (take 8 (nthcdr 8 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100
-                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b))))
+                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b))))
                                     (make-list 80 :initial-element 0)) 0 3))))))))
                   (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 8)))
   :hints (("Goal" :do-not-induct t
@@ -387,7 +387,7 @@
   (implies (aes::inp b)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
                           (take 8 (nthcdr 8 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100
-                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 3))))))))
                   (kr-spec-bytes b 8)))
   :hints (("Goal" :do-not-induct t
@@ -399,13 +399,13 @@
   (implies (aes::inp b)
            (equal (len (cdr (result-ok->val
                      (aes-fixslice-encrypt-key-round 100
-                       (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                       (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 3))))
                   88))
   :hints (("Goal" :do-not-induct t
            :use (len-rk0 tl-rk0 wstate-rd8-rk0
                         (:instance key-round-len
-                          (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                          (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)))
                           (off 0) (c 3)))
            :in-theory (theory 'ground-zero))))
@@ -415,19 +415,19 @@
            (equal (take 8 (nthcdr 8
                     (cdr (result-ok->val
                       (aes-fixslice-encrypt-key-round 100
-                        (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                        (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 3)))))
-                  (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 3)))
+                  (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 3)))
   :hints (("Goal" :do-not-induct t
            :use (len-cdr-kr3 len-rk0 tl-rk0 wstate-rd8-rk0 rd8-rk0
                  (:instance take-nthcdr-is-rd8
                    (off 8)
                    (l (cdr (result-ok->val
                         (aes-fixslice-encrypt-key-round 100
-                          (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                          (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 3)))))
                  (:instance key-round-window
-                   (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                   (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)))
                    (off 0) (c 3)))
            :in-theory (theory 'ground-zero))))
@@ -435,7 +435,7 @@
 (defthm krw8-crux-3
   (implies (aes::inp b)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
-                          (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 3))))
+                          (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 3))))
                   (kr-spec-bytes b 8)))
   :hints (("Goal" :do-not-induct t
            :use (crux3-general window-eq-3)
@@ -446,7 +446,7 @@
   (implies (and (unsigned-byte-p 8 (nth 0 b)) (unsigned-byte-p 8 (nth 1 b)) (unsigned-byte-p 8 (nth 2 b)) (unsigned-byte-p 8 (nth 3 b)) (unsigned-byte-p 8 (nth 4 b)) (unsigned-byte-p 8 (nth 5 b)) (unsigned-byte-p 8 (nth 6 b)) (unsigned-byte-p 8 (nth 7 b)) (unsigned-byte-p 8 (nth 8 b)) (unsigned-byte-p 8 (nth 9 b)) (unsigned-byte-p 8 (nth 10 b)) (unsigned-byte-p 8 (nth 11 b)) (unsigned-byte-p 8 (nth 12 b)) (unsigned-byte-p 8 (nth 13 b)) (unsigned-byte-p 8 (nth 14 b)) (unsigned-byte-p 8 (nth 15 b)))
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
                           (take 8 (nthcdr 8 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100
-                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b))))
+                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b))))
                                     (make-list 80 :initial-element 0)) 0 4))))))))
                   (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 16)))
   :hints (("Goal" :do-not-induct t
@@ -457,7 +457,7 @@
   (implies (aes::inp b)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
                           (take 8 (nthcdr 8 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100
-                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 4))))))))
                   (kr-spec-bytes b 16)))
   :hints (("Goal" :do-not-induct t
@@ -469,13 +469,13 @@
   (implies (aes::inp b)
            (equal (len (cdr (result-ok->val
                      (aes-fixslice-encrypt-key-round 100
-                       (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                       (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 4))))
                   88))
   :hints (("Goal" :do-not-induct t
            :use (len-rk0 tl-rk0 wstate-rd8-rk0
                         (:instance key-round-len
-                          (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                          (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)))
                           (off 0) (c 4)))
            :in-theory (theory 'ground-zero))))
@@ -485,19 +485,19 @@
            (equal (take 8 (nthcdr 8
                     (cdr (result-ok->val
                       (aes-fixslice-encrypt-key-round 100
-                        (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                        (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 4)))))
-                  (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 4)))
+                  (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 4)))
   :hints (("Goal" :do-not-induct t
            :use (len-cdr-kr4 len-rk0 tl-rk0 wstate-rd8-rk0 rd8-rk0
                  (:instance take-nthcdr-is-rd8
                    (off 8)
                    (l (cdr (result-ok->val
                         (aes-fixslice-encrypt-key-round 100
-                          (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                          (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 4)))))
                  (:instance key-round-window
-                   (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                   (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)))
                    (off 0) (c 4)))
            :in-theory (theory 'ground-zero))))
@@ -505,7 +505,7 @@
 (defthm krw8-crux-4
   (implies (aes::inp b)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
-                          (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 4))))
+                          (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 4))))
                   (kr-spec-bytes b 16)))
   :hints (("Goal" :do-not-induct t
            :use (crux4-general window-eq-4)
@@ -516,7 +516,7 @@
   (implies (and (unsigned-byte-p 8 (nth 0 b)) (unsigned-byte-p 8 (nth 1 b)) (unsigned-byte-p 8 (nth 2 b)) (unsigned-byte-p 8 (nth 3 b)) (unsigned-byte-p 8 (nth 4 b)) (unsigned-byte-p 8 (nth 5 b)) (unsigned-byte-p 8 (nth 6 b)) (unsigned-byte-p 8 (nth 7 b)) (unsigned-byte-p 8 (nth 8 b)) (unsigned-byte-p 8 (nth 9 b)) (unsigned-byte-p 8 (nth 10 b)) (unsigned-byte-p 8 (nth 11 b)) (unsigned-byte-p 8 (nth 12 b)) (unsigned-byte-p 8 (nth 13 b)) (unsigned-byte-p 8 (nth 14 b)) (unsigned-byte-p 8 (nth 15 b)))
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
                           (take 8 (nthcdr 8 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100
-                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b))))
+                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b))))
                                     (make-list 80 :initial-element 0)) 0 5))))))))
                   (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 32)))
   :hints (("Goal" :do-not-induct t
@@ -527,7 +527,7 @@
   (implies (aes::inp b)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
                           (take 8 (nthcdr 8 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100
-                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 5))))))))
                   (kr-spec-bytes b 32)))
   :hints (("Goal" :do-not-induct t
@@ -539,13 +539,13 @@
   (implies (aes::inp b)
            (equal (len (cdr (result-ok->val
                      (aes-fixslice-encrypt-key-round 100
-                       (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                       (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 5))))
                   88))
   :hints (("Goal" :do-not-induct t
            :use (len-rk0 tl-rk0 wstate-rd8-rk0
                         (:instance key-round-len
-                          (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                          (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)))
                           (off 0) (c 5)))
            :in-theory (theory 'ground-zero))))
@@ -555,19 +555,19 @@
            (equal (take 8 (nthcdr 8
                     (cdr (result-ok->val
                       (aes-fixslice-encrypt-key-round 100
-                        (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                        (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 5)))))
-                  (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 5)))
+                  (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 5)))
   :hints (("Goal" :do-not-induct t
            :use (len-cdr-kr5 len-rk0 tl-rk0 wstate-rd8-rk0 rd8-rk0
                  (:instance take-nthcdr-is-rd8
                    (off 8)
                    (l (cdr (result-ok->val
                         (aes-fixslice-encrypt-key-round 100
-                          (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                          (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 5)))))
                  (:instance key-round-window
-                   (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                   (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)))
                    (off 0) (c 5)))
            :in-theory (theory 'ground-zero))))
@@ -575,7 +575,7 @@
 (defthm krw8-crux-5
   (implies (aes::inp b)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
-                          (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 5))))
+                          (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 5))))
                   (kr-spec-bytes b 32)))
   :hints (("Goal" :do-not-induct t
            :use (crux5-general window-eq-5)
@@ -586,7 +586,7 @@
   (implies (and (unsigned-byte-p 8 (nth 0 b)) (unsigned-byte-p 8 (nth 1 b)) (unsigned-byte-p 8 (nth 2 b)) (unsigned-byte-p 8 (nth 3 b)) (unsigned-byte-p 8 (nth 4 b)) (unsigned-byte-p 8 (nth 5 b)) (unsigned-byte-p 8 (nth 6 b)) (unsigned-byte-p 8 (nth 7 b)) (unsigned-byte-p 8 (nth 8 b)) (unsigned-byte-p 8 (nth 9 b)) (unsigned-byte-p 8 (nth 10 b)) (unsigned-byte-p 8 (nth 11 b)) (unsigned-byte-p 8 (nth 12 b)) (unsigned-byte-p 8 (nth 13 b)) (unsigned-byte-p 8 (nth 14 b)) (unsigned-byte-p 8 (nth 15 b)))
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
                           (take 8 (nthcdr 8 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100
-                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b))))
+                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b))))
                                     (make-list 80 :initial-element 0)) 0 6))))))))
                   (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 64)))
   :hints (("Goal" :do-not-induct t
@@ -597,7 +597,7 @@
   (implies (aes::inp b)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
                           (take 8 (nthcdr 8 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100
-                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 6))))))))
                   (kr-spec-bytes b 64)))
   :hints (("Goal" :do-not-induct t
@@ -609,13 +609,13 @@
   (implies (aes::inp b)
            (equal (len (cdr (result-ok->val
                      (aes-fixslice-encrypt-key-round 100
-                       (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                       (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 6))))
                   88))
   :hints (("Goal" :do-not-induct t
            :use (len-rk0 tl-rk0 wstate-rd8-rk0
                         (:instance key-round-len
-                          (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                          (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)))
                           (off 0) (c 6)))
            :in-theory (theory 'ground-zero))))
@@ -625,19 +625,19 @@
            (equal (take 8 (nthcdr 8
                     (cdr (result-ok->val
                       (aes-fixslice-encrypt-key-round 100
-                        (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                        (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 6)))))
-                  (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 6)))
+                  (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 6)))
   :hints (("Goal" :do-not-induct t
            :use (len-cdr-kr6 len-rk0 tl-rk0 wstate-rd8-rk0 rd8-rk0
                  (:instance take-nthcdr-is-rd8
                    (off 8)
                    (l (cdr (result-ok->val
                         (aes-fixslice-encrypt-key-round 100
-                          (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                          (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 6)))))
                  (:instance key-round-window
-                   (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                   (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)))
                    (off 0) (c 6)))
            :in-theory (theory 'ground-zero))))
@@ -645,7 +645,7 @@
 (defthm krw8-crux-6
   (implies (aes::inp b)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
-                          (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 6))))
+                          (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 6))))
                   (kr-spec-bytes b 64)))
   :hints (("Goal" :do-not-induct t
            :use (crux6-general window-eq-6)
@@ -656,7 +656,7 @@
   (implies (and (unsigned-byte-p 8 (nth 0 b)) (unsigned-byte-p 8 (nth 1 b)) (unsigned-byte-p 8 (nth 2 b)) (unsigned-byte-p 8 (nth 3 b)) (unsigned-byte-p 8 (nth 4 b)) (unsigned-byte-p 8 (nth 5 b)) (unsigned-byte-p 8 (nth 6 b)) (unsigned-byte-p 8 (nth 7 b)) (unsigned-byte-p 8 (nth 8 b)) (unsigned-byte-p 8 (nth 9 b)) (unsigned-byte-p 8 (nth 10 b)) (unsigned-byte-p 8 (nth 11 b)) (unsigned-byte-p 8 (nth 12 b)) (unsigned-byte-p 8 (nth 13 b)) (unsigned-byte-p 8 (nth 14 b)) (unsigned-byte-p 8 (nth 15 b)))
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
                           (take 8 (nthcdr 8 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100
-                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b))))
+                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b))))
                                     (make-list 80 :initial-element 0)) 0 7))))))))
                   (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 128)))
   :hints (("Goal" :do-not-induct t
@@ -667,7 +667,7 @@
   (implies (aes::inp b)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
                           (take 8 (nthcdr 8 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100
-                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 7))))))))
                   (kr-spec-bytes b 128)))
   :hints (("Goal" :do-not-induct t
@@ -679,13 +679,13 @@
   (implies (aes::inp b)
            (equal (len (cdr (result-ok->val
                      (aes-fixslice-encrypt-key-round 100
-                       (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                       (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 7))))
                   88))
   :hints (("Goal" :do-not-induct t
            :use (len-rk0 tl-rk0 wstate-rd8-rk0
                         (:instance key-round-len
-                          (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                          (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)))
                           (off 0) (c 7)))
            :in-theory (theory 'ground-zero))))
@@ -695,19 +695,19 @@
            (equal (take 8 (nthcdr 8
                     (cdr (result-ok->val
                       (aes-fixslice-encrypt-key-round 100
-                        (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                        (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 7)))))
-                  (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 7)))
+                  (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 7)))
   :hints (("Goal" :do-not-induct t
            :use (len-cdr-kr7 len-rk0 tl-rk0 wstate-rd8-rk0 rd8-rk0
                  (:instance take-nthcdr-is-rd8
                    (off 8)
                    (l (cdr (result-ok->val
                         (aes-fixslice-encrypt-key-round 100
-                          (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                          (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 7)))))
                  (:instance key-round-window
-                   (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                   (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)))
                    (off 0) (c 7)))
            :in-theory (theory 'ground-zero))))
@@ -715,7 +715,7 @@
 (defthm krw8-crux-7
   (implies (aes::inp b)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
-                          (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 7))))
+                          (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 7))))
                   (kr-spec-bytes b 128)))
   :hints (("Goal" :do-not-induct t
            :use (crux7-general window-eq-7)
@@ -726,7 +726,7 @@
   (implies (and (unsigned-byte-p 8 (nth 0 b)) (unsigned-byte-p 8 (nth 1 b)) (unsigned-byte-p 8 (nth 2 b)) (unsigned-byte-p 8 (nth 3 b)) (unsigned-byte-p 8 (nth 4 b)) (unsigned-byte-p 8 (nth 5 b)) (unsigned-byte-p 8 (nth 6 b)) (unsigned-byte-p 8 (nth 7 b)) (unsigned-byte-p 8 (nth 8 b)) (unsigned-byte-p 8 (nth 9 b)) (unsigned-byte-p 8 (nth 10 b)) (unsigned-byte-p 8 (nth 11 b)) (unsigned-byte-p 8 (nth 12 b)) (unsigned-byte-p 8 (nth 13 b)) (unsigned-byte-p 8 (nth 14 b)) (unsigned-byte-p 8 (nth 15 b)))
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
                           (take 8 (nthcdr 8 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100
-                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b))))
+                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b))))
                                     (make-list 80 :initial-element 0)) 0 8))))))))
                   (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 27)))
   :hints (("Goal" :do-not-induct t
@@ -737,7 +737,7 @@
   (implies (aes::inp b)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
                           (take 8 (nthcdr 8 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100
-                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 8))))))))
                   (kr-spec-bytes b 27)))
   :hints (("Goal" :do-not-induct t
@@ -749,13 +749,13 @@
   (implies (aes::inp b)
            (equal (len (cdr (result-ok->val
                      (aes-fixslice-encrypt-key-round 100
-                       (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                       (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 8))))
                   88))
   :hints (("Goal" :do-not-induct t
            :use (len-rk0 tl-rk0 wstate-rd8-rk0
                         (:instance key-round-len
-                          (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                          (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)))
                           (off 0) (c 8)))
            :in-theory (theory 'ground-zero))))
@@ -765,19 +765,19 @@
            (equal (take 8 (nthcdr 8
                     (cdr (result-ok->val
                       (aes-fixslice-encrypt-key-round 100
-                        (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                        (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 8)))))
-                  (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 8)))
+                  (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 8)))
   :hints (("Goal" :do-not-induct t
            :use (len-cdr-kr8 len-rk0 tl-rk0 wstate-rd8-rk0 rd8-rk0
                  (:instance take-nthcdr-is-rd8
                    (off 8)
                    (l (cdr (result-ok->val
                         (aes-fixslice-encrypt-key-round 100
-                          (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                          (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 8)))))
                  (:instance key-round-window
-                   (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                   (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)))
                    (off 0) (c 8)))
            :in-theory (theory 'ground-zero))))
@@ -785,7 +785,7 @@
 (defthm krw8-crux-8
   (implies (aes::inp b)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
-                          (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 8))))
+                          (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 8))))
                   (kr-spec-bytes b 27)))
   :hints (("Goal" :do-not-induct t
            :use (crux8-general window-eq-8)
@@ -796,7 +796,7 @@
   (implies (and (unsigned-byte-p 8 (nth 0 b)) (unsigned-byte-p 8 (nth 1 b)) (unsigned-byte-p 8 (nth 2 b)) (unsigned-byte-p 8 (nth 3 b)) (unsigned-byte-p 8 (nth 4 b)) (unsigned-byte-p 8 (nth 5 b)) (unsigned-byte-p 8 (nth 6 b)) (unsigned-byte-p 8 (nth 7 b)) (unsigned-byte-p 8 (nth 8 b)) (unsigned-byte-p 8 (nth 9 b)) (unsigned-byte-p 8 (nth 10 b)) (unsigned-byte-p 8 (nth 11 b)) (unsigned-byte-p 8 (nth 12 b)) (unsigned-byte-p 8 (nth 13 b)) (unsigned-byte-p 8 (nth 14 b)) (unsigned-byte-p 8 (nth 15 b)))
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
                           (take 8 (nthcdr 8 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100
-                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b))))
+                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b))))
                                     (make-list 80 :initial-element 0)) 0 9))))))))
                   (kr-spec-bytes (list (nth 0 b) (nth 1 b) (nth 2 b) (nth 3 b) (nth 4 b) (nth 5 b) (nth 6 b) (nth 7 b) (nth 8 b) (nth 9 b) (nth 10 b) (nth 11 b) (nth 12 b) (nth 13 b) (nth 14 b) (nth 15 b)) 54)))
   :hints (("Goal" :do-not-induct t
@@ -807,7 +807,7 @@
   (implies (aes::inp b)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
                           (take 8 (nthcdr 8 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100
-                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                                   (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 9))))))))
                   (kr-spec-bytes b 54)))
   :hints (("Goal" :do-not-induct t
@@ -819,13 +819,13 @@
   (implies (aes::inp b)
            (equal (len (cdr (result-ok->val
                      (aes-fixslice-encrypt-key-round 100
-                       (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                       (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 9))))
                   88))
   :hints (("Goal" :do-not-induct t
            :use (len-rk0 tl-rk0 wstate-rd8-rk0
                         (:instance key-round-len
-                          (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                          (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)))
                           (off 0) (c 9)))
            :in-theory (theory 'ground-zero))))
@@ -835,19 +835,19 @@
            (equal (take 8 (nthcdr 8
                     (cdr (result-ok->val
                       (aes-fixslice-encrypt-key-round 100
-                        (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                        (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 9)))))
-                  (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 9)))
+                  (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 9)))
   :hints (("Goal" :do-not-induct t
            :use (len-cdr-kr9 len-rk0 tl-rk0 wstate-rd8-rk0 rd8-rk0
                  (:instance take-nthcdr-is-rd8
                    (off 8)
                    (l (cdr (result-ok->val
                         (aes-fixslice-encrypt-key-round 100
-                          (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                          (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)) 0 9)))))
                  (:instance key-round-window
-                   (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice b b))
+                   (rkeys (append (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b))
                                     (make-list 80 :initial-element 0)))
                    (off 0) (c 9)))
            :in-theory (theory 'ground-zero))))
@@ -855,7 +855,7 @@
 (defthm krw8-crux-9
   (implies (aes::inp b)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
-                          (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) 9))))
+                          (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) 9))))
                   (kr-spec-bytes b 54)))
   :hints (("Goal" :do-not-induct t
            :use (crux9-general window-eq-9)

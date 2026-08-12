@@ -61,7 +61,7 @@
 (defthm inv-bitslice-of-bitslice-general
   (implies (and (aes::inp blk0) (aes::inp blk1))
            (equal (aes-fixslice-encrypt-inv-bitslice
-                    (result-ok->val (aes-fixslice-encrypt-bitslice blk0 blk1)))
+                    (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) blk0 blk1)))
                   (ok (list blk0 blk1))))
   :hints (("Goal"
            ;; Keep the big functions + inp closed; disable the result-ok
@@ -122,10 +122,10 @@
 (defthm fixslice->statep-of-bitslice
   (implies (and (aes::inp blk0) (aes::inp blk1))
            (and (equal (fixslice->statep
-                         (result-ok->val (aes-fixslice-encrypt-bitslice blk0 blk1)) 0)
+                         (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) blk0 blk1)) 0)
                        (aes::copyarraytostate blk0))
                 (equal (fixslice->statep
-                         (result-ok->val (aes-fixslice-encrypt-bitslice blk0 blk1)) 1)
+                         (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) blk0 blk1)) 1)
                        (aes::copyarraytostate blk1))))
   ;; Keep bitslice/inv_bitslice closed so the general-bijection rewrite fires
   ;; instead of ACL2 opening the huge definitions.
@@ -138,9 +138,9 @@
 (defthm statep-of-fixslice->statep-of-bitslice
   (implies (and (aes::inp blk0) (aes::inp blk1))
            (and (aes::statep (fixslice->statep
-                               (result-ok->val (aes-fixslice-encrypt-bitslice blk0 blk1)) 0))
+                               (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) blk0 blk1)) 0))
                 (aes::statep (fixslice->statep
-                               (result-ok->val (aes-fixslice-encrypt-bitslice blk0 blk1)) 1))))
+                               (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) blk0 blk1)) 1))))
   ;; Rewrite phi(bitslice ..) to copyarraytostate via the lemma above (so keep
   ;; fixslice->statep and the big functions closed), then statep follows.
   :hints (("Goal" :in-theory (e/d (aes::statep-of-copyarraytostate)

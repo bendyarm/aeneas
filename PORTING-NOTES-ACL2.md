@@ -115,7 +115,7 @@ script-verified against the reference copy):
 | Byte-identical | `ror`, `ror_distance`, `rotate_rows_*`, `rotate_rows_and_columns_*`, `delta_swap_1/2` (10 fns), and the whole `define_mix_columns!` macro | none |
 | ~~Signature-only~~ RESOLVED (pass 7): `sub_bytes`/`sub_bytes_nots`/`inv_sub_bytes`, `shift_rows_*`/`inv_shift_rows_*`, `add_round_constant_bit`, `xor_columns` all take upstream's `&mut [u32]` slices (asserts restored where upstream has them; `mix_columns_*` keep upstream's own `&mut State`) | -- | none |
 | `iter_mut`/`zip` -> indexed `for` | `shift_rows_1/2/3` (asserts restored), `add_round_key` (upstream `(state, rkey: &[u32])` signature and `rkey.len()` assert RESTORED in pass 7; only the loop de-sugar remains) | same ops, indexed |
-| LE byte plumbing (`from_le_bytes`+`try_into` -> `ld_le`; `to_le_bytes`+`copy_from_slice` -> explicit arrays of upstream's own bare `as u8` truncating casts) | `bitslice` (both input asserts restored; the `output.len()` assert has no analog: ours returns `State` instead of taking `&mut [u32]`), `inv_bitslice` (assert restored) | endianness-explicit |
+| ~~LE byte plumbing~~ RESOLVED (pass 8): `bitslice`/`inv_bitslice` bodies are VERBATIM upstream (`from_le_bytes`/`try_into`, `to_le_bytes`/`copy_from_slice`, out-param `bitslice` with all three asserts); `ld_le` deleted; `BatchBlocks`/`State::default()` -> array literals remain the documented de-sugar | -- | none |
 | Subslice borrows -> `(array, offset)` + `read8`/`write8`/`*_at` wrappers | KEY SCHEDULE ONLY now (`aes128_key_schedule` + its `*_at` helpers); the encrypt/decrypt sides pass upstream's `&rkeys[..]` subslices as of pass 7 | structural |
 | Loop unrolls | ~~encrypt round loop~~ RESTORED (de-vendor pass 3): the bare `loop { ... if rk_off == 80 { break; } ... }` is verbatim upstream, extracted as a recursive loop function; key-schedule rcon loop re-rolled earlier; the decrypt loop arrives with the decrypt side | control flow |
 | ~~`memshift32` forward-loop delta~~ FULLY RESOLVED (passes 1 + 7): body verbatim upstream (`.rev()` + both `debug_assert`s, extracting as `massert`s) AND the upstream `&mut [u32]` signature | `memshift32` | none |
@@ -191,7 +191,7 @@ deleted and the audited subject moves toward verbatim upstream:
    casts `((w>>k) & 0xff) as u8` are reverted to upstream's bare
    `(w>>k) as u8`.  Known-answer asserts in rust-primitives pin the wrap
    behavior (300 as u8 = 44, 255 as i8 = -1, -1 as u32 = 2^32-1, ...).
-6. MACHINERY DONE (source reversion pending) -- LE byte plumbing:
+6. DONE -- LE byte plumbing:
    runtime prims u32-from-le-bytes / u32-to-le-bytes (total, non-monadic:
    Aeneas types them pure) and slice-copy-from-slice (fails unless lengths
    agree); printer syntheses for slice.try_into() into a fixed byte array
@@ -202,9 +202,19 @@ deleted and the audited subject moves toward verbatim upstream:
    `output[k][o..o+4].copy_from_slice(...)`, a single-element mutable
    index wrapping a range borrow -- is also supported (CloElemBack:
    forward array-index, backward update-nth) and probe-validated
-   (st2-known-answer).  Remaining: swap the bitslice/inv_bitslice BODIES
-   to upstream text and re-blast the GL correspondence cruxes over the
-   new definitions.
+   (st2-known-answer).  The bitslice/inv_bitslice bodies are now VERBATIM
+   upstream: out-param bitslice with all THREE debug_asserts (output.len()
+   was the last signature-blocked assert -- all 13 upstream asserts are now
+   present), from_le_bytes over try_into'd subslice reads, and
+   to_le_bytes/copy_from_slice writes through the nested
+   output[k][o..o+4] borrows; ld_le is DELETED.  The ~300 proof-side
+   bitslice references thread the out-parameter (a (list 0 ... 0) initial
+   array, fully overwritten).  GL note: the LE prims are defined via
+   logior/ash/logand, NOT +/*/mod -- identical on byte inputs, but adders
+   with carries blow the BDD node count (the 48-variable
+   add-round-key-through-packing crux went from OOM-at-7GB to 8 seconds on
+   this change alone); the explicit inv-bitslice :ok/len lemmas keep the
+   window prims at their nth/len interface instead of opening take/append.
 7. MACHINERY DONE (source reversion pending) -- subslice borrows: Aeneas
    splits `&mut a[lo..hi]` into a forward read returning a (subslice,
    backward-closure) pair, bound via an intermediate pair variable and a

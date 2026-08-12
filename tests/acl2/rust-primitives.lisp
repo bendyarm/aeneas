@@ -118,12 +118,15 @@
 ;; u32::from_le_bytes / to_le_bytes (total; bytes little-endian first) and
 ;; <[T]>::copy_from_slice (panics -- fails -- unless the lengths agree;
 ;; the value is then just the source window).
+;; logior/ash (not +/*): identical on byte inputs, and BDD-friendly -- the
+;; GL cruxes bit-blast these through the whole cipher, and adders with
+;; carries blow the node count where disjoint ORs are free.
 (defun u32-from-le-bytes (bs)
-  (+ (nth 0 bs) (* 256 (nth 1 bs)) (* 65536 (nth 2 bs))
-     (* 16777216 (nth 3 bs))))
+  (logior (nth 0 bs) (ash (nth 1 bs) 8)
+          (ash (nth 2 bs) 16) (ash (nth 3 bs) 24)))
 (defun u32-to-le-bytes (w)
-  (list (mod w 256) (mod (floor w 256) 256)
-        (mod (floor w 65536) 256) (mod (floor w 16777216) 256)))
+  (list (logand w 255) (logand (ash w -8) 255)
+        (logand (ash w -16) 255) (logand (ash w -24) 255)))
 (defun slice-copy-from-slice (self src)
   (if (equal (len self) (len src))
       (ok src)

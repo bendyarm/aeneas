@@ -28,7 +28,7 @@
              (aes-fixslice-encrypt-inv-bitslice
                (result-ok->val
                  (aes-fixslice-encrypt-mix-columns-0
-                   (result-ok->val (aes-fixslice-encrypt-bitslice blk0 blk1))))))
+                   (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) blk0 blk1))))))
            (list (kmix-bytes blk0) (kmix-bytes blk1))))
   :g-bindings (gl::auto-bindings (:nat a0 8) (:nat a1 8) (:nat a2 8) (:nat a3 8) (:nat a4 8) (:nat a5 8) (:nat a6 8) (:nat a7 8) (:nat a8 8) (:nat a9 8) (:nat a10 8) (:nat a11 8) (:nat a12 8) (:nat a13 8) (:nat a14 8) (:nat a15 8) (:nat b0 8) (:nat b1 8) (:nat b2 8) (:nat b3 8) (:nat b4 8) (:nat b5 8) (:nat b6 8) (:nat b7 8) (:nat b8 8) (:nat b9 8) (:nat b10 8) (:nat b11 8) (:nat b12 8) (:nat b13 8) (:nat b14 8) (:nat b15 8)))
 
@@ -58,7 +58,7 @@
                     (aes-fixslice-encrypt-inv-bitslice
                       (result-ok->val
                         (aes-fixslice-encrypt-mix-columns-0
-                          (result-ok->val (aes-fixslice-encrypt-bitslice b0 b1))))))
+                          (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b0 b1))))))
                   (list (kmix-bytes b0) (kmix-bytes b1))))
   :hints (("Goal"
            :in-theory (e/d (expand-len-16)
@@ -108,7 +108,7 @@
            (equal (fixslice->statep
                     (result-ok->val
                       (aes-fixslice-encrypt-mix-columns-0
-                        (result-ok->val (aes-fixslice-encrypt-bitslice b0 b1))))
+                        (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b0 b1))))
                     0)
                   (aes::mixcolumns (aes::copyarraytostate b0))))
   :hints (("Goal"

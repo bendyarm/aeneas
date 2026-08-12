@@ -39,8 +39,8 @@
 ;; rcon index c in 0..9.  Case-splits to the ten concrete step-star-c.
 (defthm step-star
   (implies (and (aes::inp b) (natp c) (< c 10))
-           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) c)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice
+           (equal (krw8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) c)
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0)
                                     (kr-spec-bytes b (kx c)) (kr-spec-bytes b (kx c))))))
   :hints (("Goal" :do-not-induct t
            :in-theory (disable krw8 aes-fixslice-encrypt-bitslice kr-spec-bytes kx)
@@ -88,9 +88,9 @@
                   :hints (("Goal" :in-theory (theory 'ground-zero)))))
   (if (zp i)
       (equal (rd8 rk off)
-             (result-ok->val (aes-fixslice-encrypt-bitslice (kk-iter key 0) (kk-iter key 0))))
+             (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kk-iter key 0) (kk-iter key 0))))
     (and (equal (rd8 rk off)
-                (result-ok->val (aes-fixslice-encrypt-bitslice (kk-iter key i) (kk-iter key i))))
+                (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kk-iter key i) (kk-iter key i))))
          (wok rk key (nfix (- off 8)) (1- i)))))
 
 ;; the stepped-down offset stays a nat bounded by the original.
@@ -170,7 +170,7 @@
 (defthm wok-top
   (implies (and (wok rk key off i) (natp i))
            (equal (rd8 rk off)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice (kk-iter key i) (kk-iter key i)))))
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kk-iter key i) (kk-iter key i)))))
   :hints (("Goal" :expand ((wok rk key off i))
            :in-theory (disable rd8 aes-fixslice-encrypt-bitslice kk-iter nth))))
 
@@ -188,7 +188,7 @@
 (defthm wok-construct
   (implies (and (not (zp i))
                 (equal (rd8 rk off)
-                       (result-ok->val (aes-fixslice-encrypt-bitslice (kk-iter key i) (kk-iter key i))))
+                       (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (kk-iter key i) (kk-iter key i))))
                 (wok rk key (nfix (- off 8)) (1- i)))
            (wok rk key off i))
   :hints (("Goal" :expand ((wok rk key off i))
@@ -265,7 +265,7 @@
 ;; bitslice of two inp blocks never fails (GL fact lifted, as wstatep-of-bitslice).
 (defthm bitslice-ok
   (implies (and (aes::inp b0) (aes::inp b1))
-           (equal (result-kind (aes-fixslice-encrypt-bitslice b0 b1)) :ok))
+           (equal (result-kind (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b0 b1)) :ok))
   :hints (("Goal"
            :in-theory (e/d (expand-len-16)
                            (wstatep-of-bitslice-gl aes-fixslice-encrypt-bitslice wstatep nth aes::inp))
@@ -283,9 +283,9 @@
                                   (aes-fixslice-encrypt-bitslice aes-fixslice-encrypt-write8 aes-fixslice-encrypt-write8-loop0 w8-spec rd8 wstatep nth))
            :use ((:instance wstatep-of-bitslice (b0 key) (b1 key))
                  (:instance write8-is-w8spec (rkeys (array-repeat 88 0)) (off 0)
-                            (s (result-ok->val (aes-fixslice-encrypt-bitslice key key))))
+                            (s (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) key key))))
                  (:instance len-of-w8-spec (i 0) (e 8) (rkeys (array-repeat 88 0)) (off 0)
-                            (s (result-ok->val (aes-fixslice-encrypt-bitslice key key))))))))
+                            (s (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) key key))))))))
 
 (defthm true-listp-of-seed
   (implies (aes::inp key)
@@ -295,20 +295,20 @@
                                   (aes-fixslice-encrypt-bitslice aes-fixslice-encrypt-write8 aes-fixslice-encrypt-write8-loop0 w8-spec rd8 wstatep nth))
            :use ((:instance wstatep-of-bitslice (b0 key) (b1 key))
                  (:instance write8-is-w8spec (rkeys (array-repeat 88 0)) (off 0)
-                            (s (result-ok->val (aes-fixslice-encrypt-bitslice key key))))))))
+                            (s (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) key key))))))))
 
 (defthm rd8-of-seed
   (implies (aes::inp key)
            (equal (rd8 (result-ok->val
                     (aes-fixslice-encrypt-bitslice-into 100 (array-repeat 88 0) 0 key key)) 0)
-                  (result-ok->val (aes-fixslice-encrypt-bitslice key key))))
+                  (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) key key))))
   :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-bitslice-into)
                                   (aes-fixslice-encrypt-bitslice aes-fixslice-encrypt-write8 aes-fixslice-encrypt-write8-loop0 w8-spec wstatep nth))
            :use ((:instance wstatep-of-bitslice (b0 key) (b1 key))
                  (:instance write8-is-w8spec (rkeys (array-repeat 88 0)) (off 0)
-                            (s (result-ok->val (aes-fixslice-encrypt-bitslice key key))))
+                            (s (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) key key))))
                  (:instance rd8-of-w8spec-same (off 0) (rkeys (array-repeat 88 0))
-                            (s (result-ok->val (aes-fixslice-encrypt-bitslice key key))))))))
+                            (s (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) key key))))))))
 
 ;; window 0 = bitslice(kk_0,kk_0) since kk_0 = key.
 (defthm wok-of-seed

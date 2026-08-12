@@ -31,14 +31,14 @@
   :hyp (and (unsigned-byte-p 32 w0) (unsigned-byte-p 32 w1) (unsigned-byte-p 32 w2) (unsigned-byte-p 32 w3) (unsigned-byte-p 32 w4) (unsigned-byte-p 32 w5) (unsigned-byte-p 32 w6) (unsigned-byte-p 32 w7))
   :concl
   (b* ((s (list w0 w1 w2 w3 w4 w5 w6 w7)) (ib (result-ok->val (aes-fixslice-encrypt-inv-bitslice s))))
-    (equal (result-ok->val (aes-fixslice-encrypt-bitslice (car ib) (cadr ib))) s))
+    (equal (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) (car ib) (cadr ib))) s))
   :g-bindings (gl::auto-bindings (:nat w0 32) (:nat w1 32) (:nat w2 32) (:nat w3 32) (:nat w4 32) (:nat w5 32) (:nat w6 32) (:nat w7 32)))
 
 ;; ...generalised to any wstatep by the expand-len-8 bridge.
 (defthm bitslice-of-inv-bitslice
   (implies (wstatep s)
            (equal (result-ok->val
-                    (aes-fixslice-encrypt-bitslice
+                    (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0)
                       (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice s)))
                       (cadr (result-ok->val (aes-fixslice-encrypt-inv-bitslice s)))))
                   s))

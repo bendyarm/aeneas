@@ -274,7 +274,7 @@
            :use ((:instance wstatep-of-bitslice (b0 key) (b1 key))
                  (:instance bitslice-ok (b0 key) (b1 key))
                  (:instance write8-is-w8spec (rkeys (array-repeat 88 0)) (off 0)
-                            (s (result-ok->val (aes-fixslice-encrypt-bitslice key key))))))))
+                            (s (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) key key))))))))
 
 ;; ===========================================================================
 ;; Length-only :ok + len for the remaining key_round sub-ops, so key_round is

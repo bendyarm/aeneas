@@ -97,7 +97,7 @@
         (t (result-ok->val (aes-fixslice-encrypt-mix-columns-0 s)))))
 (defund s-chain (key b r)
   (if (zp r)
-      (arkw-spec 0 8 (result-ok->val (aes-fixslice-encrypt-bitslice b b)) (result-ok->val (aes-fixslice-encrypt-aes128-key-schedule 100 key)) 0)
+      (arkw-spec 0 8 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)) (result-ok->val (aes-fixslice-encrypt-aes128-key-schedule 100 key)) 0)
     (arkw-spec 0 8 (mcv (mod r 4) (result-ok->val (aes-fixslice-encrypt-sub-bytes (s-chain key b (1- r)))))
                (result-ok->val (aes-fixslice-encrypt-aes128-key-schedule 100 key)) (* 8 r))))
 (defund s-final (key b)
@@ -272,7 +272,7 @@
 ;; the extracted chain IS the ladder chain (pure structure).
 (defthm enc-chain-is-s-final
   (equal (enc-chain (result-ok->val (aes-fixslice-encrypt-aes128-key-schedule 100 key))
-                    (result-ok->val (aes-fixslice-encrypt-bitslice b b)))
+                    (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b b)))
          (s-final key b))
   :hints (("Goal" :do-not-induct t
            :expand ((s-chain key b 9) (s-chain key b 8) (s-chain key b 7)
@@ -294,8 +294,11 @@
 (local (defthm len-ib-explicit
   (equal (len (result-ok->val (aes-fixslice-encrypt-inv-bitslice (list a0 a1 a2 a3 a4 a5 a6 a7)))) 2)
   :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-bitslice)
-                                  (u32-xor u32-and u32-or u32-shl u32-shr u8-cast
-                                   aes-fixslice-encrypt-delta-swap-2))))))
+                                  (u32-xor u32-and u32-or u32-shl u32-shr
+                                   aes-fixslice-encrypt-delta-swap-2
+                                   vec-index-range vec-update-range
+                                   slice-copy-from-slice u32-to-le-bytes
+                                   take nthcdr append update-nth))))))
 (defthm len-of-ib-val
   (implies (and (true-listp s) (equal (len s) 8))
            (equal (len (result-ok->val (aes-fixslice-encrypt-inv-bitslice s))) 2))

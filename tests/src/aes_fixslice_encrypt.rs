@@ -4,9 +4,9 @@
 //  * ops take &mut [u32] slices per upstream (sub_bytes/shift_rows/
 //      inv_shift_rows/add_round_constant_bit/xor_columns/memshift32);
 //      mix_columns_* keep upstream's own &mut State
-//  * from_le_bytes(x[a..b].try_into().unwrap())  -> ld_le() explicit LE assembly
-//  * to_le_bytes()+copy_from_slice()             -> explicit byte array of
-//      upstream's own `(w>>k) as u8` truncating casts
+//  * bitslice/inv_bitslice bodies are VERBATIM upstream (from_le_bytes /
+//      try_into / to_le_bytes / copy_from_slice, out-param bitslice with all
+//      three debug_asserts); BatchBlocks/State::default() -> array literals
 //  * add_round_key has upstream's (state, rkey: &[u32]) signature and the
 //      encrypt/decrypt call sites pass upstream's &rkeys[..] subslices;
 //      the key SCHEDULE still uses (rkeys, off) + read8/write8 wrappers
@@ -241,22 +241,19 @@ fn shift_rows_2(state: &mut [u32]) {
     }
 }
 
-fn ld_le(x: &[u8; 16], o: usize) -> u32 {
-    (x[o] as u32) | ((x[o + 1] as u32) << 8) | ((x[o + 2] as u32) << 16) | ((x[o + 3] as u32) << 24)
-}
-
-fn bitslice(input0: &[u8; 16], input1: &[u8; 16]) -> State {
+fn bitslice(output: &mut [u32], input0: &[u8], input1: &[u8]) {
+    debug_assert_eq!(output.len(), 8);
     debug_assert_eq!(input0.len(), 16);
     debug_assert_eq!(input1.len(), 16);
 
-    let mut t0 = ld_le(input0, 0x00);
-    let mut t2 = ld_le(input0, 0x04);
-    let mut t4 = ld_le(input0, 0x08);
-    let mut t6 = ld_le(input0, 0x0c);
-    let mut t1 = ld_le(input1, 0x00);
-    let mut t3 = ld_le(input1, 0x04);
-    let mut t5 = ld_le(input1, 0x08);
-    let mut t7 = ld_le(input1, 0x0c);
+    let mut t0 = u32::from_le_bytes(input0[0x00..0x04].try_into().unwrap());
+    let mut t2 = u32::from_le_bytes(input0[0x04..0x08].try_into().unwrap());
+    let mut t4 = u32::from_le_bytes(input0[0x08..0x0c].try_into().unwrap());
+    let mut t6 = u32::from_le_bytes(input0[0x0c..0x10].try_into().unwrap());
+    let mut t1 = u32::from_le_bytes(input1[0x00..0x04].try_into().unwrap());
+    let mut t3 = u32::from_le_bytes(input1[0x04..0x08].try_into().unwrap());
+    let mut t5 = u32::from_le_bytes(input1[0x08..0x0c].try_into().unwrap());
+    let mut t7 = u32::from_le_bytes(input1[0x0c..0x10].try_into().unwrap());
     let m0 = 0x55555555;
     delta_swap_2(&mut t1, &mut t0, 1, m0);
     delta_swap_2(&mut t3, &mut t2, 1, m0);
@@ -272,10 +269,18 @@ fn bitslice(input0: &[u8; 16], input1: &[u8; 16]) -> State {
     delta_swap_2(&mut t5, &mut t1, 4, m2);
     delta_swap_2(&mut t6, &mut t2, 4, m2);
     delta_swap_2(&mut t7, &mut t3, 4, m2);
-    [t0, t1, t2, t3, t4, t5, t6, t7]
+
+    output[0] = t0;
+    output[1] = t1;
+    output[2] = t2;
+    output[3] = t3;
+    output[4] = t4;
+    output[5] = t5;
+    output[6] = t6;
+    output[7] = t7;
 }
 
-fn inv_bitslice(input: &State) -> [[u8; 16]; 2] {
+fn inv_bitslice(input: &[u32]) -> [[u8; 16]; 2] {
     debug_assert_eq!(input.len(), 8);
 
     let mut t0 = input[0];
@@ -301,19 +306,16 @@ fn inv_bitslice(input: &State) -> [[u8; 16]; 2] {
     delta_swap_2(&mut t5, &mut t1, 4, m2);
     delta_swap_2(&mut t6, &mut t2, 4, m2);
     delta_swap_2(&mut t7, &mut t3, 4, m2);
-    let o0 = [
-        t0 as u8, (t0 >> 8) as u8, (t0 >> 16) as u8, (t0 >> 24) as u8,
-        t2 as u8, (t2 >> 8) as u8, (t2 >> 16) as u8, (t2 >> 24) as u8,
-        t4 as u8, (t4 >> 8) as u8, (t4 >> 16) as u8, (t4 >> 24) as u8,
-        t6 as u8, (t6 >> 8) as u8, (t6 >> 16) as u8, (t6 >> 24) as u8,
-    ];
-    let o1 = [
-        t1 as u8, (t1 >> 8) as u8, (t1 >> 16) as u8, (t1 >> 24) as u8,
-        t3 as u8, (t3 >> 8) as u8, (t3 >> 16) as u8, (t3 >> 24) as u8,
-        t5 as u8, (t5 >> 8) as u8, (t5 >> 16) as u8, (t5 >> 24) as u8,
-        t7 as u8, (t7 >> 8) as u8, (t7 >> 16) as u8, (t7 >> 24) as u8,
-    ];
-    [o0, o1]
+    let mut output = [[0u8; 16]; 2];
+    output[0][0x00..0x04].copy_from_slice(&t0.to_le_bytes());
+    output[0][0x04..0x08].copy_from_slice(&t2.to_le_bytes());
+    output[0][0x08..0x0c].copy_from_slice(&t4.to_le_bytes());
+    output[0][0x0c..0x10].copy_from_slice(&t6.to_le_bytes());
+    output[1][0x00..0x04].copy_from_slice(&t1.to_le_bytes());
+    output[1][0x04..0x08].copy_from_slice(&t3.to_le_bytes());
+    output[1][0x08..0x0c].copy_from_slice(&t5.to_le_bytes());
+    output[1][0x0c..0x10].copy_from_slice(&t7.to_le_bytes());
+    output
 }
 
 macro_rules! define_mix_columns {
@@ -457,7 +459,8 @@ fn add_round_key(state: &mut State, rkey: &[u32]) {
 // The 10-round `loop { ... if rk_off == 80 { break } ... }` unrolled: AES-128 has
 // a statically fixed number of rounds, so this is a faithful transformation.
 fn aes128_encrypt(rkeys: &[u32; 88], block0: &[u8; 16], block1: &[u8; 16]) -> [[u8; 16]; 2] {
-    let mut state: State = bitslice(block0, block1);
+    let mut state = [0u32; 8];
+    bitslice(&mut state, block0, block1);
 
     add_round_key(&mut state, &rkeys[..8]);
 
@@ -605,7 +608,8 @@ fn xor_columns(rkeys: &mut [u32], offset: usize, idx_xor: usize, idx_ror: u32) {
 }
 
 fn bitslice_into(rkeys: &mut [u32; 88], off: usize, in0: &[u8; 16], in1: &[u8; 16]) {
-    let s = bitslice(in0, in1);
+    let mut s = [0u32; 8];
+    bitslice(&mut s, in0, in1);
     write8(rkeys, off, s);
 }
 
@@ -884,7 +888,8 @@ fn inv_sub_bytes(state: &mut [u32]) {
 }
 
 fn aes128_decrypt(rkeys: &[u32; 88], block0: &[u8; 16], block1: &[u8; 16]) -> [[u8; 16]; 2] {
-    let mut state: State = bitslice(block0, block1);
+    let mut state = [0u32; 8];
+    bitslice(&mut state, block0, block1);
     add_round_key(&mut state, &rkeys[80..]);
     inv_sub_bytes(&mut state);
     inv_shift_rows_2(&mut state);

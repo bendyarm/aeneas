@@ -38,7 +38,7 @@
 ;; Telescoping absorption i=1: shiftrows^1 cancels the invshiftrows^1 conjugation.
 (defthm shiftrows-1-of-mix-columns-1
   (implies (and (aes::inp b0) (aes::inp b1))
-           (equal (aes::shiftrows (fixslice->statep (result-ok->val (aes-fixslice-encrypt-mix-columns-1 (result-ok->val (aes-fixslice-encrypt-bitslice b0 b1)))) 0)) (aes::mixcolumns (aes::shiftrows (aes::copyarraytostate b0)))))
+           (equal (aes::shiftrows (fixslice->statep (result-ok->val (aes-fixslice-encrypt-mix-columns-1 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b0 b1)))) 0)) (aes::mixcolumns (aes::shiftrows (aes::copyarraytostate b0)))))
   :hints (("Goal" :in-theory (e/d (mix-columns-1-correspondence)
                                   (aes-fixslice-encrypt-mix-columns-1
                                    aes-fixslice-encrypt-bitslice fixslice->statep))
@@ -47,7 +47,7 @@
 ;; Telescoping absorption i=2: shiftrows^2 cancels the invshiftrows^2 conjugation.
 (defthm shiftrows-2-of-mix-columns-2
   (implies (and (aes::inp b0) (aes::inp b1))
-           (equal (aes::shiftrows (aes::shiftrows (fixslice->statep (result-ok->val (aes-fixslice-encrypt-mix-columns-2 (result-ok->val (aes-fixslice-encrypt-bitslice b0 b1)))) 0))) (aes::mixcolumns (aes::shiftrows (aes::shiftrows (aes::copyarraytostate b0))))))
+           (equal (aes::shiftrows (aes::shiftrows (fixslice->statep (result-ok->val (aes-fixslice-encrypt-mix-columns-2 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b0 b1)))) 0))) (aes::mixcolumns (aes::shiftrows (aes::shiftrows (aes::copyarraytostate b0))))))
   :hints (("Goal" :in-theory (e/d (mix-columns-2-correspondence)
                                   (aes-fixslice-encrypt-mix-columns-2
                                    aes-fixslice-encrypt-bitslice fixslice->statep))
@@ -56,7 +56,7 @@
 ;; Telescoping absorption i=3: shiftrows^3 cancels the invshiftrows^3 conjugation.
 (defthm shiftrows-3-of-mix-columns-3
   (implies (and (aes::inp b0) (aes::inp b1))
-           (equal (aes::shiftrows (aes::shiftrows (aes::shiftrows (fixslice->statep (result-ok->val (aes-fixslice-encrypt-mix-columns-3 (result-ok->val (aes-fixslice-encrypt-bitslice b0 b1)))) 0)))) (aes::mixcolumns (aes::shiftrows (aes::shiftrows (aes::shiftrows (aes::copyarraytostate b0)))))))
+           (equal (aes::shiftrows (aes::shiftrows (aes::shiftrows (fixslice->statep (result-ok->val (aes-fixslice-encrypt-mix-columns-3 (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) b0 b1)))) 0)))) (aes::mixcolumns (aes::shiftrows (aes::shiftrows (aes::shiftrows (aes::copyarraytostate b0)))))))
   :hints (("Goal" :in-theory (e/d (mix-columns-3-correspondence)
                                   (aes-fixslice-encrypt-mix-columns-3
                                    aes-fixslice-encrypt-bitslice fixslice->statep))
