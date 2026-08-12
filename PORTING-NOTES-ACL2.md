@@ -117,7 +117,7 @@ script-verified against the reference copy):
 | `iter_mut`/`zip` -> indexed `for` | `shift_rows_1/2/3` (asserts restored), `add_round_key` (upstream's `rkey.len()` assert has no analog until the roadmap-#7 subslice signature returns) | same ops, indexed |
 | LE byte plumbing (`from_le_bytes`+`try_into` -> `ld_le`; `to_le_bytes`+`copy_from_slice` -> explicit arrays with masked `as u8` casts) | `bitslice` (both input asserts restored; the `output.len()` assert has no analog: ours returns `State` instead of taking `&mut [u32]`), `inv_bitslice` (assert restored) | endianness-explicit |
 | Subslice borrows -> `(array, offset)` + `read8`/`write8`/`*_at` wrappers | `aes128_key_schedule` call sites, `sub_bytes_at` etc. (vendored-only helpers) | structural |
-| Loop unrolls | encrypt/decrypt round loops (still unrolled); key-schedule rcon loop (RE-ROLLED, recursive extraction) | control flow |
+| Loop unrolls | ~~encrypt round loop~~ RESTORED (de-vendor pass 3): the bare `loop { ... if rk_off == 80 { break; } ... }` is verbatim upstream, extracted as a recursive loop function; key-schedule rcon loop re-rolled earlier; the decrypt loop arrives with the decrypt side | control flow |
 | ~~`memshift32` forward-loop delta~~ RESOLVED (de-vendor pass 1): body is now VERBATIM upstream -- `for i in (0..8).rev()` restored AND both `debug_assert`s restored (they survive the charon preset and extract as `massert`s, so the certified book carries upstream's own alignment/bounds checks as hypotheses) | `memshift32` | signature-only remains (`&mut [u32; 88]` vs upstream `&mut [u32]`) |
 | Dropped | `aes192_*`/`aes256_*`, cipher-crate API, `cfg(aes_backend_soft = "compact")` branches (non-compact path vendored) | scope reduction |
 
@@ -139,10 +139,21 @@ deleted and the audited subject moves toward verbatim upstream:
    deltas: bitslice's `output.len()` (ours returns `State` by value) and
    add_round_key's `rkey.len()` (returns with the roadmap-#7 subslice
    signature).
-3. Loop re-rolls: key schedule DONE (see below); re-roll the encrypt/decrypt
-   round loops the same way (`-loops-to-rec` + opaque round fns admit fine);
-   requires reworking the Phase-3 round-unfold proofs to the recursive form.
-   Medium, proof-side only.
+3. DONE for everything vendored -- loop re-rolls: key schedule (rcon + fold
+   loops) and now the ENCRYPT ROUND LOOP.  The upstream shape is a bare
+   `loop` over a mutated `rk_off` counter with the break in the MIDDLE of
+   the body (after the mc1 quarter); it extracts as a recursive loop
+   function threading (state, rk_off) with the break as an early (ok state)
+   return -- no iterator machinery at all.  Proof architecture: enc-collapse
+   keeps its statement; a new enc-loop-collapse proves the loop at fuel 100
+   equals the nine middle rounds by THREE explicit expansions (fuel 100 at
+   rk_off 8, 99 at 40, 98 at 72), with add_round_key fuel-canonicalized by
+   a generic-fuel ark-form-n (the loop calls it at decremented fuels).
+   Everything downstream of enc-collapse's equation is untouched.
+   Regression crate `tests/src/loop_break.rs` (+ known-answer proofs book)
+   pins the loop{...break} extraction shape and the expand-collapse proof
+   pattern.  The decrypt round loop is not a delta today (decrypt is not
+   yet vendored); it re-rolls the same way when the decrypt side lands.
 4. DONE, both halves -- `Rev<Range<usize>>` support AND the `memshift32`
    source reversion that it unblocks:
    * Backend: `Iterator::rev` and `Rev::next` have real bodies when charon

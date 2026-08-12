@@ -248,11 +248,23 @@
   :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-add-round-key)
                                   (aes-fixslice-encrypt-add-round-key-loop0 u32-xor nth))
            :use (:instance ark-loop0-is-spec (i 0) (e 8) (n 100)))))
+;; generic-fuel form: the re-rolled round loop calls add_round_key at
+;; decremented fuels (99/98/97 across the three expansions).
+(defthm ark-form-n
+  (implies (and (natp off) (<= (+ off 8) (len rk)) (< (len rk) 4294967296)
+                (<= 8 (len s)) (< 8 (nfix n)))
+           (equal (aes-fixslice-encrypt-add-round-key n s rk off)
+                  (ok (arkw-spec 0 8 s rk off))))
+  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-add-round-key)
+                                  (aes-fixslice-encrypt-add-round-key-loop0 u32-xor nth))
+           :use (:instance ark-loop0-is-spec (i 0) (e 8)))))
 
 ;; ===========================================================================
-;; (C3) enc-model: the 33-op body collapses onto a pure value chain.
+;; (C3) enc-model: the encrypt body (prelude ; the restored upstream round
+;; LOOP ; finale) collapses onto a pure value chain.
 ;; enc-chain rounds: ark0 | 9 x [sub_bytes ; mix_columns_c ; ark(8r)] with
 ;; c = r mod 4 | shift_rows_2 ; sub_bytes ; ark80.  inv_bitslice stays outside.
+;; The loop contributes the nine middle rounds via enc-loop-collapse below.
 ;; A single shape predicate.  The C2 rules carry (true-listp s) AND
 ;; (equal (len s) 8) as separate hyps; relieving both at chain depth k
 ;; re-descends the whole nest per hyp -- a 2^k relief tree (measured: ~x5
@@ -313,6 +325,13 @@
                   (ok (arkw-spec 0 8 s rk off))))
   :hints (("Goal" :in-theory (e/d (st8p) (aes-fixslice-encrypt-add-round-key arkw-spec))
            :use ark-form100)))
+(defthm ark-form-n-st
+  (implies (and (st8p s) (true-listp rk) (equal (len rk) 88) (natp off) (<= (+ off 8) 88)
+                (< 8 (nfix n)))
+           (equal (aes-fixslice-encrypt-add-round-key n s rk off)
+                  (ok (arkw-spec 0 8 s rk off))))
+  :hints (("Goal" :in-theory (e/d (st8p) (aes-fixslice-encrypt-add-round-key arkw-spec))
+           :use ark-form-n)))
 
 (defund enc-chain (rk s)
   (b* ((s (arkw-spec 0 8 s rk 0))
@@ -327,6 +346,49 @@
        (s (arkw-spec 0 8 (result-ok->val (aes-fixslice-encrypt-mix-columns-1 (result-ok->val (aes-fixslice-encrypt-sub-bytes s)))) rk 72))
        (s (arkw-spec 0 8 (result-ok->val (aes-fixslice-encrypt-sub-bytes (result-ok->val (aes-fixslice-encrypt-shift-rows-2 100 s)))) rk 80)))
     s))
+
+;; the restored upstream round loop (bare loop{...break}, counter rk_off) at
+;; fuel 100 IS the nine middle rounds: three explicit expansions of the loop
+;; body (fuel 100 at rk_off 8, 99 at 40, 98 at 72 -- the break fires after the
+;; first quarter of the third body), each quarter's add_round_key collapsed by
+;; the generic-fuel ark-form-n-st.  Same pinned-theory discipline as
+;; enc-collapse below: the b* ok-binder nest otherwise explodes in preprocessing.
+(defthm enc-loop-collapse
+  (implies (and (st8p s) (true-listp rk) (equal (len rk) 88))
+           (equal (aes-fixslice-encrypt-aes128-encrypt-loop0 100 rk s 8)
+                  (ok (b* (
+       (s (arkw-spec 0 8 (result-ok->val (aes-fixslice-encrypt-mix-columns-1 (result-ok->val (aes-fixslice-encrypt-sub-bytes s)))) rk 8))
+       (s (arkw-spec 0 8 (result-ok->val (aes-fixslice-encrypt-mix-columns-2 (result-ok->val (aes-fixslice-encrypt-sub-bytes s)))) rk 16))
+       (s (arkw-spec 0 8 (result-ok->val (aes-fixslice-encrypt-mix-columns-3 (result-ok->val (aes-fixslice-encrypt-sub-bytes s)))) rk 24))
+       (s (arkw-spec 0 8 (result-ok->val (aes-fixslice-encrypt-mix-columns-0 (result-ok->val (aes-fixslice-encrypt-sub-bytes s)))) rk 32))
+       (s (arkw-spec 0 8 (result-ok->val (aes-fixslice-encrypt-mix-columns-1 (result-ok->val (aes-fixslice-encrypt-sub-bytes s)))) rk 40))
+       (s (arkw-spec 0 8 (result-ok->val (aes-fixslice-encrypt-mix-columns-2 (result-ok->val (aes-fixslice-encrypt-sub-bytes s)))) rk 48))
+       (s (arkw-spec 0 8 (result-ok->val (aes-fixslice-encrypt-mix-columns-3 (result-ok->val (aes-fixslice-encrypt-sub-bytes s)))) rk 56))
+       (s (arkw-spec 0 8 (result-ok->val (aes-fixslice-encrypt-mix-columns-0 (result-ok->val (aes-fixslice-encrypt-sub-bytes s)))) rk 64))
+       (s (arkw-spec 0 8 (result-ok->val (aes-fixslice-encrypt-mix-columns-1 (result-ok->val (aes-fixslice-encrypt-sub-bytes s)))) rk 72)))
+                        s))))
+  :hints (("Goal" :do-not-induct t
+           :expand ((:free (sv) (aes-fixslice-encrypt-aes128-encrypt-loop0 100 rk sv 8))
+                    (:free (sv) (aes-fixslice-encrypt-aes128-encrypt-loop0 99 rk sv 40))
+                    (:free (sv) (aes-fixslice-encrypt-aes128-encrypt-loop0 98 rk sv 72)))
+           :in-theory (union-theories (theory 'ground-zero)
+                        '((:rewrite st8p-of-arkw-spec) (:rewrite st8p-of-sb)
+                          (:rewrite st8p-of-mc0) (:rewrite st8p-of-mc1)
+                          (:rewrite st8p-of-mc2) (:rewrite st8p-of-mc3)
+                          (:rewrite rk-of-sb-st)
+                          (:rewrite rk-of-mc0-st) (:rewrite rk-of-mc1-st)
+                          (:rewrite rk-of-mc2-st) (:rewrite rk-of-mc3-st)
+                          (:rewrite ark-form-n-st)
+                          (:rewrite result-ok->val-of-result-ok)
+                          (:rewrite rk-of-ok2)
+                          (:executable-counterpart usize-add)
+                          (:executable-counterpart result-kind$inline)
+                          (:executable-counterpart result-ok->val$inline)
+                          (:executable-counterpart nfix) (:executable-counterpart zp)
+                          (:executable-counterpart binary-+) (:executable-counterpart binary-*)
+                          (:executable-counterpart <) (:executable-counterpart unary--)
+                          (:executable-counterpart natp) (:executable-counterpart integerp)
+                          (:executable-counterpart equal) (:executable-counterpart eq))))))
 
 (defthm enc-collapse
   (implies (and (aes::inp b0) (aes::inp b1)
@@ -349,6 +411,7 @@
                           (:rewrite rk-of-mc2-st) (:rewrite rk-of-mc3-st)
                           (:rewrite rk-of-sr2-st)
                           (:rewrite ark-form100-st)
+                          (:rewrite enc-loop-collapse)
                           (:rewrite result-ok->val-of-result-ok)
                           (:rewrite rk-of-ok2)
                           (:executable-counterpart nfix) (:executable-counterpart zp)

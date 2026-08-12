@@ -10,9 +10,9 @@
 //  * shift_rows_* / add_round_key iter_mut/zip -> `for i in 0..8`
 //  * memshift32 body is now VERBATIM upstream (.rev() + debug_asserts
 //      restored; only the &mut [u32] -> &mut [u32; 88] signature delta remains)
-//  * encrypt/decrypt round `loop{...break}` -> unrolled (statically fixed trip
-//      count); the key-schedule rcon + fold loops are `for` loops (recursive
-//      extraction; the fold's (8..72).step_by(32) -> plain-range equivalent)
+//  * the encrypt round `loop{...break}` is VERBATIM upstream (recursive
+//      extraction); key-schedule rcon + fold loops are `for` loops (the
+//      fold's (8..72).step_by(32) -> plain-range equivalent)
 //  * State::default()/BatchBlocks -> explicit [u32;8] / [[u8;16];2] literals
 //  * ALL upstream debug_assert!s RESTORED verbatim, except two whose bound
 //      variable no longer exists under a signature delta: bitslice's
@@ -454,19 +454,41 @@ fn add_round_key(state: &mut State, rkeys: &[u32; 88], off: usize) {
 // a statically fixed number of rounds, so this is a faithful transformation.
 fn aes128_encrypt(rkeys: &[u32; 88], block0: &[u8; 16], block1: &[u8; 16]) -> [[u8; 16]; 2] {
     let mut state: State = bitslice(block0, block1);
+
     add_round_key(&mut state, rkeys, 0);
-    sub_bytes(&mut state); mix_columns_1(&mut state); add_round_key(&mut state, rkeys, 8);
-    sub_bytes(&mut state); mix_columns_2(&mut state); add_round_key(&mut state, rkeys, 16);
-    sub_bytes(&mut state); mix_columns_3(&mut state); add_round_key(&mut state, rkeys, 24);
-    sub_bytes(&mut state); mix_columns_0(&mut state); add_round_key(&mut state, rkeys, 32);
-    sub_bytes(&mut state); mix_columns_1(&mut state); add_round_key(&mut state, rkeys, 40);
-    sub_bytes(&mut state); mix_columns_2(&mut state); add_round_key(&mut state, rkeys, 48);
-    sub_bytes(&mut state); mix_columns_3(&mut state); add_round_key(&mut state, rkeys, 56);
-    sub_bytes(&mut state); mix_columns_0(&mut state); add_round_key(&mut state, rkeys, 64);
-    sub_bytes(&mut state); mix_columns_1(&mut state); add_round_key(&mut state, rkeys, 72);
+
+    let mut rk_off = 8;
+    loop {
+        sub_bytes(&mut state);
+        mix_columns_1(&mut state);
+        add_round_key(&mut state, rkeys, rk_off);
+        rk_off += 8;
+
+        if rk_off == 80 {
+            break;
+        }
+
+        sub_bytes(&mut state);
+        mix_columns_2(&mut state);
+        add_round_key(&mut state, rkeys, rk_off);
+        rk_off += 8;
+
+        sub_bytes(&mut state);
+        mix_columns_3(&mut state);
+        add_round_key(&mut state, rkeys, rk_off);
+        rk_off += 8;
+
+        sub_bytes(&mut state);
+        mix_columns_0(&mut state);
+        add_round_key(&mut state, rkeys, rk_off);
+        rk_off += 8;
+    }
+
     shift_rows_2(&mut state);
+
     sub_bytes(&mut state);
     add_round_key(&mut state, rkeys, 80);
+
     inv_bitslice(&state)
 }
 
