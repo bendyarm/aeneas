@@ -38,3 +38,8 @@
   :hints (("Goal" :in-theory (e/d (subslice-probe-go subslice-probe-bump)
                                   (vec-index-range vec-update-range
                                    nth update-nth)))))
+
+;; StepBy<Range<usize>>: (0..8).step_by(4) visits 0 and 4 (the key
+;; schedule's (8..72).step_by(32) fold shape).
+(defthm stepby-known-answer
+  (equal (subslice-probe-stepby 100 (list 1 2 3 4 5 6 7 8)) (ok 6)))

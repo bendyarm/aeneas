@@ -11,7 +11,9 @@
   ((start acl2::any-p) (end acl2::any-p))
   :xvar the-core-ops-range-range-usize-)
 
-;; opaque type core-iter-adapters-step-by-stepby-core-ops-range-range-usize- (skipped)
+(fty::defprod core-iter-adapters-step-by-stepby-core-ops-range-range-usize-
+  ((iter acl2::any-p) (step acl2::any-p) (first-take acl2::any-p))
+  :xvar the-core-iter-adapters-step-by-stepby-core-ops-range-range-usize-)
 
 (fty::deftagsum core-option-option-usize-
   (:none ())
@@ -22,13 +24,27 @@
 
 ;; SKIPPED function core-array-impl-core-ops-index-indexmut-core-ops-range-range-usize-for-u32-8usize-index-mut-u32-core-ops-range-range-usize-8usize-: ACL2: call to an opaque/std function with no ACL2 mapping yet
 
-;; SKIPPED function core-iter-adapters-step-by-impl-core-iter-traits-iterator-iterator-for-core-iter-adapters-step-by-stepby-core-ops-range-range-usize-next-core-ops-range-range-usize-: ACL2: call to an opaque/std function with no ACL2 mapping yet
+(defun core-iter-adapters-step-by-impl-core-iter-traits-iterator-iterator-for-core-iter-adapters-step-by-stepby-core-ops-range-range-usize-next-core-ops-range-range-usize- (self)
+  (b* ((it (core-iter-adapters-step-by-stepby-core-ops-range-range-usize-->iter self))
+       (smo (core-iter-adapters-step-by-stepby-core-ops-range-range-usize-->step self))
+       (s (core-ops-range-range-usize-->start it))
+       (e (core-ops-range-range-usize-->end it)))
+  (if (core-iter-adapters-step-by-stepby-core-ops-range-range-usize-->first-take self)
+      (if (< s e)
+          (ok (cons (core-option-option-usize--some s) (core-iter-adapters-step-by-stepby-core-ops-range-range-usize- (core-ops-range-range-usize- (+ s 1) e) smo nil)))
+        (ok (cons (core-option-option-usize--none) (core-iter-adapters-step-by-stepby-core-ops-range-range-usize- it smo nil))))
+    (if (< (+ s smo) e)
+        (ok (cons (core-option-option-usize--some (+ s smo)) (core-iter-adapters-step-by-stepby-core-ops-range-range-usize- (core-ops-range-range-usize- (+ s smo 1) e) smo nil)))
+      (ok (cons (core-option-option-usize--none) (core-iter-adapters-step-by-stepby-core-ops-range-range-usize- (core-ops-range-range-usize- e e) smo nil)))))))
 
-;; SKIPPED function core-iter-traits-collect-impl-core-iter-traits-collect-intoiterator-for-core-iter-adapters-step-by-stepby-core-ops-range-range-usize-into-iter-core-iter-adapters-step-by-stepby-core-ops-range-range-usize-: ACL2: call to an opaque/std function with no ACL2 mapping yet
+(defun core-iter-traits-collect-impl-core-iter-traits-collect-intoiterator-for-core-iter-adapters-step-by-stepby-core-ops-range-range-usize-into-iter-core-iter-adapters-step-by-stepby-core-ops-range-range-usize- (self) (ok self))
 
 ;; SKIPPED trait/mixed declaration group (run with --monomorphize)
 
-;; SKIPPED function core-iter-traits-iterator-iterator-step-by-core-ops-range-range-usize-: ACL2: call to an opaque/std function with no ACL2 mapping yet
+(defun core-iter-traits-iterator-iterator-step-by-core-ops-range-range-usize- (self step)
+  (if (equal step 0)
+      (result-fail (err-failure))
+    (ok (core-iter-adapters-step-by-stepby-core-ops-range-range-usize- self (- step 1) t))))
 
 (defun subslice-probe-bump (s)
   (b* (((ok v1_1) (array-index s 0)))
@@ -65,8 +81,24 @@
   (b* (((ok v17_17) (subslice-probe-set0 v15_15)))
   (ok v17_17))))
 
-;; SKIPPED function subslice-probe-stepby: ACL2: call to a function that was itself skipped
+(defun subslice-probe-stepby-loop0 (n iter a acc)
+  (declare (xargs :measure (nfix n)
+                  :hints (("Goal" :in-theory (theory 'ground-zero)))))
+  (if (zp n) (result-fail (err-out-of-fuel)) (b* ((n_18 (1- n)))
+  (b* (((ok v19_19) (core-iter-adapters-step-by-impl-core-iter-traits-iterator-iterator-for-core-iter-adapters-step-by-stepby-core-ops-range-range-usize-next-core-ops-range-range-usize- iter)))
+  (b* ((acl2tmp20 v19_19)
+     (v21_21 (car acl2tmp20))
+     (iter_22 (cdr acl2tmp20)))
+  (b* ((acl2tmp23 v21_21))
+  (core-option-option-usize--case acl2tmp23
+    :none (ok acc)
+    :some (b* ((i_24 (core-option-option-usize--some->f0 acl2tmp23))) (b* (((ok v25_25) (array-index a i_24)))
+  (b* (((ok acc_26) (u32-wrapping-add acc v25_25)))
+  (subslice-probe-stepby-loop0 n_18 iter_22 a acc_26)))))))))))
 
-;; SKIPPED function subslice-probe-stepby: ACL2: call to a function that was itself skipped
+(defun subslice-probe-stepby (n a)
+  (b* (((ok v27_27) (core-iter-traits-iterator-iterator-step-by-core-ops-range-range-usize- (make-core-ops-range-range-usize- :start 0 :end 8) 4)))
+  (b* (((ok iter_28) (core-iter-traits-collect-impl-core-iter-traits-collect-intoiterator-for-core-iter-adapters-step-by-stepby-core-ops-range-range-usize-into-iter-core-iter-adapters-step-by-stepby-core-ops-range-range-usize- v27_27)))
+  (subslice-probe-stepby-loop0 n iter_28 a 0))))
 
 ;; END OF GENERATED FILE

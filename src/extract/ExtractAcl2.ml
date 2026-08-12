@@ -303,6 +303,20 @@ let is_subslice_index_mut (name : string) : bool =
 let is_elem_index_mut (name : string) : bool =
   str_contains name "-core-ops-index-indexmut-usize-"
 
+(* StepBy<Range<usize>> (the key schedule's (8..72).step_by(32) fold):
+   ctor, blanket into_iter (identity) and next, all synthesized against our
+   own defprod model of the (opaque) StepBy struct. *)
+let is_stepby_ctor (name : string) : bool =
+  str_contains name "iterator-iterator-step-by-core-ops-range-range"
+
+let is_stepby_into_iter (name : string) : bool =
+  str_contains name "intoiterator-for-core-iter-adapters-step-by-stepby"
+  && str_contains name "into-iter"
+
+let is_stepby_next (name : string) : bool =
+  str_contains name "iterator-iterator-for-core-iter-adapters-step-by-stepby"
+  && str_contains name "-next-"
+
 (* LE byte plumbing (de-vendoring roadmap item 6): `slice.try_into()` to a
    fixed-size byte array (returning core's own Result) and `Result::unwrap`
    on it.  Both synthesize to first-order bodies against the crate-local
@@ -321,6 +335,7 @@ let is_range_iter_method (name : string) : bool =
   || is_rev_into_iter name || is_iter_rev_ctor name || is_rev_next name
   || is_subslice_index_shared name
   || is_try_into_array name || is_result_unwrap name
+  || is_stepby_ctor name || is_stepby_into_iter name || is_stepby_next name
 
 let fun_name (span : Meta.span) (ctx : actx) (id : FunDeclId.id) : string =
   match FunDeclId.Map.find_opt id ctx.fun_names with
@@ -1041,7 +1056,15 @@ let type_decl_to_acl2 (ctx : actx) (decl : Pure.type_decl) : string =
       "(fty::deftagsum " ^ tname ^ "\n  "
       ^ String.concat "\n  " (List.map variant_s variants)
       ^ "\n  :xvar the-" ^ tname ^ ")"
-  | Opaque -> ";; opaque type " ^ tname ^ " (skipped)"
+  | Opaque ->
+      if str_contains tname "-step-by-stepby-" then
+        (* StepBy<I> is opaque without the Miri sysroot; we own its model:
+           Rust's own fields are { iter, step (holding step-1), first_take }
+           (see the ctor/next syntheses in [synth_range_iter_body]). *)
+        "(fty::defprod " ^ tname
+        ^ "\n  ((iter acl2::any-p) (step acl2::any-p) (first-take acl2::any-p))"
+        ^ "\n  :xvar the-" ^ tname ^ ")"
+      else ";; opaque type " ^ tname ^ " (skipped)"
 
 (* Functions are keyed by (def_id, loop_id): Aeneas gives a loop function
    the SAME def_id as its wrapper, distinguished only by [loop_id]. *)
@@ -1225,9 +1248,88 @@ let synth_range_iter_body (span : Meta.span) (ctx : actx) (decl : Pure.fun_decl)
     in
     "(defun " ^ name ^ " (self r) (vec-index-range self " ^ lo ^ " " ^ hi
     ^ "))"
+  else if is_stepby_ctor name then
+    (* Iterator::step_by(self, step): Rust asserts step != 0 (a panic ->
+       result-fail) and stores step - 1 in the [step] field. *)
+    let stepby_id =
+      match decl.signature.output with
+      | TAdt (TBuiltin TResult, { types = [ TAdt (TAdtId id, _) ]; _ }) -> id
+      | TAdt (TAdtId id, _) -> id
+      | _ -> [%craise] span "ACL2: step_by: unexpected output signature"
+    in
+    let sbname = type_name span ctx stepby_id in
+    "(defun " ^ name ^ " (self step)\n  (if (equal step 0)\n      (result-fail \
+     (err-failure))\n    (ok (" ^ sbname ^ " self (- step 1) t))))"
+  else if is_stepby_next name then
+    (* StepBy::next: if first_take { first_take = false; iter.next() }
+       else { iter.nth(step) } -- specialized to Range<usize>:
+       nth(n) yields start+n and sets start = start+n+1 when start+n < end,
+       else sets start = end and yields None. *)
+    let stepby_id =
+      match decl.signature.inputs with
+      | TAdt (TAdtId id, _) :: _ -> id
+      | _ -> [%craise] span "ACL2: StepBy::next: unexpected input signature"
+    in
+    let sbname = type_name span ctx stepby_id in
+    let range_id =
+      let prefix = "core-iter-adapters-step-by-stepby-" in
+      let plen = String.length prefix in
+      let rname =
+        if String.length sbname > plen && String.sub sbname 0 plen = prefix
+        then String.sub sbname plen (String.length sbname - plen)
+        else [%craise] span "ACL2: StepBy::next: unexpected StepBy type name"
+      in
+      match
+        TypeDeclId.Map.fold
+          (fun id n acc -> if n = rname then Some id else acc)
+          ctx.type_names None
+      with
+      | Some id -> id
+      | None -> [%craise] span "ACL2: StepBy::next: range instance not in crate"
+    in
+    let option_id =
+      match decl.signature.output with
+      | TAdt
+          ( TBuiltin TResult,
+            {
+              types =
+                [ TAdt (TTuple, { types = TAdt (TAdtId oid, _) :: _; _ }) ];
+              _;
+            } ) -> oid
+      | _ -> [%craise] span "ACL2: StepBy::next: unexpected output signature"
+    in
+    let rname = type_name span ctx range_id in
+    let oname = type_name span ctx option_id in
+    let rdecl = TypeDeclId.Map.find range_id ctx.types in
+    let fstart, fend =
+      match rdecl.kind with
+      | Struct fields -> (
+          match field_names fields with
+          | s :: e :: _ -> (s, e)
+          | _ -> [%craise] span "ACL2: Range has unexpected fields")
+      | _ -> [%craise] span "ACL2: Range is not a struct"
+    in
+    String.concat "\n"
+      [
+        "(defun " ^ name ^ " (self)";
+        "  (b* ((it (" ^ sbname ^ "->iter self))";
+        "       (smo (" ^ sbname ^ "->step self))";
+        "       (s (" ^ rname ^ "->" ^ fstart ^ " it))";
+        "       (e (" ^ rname ^ "->" ^ fend ^ " it)))";
+        "  (if (" ^ sbname ^ "->first-take self)";
+        "      (if (< s e)";
+        "          (ok (cons (" ^ oname ^ "-some s) (" ^ sbname ^ " (" ^ rname
+        ^ " (+ s 1) e) smo nil)))";
+        "        (ok (cons (" ^ oname ^ "-none) (" ^ sbname ^ " it smo nil))))";
+        "    (if (< (+ s smo) e)";
+        "        (ok (cons (" ^ oname ^ "-some (+ s smo)) (" ^ sbname ^ " ("
+        ^ rname ^ " (+ s smo 1) e) smo nil)))";
+        "      (ok (cons (" ^ oname ^ "-none) (" ^ sbname ^ " (" ^ rname
+        ^ " e e) smo nil)))))))";
+      ]
   else if
     is_range_iter_into_iter name || is_rev_into_iter name
-    || is_iter_rev_ctor name
+    || is_iter_rev_ctor name || is_stepby_into_iter name
   then "(defun " ^ name ^ " (self) (ok self))"
   else if is_rev_next name then
     (* self is (represented as) the inner range; reverse advance. *)
