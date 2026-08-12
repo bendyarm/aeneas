@@ -127,7 +127,8 @@
 ;;      unchanged.  rd8-of-key-round-below rewrites the big term away per level,
 ;;      so the induction clause stays small.
 (defthm rd8-agree-of-key-round-below
-  (implies (and (natp off0) (<= (+ off0 16) (len rkeys)) (< (len rkeys) 4294967296)
+  (implies (and (natp off0) (equal (rem off0 8) 0)
+                (<= (+ off0 16) (len rkeys)) (< (len rkeys) 4294967296)
                 (true-listp rkeys) (wstatep (rd8 rkeys off0)) (natp c) (< c 12)
                 (natp off) (<= off off0))
            (rd8-agree (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rkeys off0 c)))
@@ -148,7 +149,8 @@
 
 ;; (5) a key_round at offset off0 preserves every window at or below off0.
 (defthm wok-of-key-round-below
-  (implies (and (natp off0) (<= (+ off0 16) (len rkeys)) (< (len rkeys) 4294967296)
+  (implies (and (natp off0) (equal (rem off0 8) 0)
+                (<= (+ off0 16) (len rkeys)) (< (len rkeys) 4294967296)
                 (true-listp rkeys) (wstatep (rd8 rkeys off0)) (natp c) (< c 12)
                 (natp off) (<= off off0) (wok rkeys key off i))
            (wok (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rkeys off0 c)))
@@ -196,6 +198,7 @@
 ;;     (krw8(bitslice(b,b),i) = bitslice(kr(b),kr(b))) and the kk-iter step.
 (defthm wok-of-key-round
   (implies (and (aes::inp key) (natp i) (< i 10) (natp off0) (<= off0 72)
+                (equal (rem off0 8) 0)
                 (equal (len rkeys) 88) (true-listp rkeys)
                 (wok rkeys key off0 i))
            (wok (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rkeys off0 i)))

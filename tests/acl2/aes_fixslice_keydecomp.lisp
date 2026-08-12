@@ -255,7 +255,8 @@
 ;; :ok for the seed (bitslice-into) and each key_round (from key-round-unfold).
 ;; ===========================================================================
 (defthm result-kind-of-key-round
-  (implies (and (natp off) (<= (+ off 16) (len rkeys)) (< (len rkeys) 4294967296)
+  (implies (and (natp off) (equal (rem off 8) 0)
+                (<= (+ off 16) (len rkeys)) (< (len rkeys) 4294967296)
                 (true-listp rkeys) (wstatep (rd8 rkeys off)) (natp c) (< c 12))
            (equal (result-kind (aes-fixslice-encrypt-key-round 100 rkeys off c)) :ok))
   :hints (("Goal" :use key-round-unfold
@@ -360,7 +361,8 @@
 
 ;; key_round is :ok on length alone; car = off+8, cdr keeps the length.
 (local (defthm key-round-form-len
-  (implies (and (natp off) (<= (+ off 16) (len rk)) (< (len rk) 4294967296) (natp c) (< c 12))
+  (implies (and (natp off) (equal (rem off 8) 0) (<= (+ off 16) (len rk)) (< (len rk) 4294967296)
+                (true-listp rk) (natp c) (< c 12))
            (equal (aes-fixslice-encrypt-key-round 100 rk off c)
                   (ok (cons (+ off 8)
                             (xc-spec 0 8
@@ -387,22 +389,95 @@
                            aes-fixslice-encrypt-sub-bytes-nots-at aes-fixslice-encrypt-sub-bytes-at
                            aes-fixslice-encrypt-memshift32 xc-spec ms-spec w8-spec)))
 (defthm result-kind-of-key-round-len
-  (implies (and (natp off) (<= (+ off 16) (len rk)) (< (len rk) 4294967296) (natp c) (< c 12))
+  (implies (and (natp off) (equal (rem off 8) 0) (<= (+ off 16) (len rk)) (< (len rk) 4294967296)
+                (true-listp rk) (natp c) (< c 12))
            (equal (result-kind (aes-fixslice-encrypt-key-round 100 rk off c)) :ok))
   :hints (("Goal" :use key-round-form-len :do-not-induct t
            :in-theory (disable aes-fixslice-encrypt-key-round))))
 (defthm key-round-car-len
-  (implies (and (natp off) (<= (+ off 16) (len rk)) (< (len rk) 4294967296) (natp c) (< c 12))
+  (implies (and (natp off) (equal (rem off 8) 0) (<= (+ off 16) (len rk)) (< (len rk) 4294967296)
+                (true-listp rk) (natp c) (< c 12))
            (equal (car (result-ok->val (aes-fixslice-encrypt-key-round 100 rk off c))) (+ off 8)))
   :hints (("Goal" :use key-round-form-len :do-not-induct t
            :in-theory (disable aes-fixslice-encrypt-key-round))))
 (defthm len-of-cdr-key-round-len
-  (implies (and (natp off) (<= (+ off 16) (len rk)) (< (len rk) 4294967296) (natp c) (< c 12))
+  (implies (and (natp off) (equal (rem off 8) 0) (<= (+ off 16) (len rk)) (< (len rk) 4294967296)
+                (true-listp rk) (natp c) (< c 12))
            (equal (len (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rk off c)))) (len rk)))
   :hints (("Goal" :use key-round-form-len
            :in-theory (e/d (len-of-xc-spec len-of-w8-spec len-of-ms-spec len-of-add-rcon-len
                             len-of-sbn-at-len len-of-sub-bytes-at-len)
                            (aes-fixslice-encrypt-key-round)))))
+;; true-listp preservation on length alone (for the fuel/loop plumbing in
+;; keyasm, where no wok invariant -- hence no wstatep -- is available).
+(local (defthm true-listp-of-sub-bytes-at-len
+  (implies (and (natp off) (<= (+ off 8) (len rk)) (< (len rk) 4294967296) (true-listp rk))
+           (true-listp (result-ok->val (aes-fixslice-encrypt-sub-bytes-at 100 rk off))))
+  ;; rd8/nth/wstatep stay closed: otherwise relieving the wstatep-hypothesized
+  ;; interface rules for these ops opens an nth case-split swamp (arith-5).
+  :hints (("Goal" :use sba-at-form-len
+           :in-theory (disable w8-spec rd8 nth wstatep
+                               aes-fixslice-encrypt-sub-bytes-at
+                               aes-fixslice-encrypt-sub-bytes)))))
+(local (defthm true-listp-of-sbn-at-len
+  (implies (and (natp off) (<= (+ off 8) (len rk)) (< (len rk) 4294967296) (true-listp rk))
+           (true-listp (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots-at 100 rk off))))
+  :hints (("Goal" :use sbn-at-form-len
+           :in-theory (disable w8-spec rd8 nth wstatep
+                               aes-fixslice-encrypt-sub-bytes-nots-at
+                               aes-fixslice-encrypt-sub-bytes-nots)))))
+(local (defthm true-listp-of-arcbit-at-len
+  (implies (and (natp off) (<= (+ off 8) (len rk)) (< (len rk) 4294967296)
+                (natp bit) (< bit 8) (true-listp rk))
+           (true-listp (result-ok->val (aes-fixslice-encrypt-add-rc-bit-at 100 rk off bit))))
+  :hints (("Goal" :use arcbit-at-form-len
+           :in-theory (disable w8-spec rd8 nth wstatep
+                               aes-fixslice-encrypt-add-rc-bit-at
+                               aes-fixslice-encrypt-add-round-constant-bit)))))
+(local (defthm true-listp-of-add-rcon-len
+  (implies (and (natp off) (<= (+ off 8) (len rk)) (< (len rk) 4294967296)
+                (natp c) (< c 12) (true-listp rk))
+           (true-listp (result-ok->val (aes-fixslice-encrypt-add-rcon 100 rk off c))))
+  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-add-rcon)
+                                  (aes-fixslice-encrypt-add-rc-bit-at rd8 nth wstatep
+                                   aes-fixslice-encrypt-add-round-constant-bit))))))
+(defthm true-listp-of-cdr-key-round-len
+  (implies (and (natp off) (equal (rem off 8) 0) (<= (+ off 16) (len rk)) (< (len rk) 4294967296)
+                (true-listp rk) (natp c) (< c 12))
+           (true-listp (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rk off c)))))
+  ;; every true-listp/len step of the tower supplied as an explicit instance:
+  ;; nothing backchains (the wstatep-hypothesized keyframe rule in particular
+  ;; would send relief into an nth case-split swamp).
+  :hints (("Goal" :do-not-induct t
+           :use (key-round-form-len
+                 (:instance true-listp-of-ms-spec (i 0) (e 8) (buffer rk) (src off) (dst (+ off 8)))
+                 (:instance len-of-ms-spec (i 0) (e 8) (buffer rk) (src off) (dst (+ off 8)))
+                 (:instance true-listp-of-sub-bytes-at-len
+                            (rk (ms-spec 0 8 rk off (+ off 8))) (off (+ off 8)))
+                 (:instance len-of-sub-bytes-at-len
+                            (rk (ms-spec 0 8 rk off (+ off 8))) (off (+ off 8)))
+                 (:instance true-listp-of-sbn-at-len
+                            (rk (result-ok->val (aes-fixslice-encrypt-sub-bytes-at 100
+                                  (ms-spec 0 8 rk off (+ off 8)) (+ off 8))))
+                            (off (+ off 8)))
+                 (:instance len-of-sbn-at-len
+                            (rk (result-ok->val (aes-fixslice-encrypt-sub-bytes-at 100
+                                  (ms-spec 0 8 rk off (+ off 8)) (+ off 8))))
+                            (off (+ off 8)))
+                 (:instance true-listp-of-add-rcon-len
+                            (rk (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots-at 100
+                                  (result-ok->val (aes-fixslice-encrypt-sub-bytes-at 100
+                                    (ms-spec 0 8 rk off (+ off 8)) (+ off 8))) (+ off 8))))
+                            (off (+ off 8)) (c c))
+                 (:instance true-listp-of-xc-spec (i 0) (e 8)
+                            (rkeys (result-ok->val (aes-fixslice-encrypt-add-rcon 100
+                                     (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots-at 100
+                                       (result-ok->val (aes-fixslice-encrypt-sub-bytes-at 100
+                                         (ms-spec 0 8 rk off (+ off 8)) (+ off 8))) (+ off 8))) (+ off 8) c)))
+                            (off (+ off 8)) (dx 8) (dror 14)))
+           :in-theory (disable aes-fixslice-encrypt-key-round true-listp-of-cdr-key-round
+                               true-listp-of-ms-spec true-listp-of-xc-spec
+                               rd8 nth wstatep))))
 
 ;; ===========================================================================
 ;; kr-chain preserves length 88 and true-listp (needed so the fold ops apply).

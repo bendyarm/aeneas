@@ -205,6 +205,7 @@ let std_fun_mapping (mangled : string) : string option =
       else if starts "alloc-vec" && has "-new" then Some "vec-new"
       else if starts "alloc-vec" && has "-with-capacity" then Some "vec-new"
       else if starts "alloc-vec" && has "-len" then Some "vec-len"
+      else if starts "core-slice" && has "-len" then Some "vec-len"
       else if starts "alloc-vec" && has "-index" then Some "array-index"
       else None)
 
@@ -240,10 +241,26 @@ let is_rev_into_iter (name : string) : bool =
   str_contains name "intoiterator-for-core-iter-adapters-rev-rev"
   && str_contains name "into-iter"
 
+(* Fallback syntheses for when the build environment lacks the Miri-built
+   sysroot: without it, rustc's default sysroot carries no MIR for
+   non-lang-item core items, so `Iterator::rev` and `Rev::next` arrive
+   opaque (with the sysroot they have real bodies, which win: synthesis
+   only fires for body-less declarations).  Rev<Range> is a newtype and
+   ACL2 is untyped, so the fallback represents a Rev value AS its inner
+   range: `rev` is the identity and `Rev::next` is the reverse advance on
+   the range itself.  Both syntheses fire together or not at all (opacity
+   is a property of the sysroot, not the item). *)
+let is_iter_rev_ctor (name : string) : bool =
+  str_contains name "iterator-iterator-rev-core-ops-range-range"
+
+let is_rev_next (name : string) : bool =
+  str_contains name "iterator-iterator-for-core-iter-adapters-rev-rev"
+  && str_contains name "-next-"
+
 let is_range_iter_method (name : string) : bool =
   is_range_iter_next name || is_range_iter_into_iter name
   || is_range_iter_next_back name
-  || is_rev_into_iter name
+  || is_rev_into_iter name || is_iter_rev_ctor name || is_rev_next name
 
 let fun_name (span : Meta.span) (ctx : actx) (id : FunDeclId.id) : string =
   match FunDeclId.Map.find_opt id ctx.fun_names with
@@ -801,8 +818,65 @@ let group_to_sccs (decls : Pure.fun_decl list) : fun_scc list =
    match the generated deftagsum/defprod exactly. *)
 let synth_range_iter_body (span : Meta.span) (ctx : actx) (decl : Pure.fun_decl)
     (name : string) : string =
-  if is_range_iter_into_iter name || is_rev_into_iter name then
-    "(defun " ^ name ^ " (self) (ok self))"
+  if
+    is_range_iter_into_iter name || is_rev_into_iter name
+    || is_iter_rev_ctor name
+  then "(defun " ^ name ^ " (self) (ok self))"
+  else if is_rev_next name then
+    (* self is (represented as) the inner range; reverse advance. *)
+    let range_id =
+      (* the mangled Rev instance name embeds the range instance name *)
+      let prefix = "core-iter-adapters-rev-rev-" in
+      let rname =
+        match decl.signature.inputs with
+        | TAdt (TAdtId id, _) :: _ ->
+            let n = type_name span ctx id in
+            let plen = String.length prefix in
+            if String.length n > plen && String.sub n 0 plen = prefix then
+              String.sub n plen (String.length n - plen)
+            else [%craise] span "ACL2: Rev::next: unexpected Rev type name"
+        | _ -> [%craise] span "ACL2: Rev::next: unexpected input signature"
+      in
+      match
+        TypeDeclId.Map.fold
+          (fun id n acc -> if n = rname then Some id else acc)
+          ctx.type_names None
+      with
+      | Some id -> id
+      | None -> [%craise] span "ACL2: Rev::next: range instance not in crate"
+    in
+    let option_id =
+      match decl.signature.output with
+      | TAdt
+          ( TBuiltin TResult,
+            {
+              types =
+                [ TAdt (TTuple, { types = TAdt (TAdtId oid, _) :: _; _ }) ];
+              _;
+            } ) -> oid
+      | _ -> [%craise] span "ACL2: Rev::next: unexpected output signature"
+    in
+    let rname = type_name span ctx range_id in
+    let oname = type_name span ctx option_id in
+    let rdecl = TypeDeclId.Map.find range_id ctx.types in
+    let fstart, fend =
+      match rdecl.kind with
+      | Struct fields -> (
+          match field_names fields with
+          | s :: e :: _ -> (s, e)
+          | _ -> [%craise] span "ACL2: Range has unexpected fields")
+      | _ -> [%craise] span "ACL2: Range is not a struct"
+    in
+    String.concat "\n"
+      [
+        "(defun " ^ name ^ " (self)";
+        "  (b* ((s (" ^ rname ^ "->" ^ fstart ^ " self))";
+        "       (e (" ^ rname ^ "->" ^ fend ^ " self)))";
+        "  (if (< s e)";
+        "      (ok (cons (" ^ oname ^ "-some (- e 1)) (" ^ rname
+        ^ " s (- e 1))))";
+        "    (ok (cons (" ^ oname ^ "-none) self)))))";
+      ]
   else
     let range_id =
       match decl.signature.inputs with
@@ -1014,8 +1088,7 @@ let extract_crate (out : out_channel) (rust_module_name : string)
           | s -> s);
         false
   in
-  List.iter
-    (fun (dg : LlbcAst.declaration_group) ->
+  let emit_group (dg : LlbcAst.declaration_group) : unit =
       match dg with
       | LlbcAst.TypeGroup (NonRecGroup id) | LlbcAst.TypeGroup (RecGroup [ id ])
         -> (
@@ -1101,6 +1174,21 @@ let extract_crate (out : out_channel) (rust_module_name : string)
              --monomorphize)\n\n"
       | LlbcAst.TraitImplGroup _ ->
           Printf.fprintf out
-            ";; SKIPPED trait impl (run with --monomorphize)\n\n")
-    ctx.crate.declarations;
+            ";; SKIPPED trait impl (run with --monomorphize)\n\n"
+  in
+  (* Two-pass emission: all type groups first, then functions and globals.
+     Charon's declaration order is topological for the dependencies it can
+     see, but synthesized bodies (e.g. the fallback [Rev::next], which reads
+     the fields of the underlying [Range] type) can introduce type
+     dependencies charon doesn't know about. Types never depend on
+     functions, so hoisting every type group preserves well-formedness and
+     makes all such references well-defined. *)
+  let type_groups, value_groups =
+    List.partition
+      (fun (dg : LlbcAst.declaration_group) ->
+        match dg with LlbcAst.TypeGroup _ -> true | _ -> false)
+      ctx.crate.declarations
+  in
+  List.iter emit_group type_groups;
+  List.iter emit_group value_groups;
   Printf.fprintf out ";; END OF GENERATED FILE\n"

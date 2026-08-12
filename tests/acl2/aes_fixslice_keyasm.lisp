@@ -39,13 +39,16 @@
                   :use (:instance write8-loop0-is-w8spec (i 0) (e 8)))))
 
 (defthm memshift32-is-msspec-n
-  (implies (and (natp src) (<= (+ src 16) (len buffer)) (< (len buffer) 4294967296)
-                (< 8 (nfix n)))
+  (implies (and (natp src) (equal (rem src 8) 0)
+                (<= (+ src 16) (len buffer)) (< (len buffer) 4294967296)
+                (true-listp buffer) (< 8 (nfix n)))
            (equal (aes-fixslice-encrypt-memshift32 n buffer src)
                   (ok (ms-spec 0 8 buffer src (+ src 8)))))
   :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-memshift32)
-                                  (aes-fixslice-encrypt-memshift32-loop0 ms-spec))
-                  :use (:instance ms-loop0-is-msspec (i 0) (e 8) (dst (+ src 8))))))
+                                  (aes-fixslice-encrypt-memshift32-loop0 ms-spec ms-spec-d
+                                   rev-on-range))
+                  :use ((:instance ms-loop0-is-msspec-d (s 0) (e 8) (dst (+ src 8)))
+                        (:instance ms-spec-d-is-ms-spec (e 8) (dst (+ src 8)))))))
 
 (defthm xor-columns-is-xcspec-n
   (implies (and (natp off) (natp dx) (<= dx off) (<= (+ off 8) (len rkeys))
@@ -104,8 +107,9 @@
 ;; key_round at any sufficient fuel equals key_round at 100 (length-only).
 (defthm key-round-fuel-canon
   (implies (and (syntaxp (not (equal m ''100)))  ; output has fuel 100: don't re-match it
-                (natp off) (<= (+ off 16) (len rk)) (< (len rk) 4294967296)
-                (natp c) (< c 12) (< 10 (nfix m)))
+                (natp off) (equal (rem off 8) 0)
+                (<= (+ off 16) (len rk)) (< (len rk) 4294967296)
+                (true-listp rk) (natp c) (< c 12) (< 10 (nfix m)))
            (equal (aes-fixslice-encrypt-key-round m rk off c)
                   (aes-fixslice-encrypt-key-round 100 rk off c)))
   :hints (("Goal" :do-not-induct t
@@ -131,7 +135,7 @@
 
 (defthm ks-loop0-is-kr-chain
   (implies (and (natp c) (<= c 10) (equal off (* 8 c)) (equal (len rk) 88)
-                (natp m) (< (+ 11 (- 10 c)) m))
+                (true-listp rk) (natp m) (< (+ 11 (- 10 c)) m))
            (equal (aes-fixslice-encrypt-aes128-key-schedule-loop0 m (rng c 10) rk off)
                   (ok (kr-chain rk off c))))
   :hints (("Goal" :induct (ks-li m c rk off)
@@ -403,6 +407,7 @@
                           (:definition not)
                           (:rewrite len-of-array-repeat)
                           (:rewrite result-kind-of-seed) (:rewrite len-of-seed) (:rewrite len-of-core)
+                          (:rewrite true-listp-of-seed)
                           (:rewrite ks-loop0-is-kr-chain)
                           (:rewrite ks-loop1-collapse)
                           (:rewrite ks-loop2-is-sbn-chain)

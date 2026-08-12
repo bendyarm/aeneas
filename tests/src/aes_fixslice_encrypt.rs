@@ -8,13 +8,13 @@
 //      checked-cast model; semantically identical truncation)
 //  * add_round_key(&mut rkeys[o..o+8]) -> (rkeys:&[u32;88], off) + index
 //  * shift_rows_* / add_round_key iter_mut/zip -> `for i in 0..8`
-//  * memshift32 `for i in (0..8).rev()` -> `for i in 0..8` (src/dst windows
-//      are disjoint, so direction is irrelevant; Rev<Range> not yet extractable)
+//  * memshift32 body is now VERBATIM upstream (.rev() + debug_asserts
+//      restored; only the &mut [u32] -> &mut [u32; 88] signature delta remains)
 //  * encrypt/decrypt round `loop{...break}` -> unrolled (statically fixed trip
 //      count); the key-schedule rcon + fold loops are `for` loops (recursive
 //      extraction; the fold's (8..72).step_by(32) -> plain-range equivalent)
 //  * State::default()/BatchBlocks -> explicit [u32;8] / [[u8;16];2] literals
-//  * debug_assert!s dropped; cfg(aes_backend_soft="compact") branches resolved
+//  * debug_assert!s dropped (except memshift32's, restored); cfg(aes_backend_soft="compact") branches resolved
 //      to the non-compact path; aes192/aes256 and the cipher-crate API omitted
 // Pristine upstream reference: tests/src/reference/fixslice32-aes-v0.9.1.rs;
 // per-function audit + de-vendoring roadmap: PORTING-NOTES-ACL2.md.
@@ -468,7 +468,6 @@ pub fn encrypt_block(rkeys: [u32; 88], block: [u8; 16]) -> [u8; 16] {
 // &mut rkeys[a..b] mutable subslices into sub_bytes / inv_shift_rows / etc.;
 // we de-sugar those to read8 / process-on-State / write8 at an offset, so the
 // whole [u32;88] is mutated by index (no mutable-subslice write-back). Also:
-// memshift32's (0..8).rev() -> forward (the src/dst ranges are non-overlapping);
 // the (8..72).step_by(32) adjustment loop -> `while`. Gate logic verbatim.
 
 fn shift_rows_1(state: &mut State) {
@@ -539,8 +538,12 @@ fn inv_shift_rows_3_at(rkeys: &mut [u32; 88], off: usize) {
 }
 
 fn memshift32(buffer: &mut [u32; 88], src_offset: usize) {
+    debug_assert_eq!(src_offset % 8, 0);
+
     let dst_offset = src_offset + 8;
-    for i in 0..8 {
+    debug_assert!(dst_offset + 8 <= buffer.len());
+
+    for i in (0..8).rev() {
         buffer[dst_offset + i] = buffer[src_offset + i];
     }
 }

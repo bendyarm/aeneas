@@ -33,10 +33,15 @@
 (defthm true-listp-of-ms-spec
   (implies (true-listp buffer) (true-listp (ms-spec i e buffer src dst))))
 
+;; every schedule call site is 8-aligned; discharge memshift's debug_assert
+;; hypothesis automatically at (* 8 i) offsets (and by evaluation at literals).
+(defthm rem-8i (implies (natp i) (equal (rem (* 8 i) 8) 0)))
+
 ;; key_round writes only rkeys[off+8..off+16); that window is the xor_columns
 ;; recurrence over the arcon(subnots(subbytes(prev-window))) value.
 (defthm key-round-unfold
-  (implies (and (natp off) (<= (+ off 16) (len rkeys)) (< (len rkeys) 4294967296)
+  (implies (and (natp off) (equal (rem off 8) 0)
+                (<= (+ off 16) (len rkeys)) (< (len rkeys) 4294967296)
                 (true-listp rkeys) (wstatep (rd8 rkeys off)) (natp c) (< c 12))
            (equal (aes-fixslice-encrypt-key-round 100 rkeys off c)
                   (ok (cons (+ off 8)
@@ -66,42 +71,64 @@
           (xc-word (nth 6 s8) (nth 6 d) dror) (xc-word (nth 7 s8) (nth 7 d) dror))))
 
 (defthm key-round-car
-  (implies (and (natp off) (<= (+ off 16) (len rkeys)) (< (len rkeys) 4294967296)
+  (implies (and (natp off) (equal (rem off 8) 0)
+                (<= (+ off 16) (len rkeys)) (< (len rkeys) 4294967296)
                 (true-listp rkeys) (wstatep (rd8 rkeys off)) (natp c) (< c 12))
            (equal (car (result-ok->val (aes-fixslice-encrypt-key-round 100 rkeys off c)))
                   (+ off 8)))
-  :hints (("Goal" :in-theory (disable w8-spec ms-spec xc-spec))))
+  :hints (("Goal" :do-not-induct t
+                  :use ((:instance key-round-unfold))
+                  :in-theory (disable key-round-unfold aes-fixslice-encrypt-key-round
+                                      w8-spec ms-spec xc-spec nth arc-list rd8
+                                      aes-fixslice-encrypt-sub-bytes
+                                      aes-fixslice-encrypt-sub-bytes-nots
+                                      aes-fixslice-encrypt-ror-distance))))
 
 ;; The new window rkeys[off+8..off+16) after one key_round == krw8(prev window).
 (defthm key-round-window
-  (implies (and (natp off) (<= (+ off 16) (len rkeys)) (< (len rkeys) 4294967296)
+  (implies (and (natp off) (equal (rem off 8) 0)
+                (<= (+ off 16) (len rkeys)) (< (len rkeys) 4294967296)
                 (true-listp rkeys) (wstatep (rd8 rkeys off)) (natp c) (< c 12))
            (equal (rd8 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rkeys off c))) (+ off 8))
                   (krw8 (rd8 rkeys off) c)))
   :hints (("Goal" :do-not-induct t
+                  :use ((:instance key-round-unfold))
                   :in-theory (e/d (rd8 krw8)
-                                  (w8-spec ms-spec xc-spec nth arc-list
+                                  (key-round-unfold aes-fixslice-encrypt-key-round
+                                   w8-spec ms-spec xc-spec nth arc-list
                                    aes-fixslice-encrypt-sub-bytes aes-fixslice-encrypt-sub-bytes-nots
                                    aes-fixslice-encrypt-ror-distance)))))
 
 (defthm key-round-len
-  (implies (and (natp off) (<= (+ off 16) (len rkeys)) (< (len rkeys) 4294967296)
+  (implies (and (natp off) (equal (rem off 8) 0)
+                (<= (+ off 16) (len rkeys)) (< (len rkeys) 4294967296)
                 (true-listp rkeys) (wstatep (rd8 rkeys off)) (natp c) (< c 12))
            (equal (len (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rkeys off c))))
                   (len rkeys)))
-  :hints (("Goal" :do-not-induct t :in-theory (disable w8-spec ms-spec xc-spec nth))))
+  :hints (("Goal" :do-not-induct t
+                  :use ((:instance key-round-unfold))
+                  :in-theory (disable key-round-unfold aes-fixslice-encrypt-key-round
+                                      w8-spec ms-spec xc-spec nth arc-list rd8
+                                      aes-fixslice-encrypt-sub-bytes
+                                      aes-fixslice-encrypt-sub-bytes-nots
+                                      aes-fixslice-encrypt-ror-distance))))
 
 ;; FRAME: positions strictly below the written window are unchanged, so earlier
 ;; round keys survive each subsequent key_round.
 (defthm key-round-frame-below
-  (implies (and (natp off) (<= (+ off 16) (len rkeys)) (< (len rkeys) 4294967296)
+  (implies (and (natp off) (equal (rem off 8) 0)
+                (<= (+ off 16) (len rkeys)) (< (len rkeys) 4294967296)
                 (true-listp rkeys) (wstatep (rd8 rkeys off)) (natp c) (< c 12)
                 (natp k) (< k (+ off 8)))
            (equal (nth k (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rkeys off c))))
                   (nth k rkeys)))
-  :hints (("Goal" :do-not-induct t :in-theory (disable w8-spec ms-spec xc-spec nth arc-list
-                                                       aes-fixslice-encrypt-sub-bytes
-                                                       aes-fixslice-encrypt-sub-bytes-nots))))
+  :hints (("Goal" :do-not-induct t
+                  :use ((:instance key-round-unfold))
+                  :in-theory (disable key-round-unfold aes-fixslice-encrypt-key-round
+                                      w8-spec ms-spec xc-spec nth arc-list rd8
+                                      aes-fixslice-encrypt-sub-bytes
+                                      aes-fixslice-encrypt-sub-bytes-nots
+                                      aes-fixslice-encrypt-ror-distance))))
 
 ;; xc-word maps u32s to a u32 (all ops mod-2^32); GL at the concrete rotation
 ;; ror_distance(1,3)=14 that krw8 uses (a symbolic amount blows up the BDDs).

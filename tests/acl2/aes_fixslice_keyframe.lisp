@@ -22,7 +22,8 @@
            :in-theory (disable xc-word))))
 
 (defthm true-listp-of-cdr-key-round
-  (implies (and (natp off) (<= (+ off 16) (len rkeys)) (< (len rkeys) 4294967296)
+  (implies (and (natp off) (equal (rem off 8) 0)
+                (<= (+ off 16) (len rkeys)) (< (len rkeys) 4294967296)
                 (true-listp rkeys) (wstatep (rd8 rkeys off)) (natp c) (< c 12))
            (true-listp (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rkeys off c)))))
   :hints (("Goal" :use key-round-unfold
@@ -33,7 +34,8 @@
 ;; An 8-word read at offset k8 <= off is untouched by a key_round at off (which
 ;; writes only [off+8, off+16)).  Proven by nths + key-round-frame-below.
 (defthm rd8-of-key-round-below
-  (implies (and (natp off) (<= (+ off 16) (len rkeys)) (< (len rkeys) 4294967296)
+  (implies (and (natp off) (equal (rem off 8) 0)
+                (<= (+ off 16) (len rkeys)) (< (len rkeys) 4294967296)
                 (true-listp rkeys) (wstatep (rd8 rkeys off)) (natp c) (< c 12)
                 (natp k8) (<= k8 off))
            (equal (rd8 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rkeys off c))) k8)

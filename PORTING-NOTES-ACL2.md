@@ -118,30 +118,48 @@ script-verified against the reference copy):
 | LE byte plumbing (`from_le_bytes`+`try_into` -> `ld_le`; `to_le_bytes`+`copy_from_slice` -> explicit arrays with masked `as u8` casts) | `bitslice`, `inv_bitslice` | endianness-explicit |
 | Subslice borrows -> `(array, offset)` + `read8`/`write8`/`*_at` wrappers | `aes128_key_schedule` call sites, `sub_bytes_at` etc. (vendored-only helpers) | structural |
 | Loop unrolls | encrypt/decrypt round loops (still unrolled); key-schedule rcon loop (RE-ROLLED, recursive extraction) | control flow |
-| **Undocumented until this audit**: `memshift32` iterates `for i in 0..8` instead of upstream `for i in (0..8).rev()` | `memshift32` | equivalent (src `[s,s+8)` / dst `[s+8,s+16)` disjoint), changed because `Rev<Range>` isn't extractable yet |
-| Dropped | `aes192_*`/`aes256_*`, cipher-crate API, `cfg(aes_backend_soft = "compact")` branches (non-compact path vendored), `debug_assert`s | scope reduction |
+| ~~`memshift32` forward-loop delta~~ RESOLVED (de-vendor pass 1): body is now VERBATIM upstream -- `for i in (0..8).rev()` restored AND both `debug_assert`s restored (they survive the charon preset and extract as `massert`s, so the certified book carries upstream's own alignment/bounds checks as hypotheses) | `memshift32` | signature-only remains (`&mut [u32; 88]` vs upstream `&mut [u32]`) |
+| Dropped | `aes192_*`/`aes256_*`, cipher-crate API, `cfg(aes_backend_soft = "compact")` branches (non-compact path vendored), `debug_assert`s outside `memshift32` | scope reduction |
 
 **De-vendoring roadmap** — what the toolchain needs so each delta can be
 deleted and the audited subject moves toward verbatim upstream:
 
 1. FREE / already zero: macros (rustc expands pre-MIR); `cfg` selection
    (rustc resolves); those deltas need no toolchain work.
-2. `debug_assert!`: check whether the charon preset compiles them out; if so
-   restore them verbatim (zero-cost fidelity win). Small.
+2. `debug_assert!`: PROBED -- the charon preset KEEPS them (they extract as
+   `(massert ...)` ok-binders). `memshift32`'s two are restored (see item 4);
+   restoring the rest is the same mechanical move per function, each adding
+   its assert as a hypothesis to that function's interface lemma. Small.
 3. Loop re-rolls: key schedule DONE (see below); re-roll the encrypt/decrypt
    round loops the same way (`-loops-to-rec` + opaque round fns admit fine);
    requires reworking the Phase-3 round-unfold proofs to the recursive form.
    Medium, proof-side only.
-4. DONE -- `Rev<Range<usize>>` iterator (restores `memshift32`'s `.rev()`):
-   `Iterator::rev` and `Rev::next` turn out to have real bodies under
-   `--monomorphize` and translate as-is; the backend synthesizes only the
-   two opaque leaves, `Range::next_back` (reverse advance, mirroring the
-   `next` synthesis) and the blanket `IntoIterator for Rev<_>` identity.
+4. DONE, both halves -- `Rev<Range<usize>>` support AND the `memshift32`
+   source reversion that it unblocks:
+   * Backend: `Iterator::rev` and `Rev::next` have real bodies when charon
+     builds against a Miri-provisioned sysroot and translate as-is; WITHOUT
+     that sysroot they arrive opaque, so the backend now carries fallback
+     syntheses for all four leaves: `rev` and the blanket
+     `IntoIterator for Rev<_>` as identity (newtype-erased: a Rev value IS
+     its inner range), `Rev::next` and `Range::next_back` as the reverse
+     advance.  `core::slice::len` (reached by the restored bounds assert)
+     maps to `vec-len`.  Emission is now two-pass (all type groups before
+     all fun/global groups): a synthesized `Rev::next` body reads the Range
+     defprod's fields, a dependency charon's declaration order cannot know.
+   * Source: `memshift32` reverted to VERBATIM upstream body -- `.rev()`
+     loop plus both `debug_assert`s, which extract as `massert`s.  Proof
+     rework (the write order flips to descending): keychain gains a
+     descending spec `ms-spec-d` + step lemmas driven by `rvnext-on-range`,
+     bridged to the unchanged ascending interface RHS by `ms-spec-d-is-ms-spec`
+     (equal-by-nths over the disjoint windows); the interface lemma
+     `memshift32-is-msspec` keeps its RHS and gains upstream's own
+     `(rem src 8) = 0` hypothesis, which `rem-8i` discharges at every
+     (8-aligned) schedule call site; the length-only `-len` family and the
+     fuel-canon/loop-collapse lemmas in keydecomp/keyasm additionally
+     thread `true-listp` (the descending<->ascending bridge needs it).
    Regression crate `tests/src/rev_range.rs` (+ known-answer proofs book)
-   covers both, including the exact upstream memshift32 shape.  The
-   vendored `memshift32`'s forward-loop delta can now be reverted in a
-   source-touching pass (proof impact: keychain's ms-spec collapse lemmas
-   assume forward iteration order).
+   covers both iterator directions, including the exact upstream
+   memshift32 shape, and certifies from the fallback syntheses alone.
 5. `u32 as u8` narrowing casts: the runtime currently models narrowing casts as
    checked; Rust `as` truncates totally. Fix the cast primitive to truncating
    semantics; the masked-cast delta then disappears. Small, and a semantic-

@@ -24,6 +24,26 @@
 (defmacro rnext (r)
   `(core-iter-range-impl-core-iter-traits-iterator-iterator-for-core-ops-range-range-usize-next-usize-
     ,r))
+;; the reversed-range iterator (`for i in (a..b).rev()`, upstream memshift32):
+;; `rev` is the identity on the (newtype-erased) range, and its `next` is the
+;; reverse advance -- both backend-synthesized when the sysroot has no MIR
+;; for them, with identical semantics either way.
+(defmacro rrev (r)
+  `(core-iter-traits-iterator-iterator-rev-core-ops-range-range-usize- ,r))
+(defmacro rvnext (r)
+  `(core-iter-adapters-rev-impl-core-iter-traits-iterator-iterator-for-core-iter-adapters-rev-rev-core-ops-range-range-usize-next-core-ops-range-range-usize-
+    ,r))
+(defthm rev-on-range
+  (equal (rrev r) (ok r))
+  :hints (("Goal" :in-theory
+           (enable core-iter-traits-iterator-iterator-rev-core-ops-range-range-usize-))))
+(defthm rvnext-on-range
+  (equal (rvnext (rng s e))
+         (if (< s e)
+             (ok (cons (core-option-option-usize--some (- e 1)) (rng s (- e 1))))
+           (ok (cons (core-option-option-usize--none) (rng s e)))))
+  :hints (("Goal" :in-theory
+           (enable core-iter-adapters-rev-impl-core-iter-traits-iterator-iterator-for-core-iter-adapters-rev-rev-core-ops-range-range-usize-next-core-ops-range-range-usize-))))
 (defthm rnext-on-range
   (equal (rnext (rng i e))
          (if (< i e)
@@ -31,6 +51,12 @@
            (ok (cons (core-option-option-usize--none) (rng i e)))))
   :hints (("Goal" :in-theory
            (enable core-iter-range-impl-core-iter-traits-iterator-iterator-for-core-ops-range-range-usize-next-usize-))))
+;; NOTE on ranges as constants vs constructors: when a generated body opens
+;; in a proof, its (rng s e) literals EVALUATE to quoted alists, which the
+;; (rng s e)-patterned loop lemmas cannot match.  Books that reason about an
+;; OPEN body at a symbolic offset either disable this executable counterpart
+;; locally in the hint, or (better) keep the caller closed and :use the
+;; interface equation -- see key-round-car/window/len/frame-below.
 
 ;; Fixed shifts (<32) and the rotate never fail -- lets the b* ok-binders in the
 ;; loop bodies resolve while u32-shl / ror stay opaque to arithmetic-5.
@@ -97,50 +123,83 @@
   (if (and (natp i) (natp e) (< i e))
       (ms-spec (+ i 1) e (update-nth (+ dst i) (nth (+ src i) buffer) buffer) src dst)
     buffer))
-(defthm ms-loop0-step-rec
-  (implies (and (natp i) (natp e) (< i e) (not (zp n)) (natp src) (natp dst)
-                (< (+ src i) (len buffer)) (< (+ dst i) (len buffer)) (< (len buffer) 4294967296))
-           (equal (aes-fixslice-encrypt-memshift32-loop0 n (rng i e) buffer src dst)
-                  (aes-fixslice-encrypt-memshift32-loop0 (1- n) (rng (+ i 1) e)
-                       (update-nth (+ dst i) (nth (+ src i) buffer) buffer) src dst)))
-  :hints (("Goal" :expand ((aes-fixslice-encrypt-memshift32-loop0 n (rng i e) buffer src dst))
-                  :in-theory (enable rnext-on-range))))
-(defthm ms-loop0-step-base
-  (implies (and (natp i) (natp e) (<= e i) (not (zp n)))
-           (equal (aes-fixslice-encrypt-memshift32-loop0 n (rng i e) buffer src dst) (ok buffer)))
-  :hints (("Goal" :expand ((aes-fixslice-encrypt-memshift32-loop0 n (rng i e) buffer src dst))
-                  :in-theory (enable rnext-on-range))))
-(defun ms-ind (n i e buffer src dst)
-  (declare (xargs :measure (nfix (- (nfix e) (nfix i)))))
-  (if (and (natp i) (natp e) (< i e) (not (zp n)))
-      (ms-ind (1- n) (+ i 1) e (update-nth (+ dst i) (nth (+ src i) buffer) buffer) src dst)
-    (list n i e buffer src dst)))
-(defthm ms-loop0-is-msspec
-  (implies (and (natp i) (natp e) (<= i e) (natp src) (natp dst)
+(defthm msd-loop0-step-rec
+  (implies (and (natp s) (natp e) (< s e) (not (zp n)) (natp src) (natp dst)
+                (< (+ src (- e 1)) (len buffer)) (< (+ dst (- e 1)) (len buffer))
+                (< (len buffer) 4294967296))
+           (equal (aes-fixslice-encrypt-memshift32-loop0 n (rng s e) buffer src dst)
+                  (aes-fixslice-encrypt-memshift32-loop0 (1- n) (rng s (- e 1))
+                       (update-nth (+ dst (- e 1)) (nth (+ src (- e 1)) buffer) buffer) src dst)))
+  :hints (("Goal" :expand ((aes-fixslice-encrypt-memshift32-loop0 n (rng s e) buffer src dst))
+                  :in-theory (enable rvnext-on-range))))
+(defthm msd-loop0-step-base
+  (implies (and (natp s) (natp e) (<= e s) (not (zp n)))
+           (equal (aes-fixslice-encrypt-memshift32-loop0 n (rng s e) buffer src dst) (ok buffer)))
+  :hints (("Goal" :expand ((aes-fixslice-encrypt-memshift32-loop0 n (rng s e) buffer src dst))
+                  :in-theory (enable rvnext-on-range))))
+;; descending accumulator spec matching the loop's write order
+(defun ms-spec-d (s e buffer src dst)
+  (declare (xargs :measure (nfix (- (nfix e) (nfix s)))))
+  (if (and (natp s) (natp e) (< s e))
+      (ms-spec-d s (- e 1) (update-nth (+ dst (- e 1)) (nth (+ src (- e 1)) buffer) buffer) src dst)
+    buffer))
+(defun msd-ind (n s e buffer src dst)
+  (declare (xargs :measure (nfix (- (nfix e) (nfix s)))))
+  (if (and (natp s) (natp e) (< s e) (not (zp n)))
+      (msd-ind (1- n) s (- e 1) (update-nth (+ dst (- e 1)) (nth (+ src (- e 1)) buffer) buffer) src dst)
+    (list n s e buffer src dst)))
+(defthm ms-loop0-is-msspec-d
+  (implies (and (natp s) (natp e) (<= s e) (natp src) (natp dst)
                 (<= (+ src e) (len buffer)) (<= (+ dst e) (len buffer))
-                (< (len buffer) 4294967296) (< (- e i) (nfix n)))
-           (equal (aes-fixslice-encrypt-memshift32-loop0 n (rng i e) buffer src dst)
-                  (ok (ms-spec i e buffer src dst))))
-  :hints (("Goal" :induct (ms-ind n i e buffer src dst)
+                (< (len buffer) 4294967296) (< (- e s) (nfix n)))
+           (equal (aes-fixslice-encrypt-memshift32-loop0 n (rng s e) buffer src dst)
+                  (ok (ms-spec-d s e buffer src dst))))
+  :hints (("Goal" :induct (msd-ind n s e buffer src dst)
                   :do-not '(eliminate-destructors generalize)
-                  :in-theory (e/d (ms-spec)
-                                  (aes-fixslice-encrypt-memshift32-loop0 rnext-on-range
+                  :in-theory (e/d (ms-spec-d)
+                                  (aes-fixslice-encrypt-memshift32-loop0 rvnext-on-range
                                    (:executable-counterpart core-ops-range-range-usize-))))))
+(defthm len-of-ms-spec-d
+  (implies (and (natp s) (natp e) (natp dst) (<= (+ dst e) (len buffer)))
+           (equal (len (ms-spec-d s e buffer src dst)) (len buffer))))
+(defthm true-listp-of-ms-spec-d
+  (implies (true-listp buffer) (true-listp (ms-spec-d s e buffer src dst))))
+(defthm nth-of-ms-spec-d
+  (implies (and (natp s) (natp e) (natp src) (natp dst) (natp k) (<= (+ src e) dst))
+           (equal (nth k (ms-spec-d s e buffer src dst))
+                  (if (and (< s e) (<= (+ dst s) k) (< k (+ dst e)))
+                      (nth (+ src (- k dst)) buffer) (nth k buffer)))))
 (defthm len-of-ms-spec
   (implies (and (natp i) (natp e) (natp dst) (<= (+ dst e) (len buffer)))
            (equal (len (ms-spec i e buffer src dst)) (len buffer))))
+(defthm true-listp-of-ms-spec
+  (implies (true-listp buffer) (true-listp (ms-spec i e buffer src dst))))
 (defthm nth-of-ms-spec
   (implies (and (natp i) (natp e) (natp src) (natp dst) (natp k) (<= (+ src e) dst))
            (equal (nth k (ms-spec i e buffer src dst))
                   (if (and (< i e) (<= (+ dst i) k) (< k (+ dst e)))
                       (nth (+ src (- k dst)) buffer) (nth k buffer)))))
+(defthm ms-spec-d-is-ms-spec
+  (implies (and (natp src) (natp dst) (natp e) (<= (+ src e) dst)
+                (<= (+ dst e) (len buffer)) (true-listp buffer))
+           (equal (ms-spec-d 0 e buffer src dst) (ms-spec 0 e buffer src dst)))
+  :hints ((acl2::equal-by-nths-hint)
+          '(:in-theory (e/d (nth-of-ms-spec nth-of-ms-spec-d len-of-ms-spec len-of-ms-spec-d)
+                            (ms-spec ms-spec-d nth)))))
+;; the interface every later book uses: unchanged right-hand side (the
+;; descending write order is invisible -- the windows are disjoint); the one
+;; new hypothesis is upstream's own debug_assert (src 8-aligned).
 (defthm memshift32-is-msspec
-  (implies (and (natp src) (<= (+ src 16) (len buffer)) (< (len buffer) 4294967296))
+  (implies (and (natp src) (equal (rem src 8) 0)
+                (<= (+ src 16) (len buffer)) (< (len buffer) 4294967296)
+                (true-listp buffer))
            (equal (aes-fixslice-encrypt-memshift32 100 buffer src)
                   (ok (ms-spec 0 8 buffer src (+ src 8)))))
   :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-memshift32)
-                                  (aes-fixslice-encrypt-memshift32-loop0 ms-spec))
-                  :use (:instance ms-loop0-is-msspec (i 0) (e 8) (n 100) (dst (+ src 8))))))
+                                  (aes-fixslice-encrypt-memshift32-loop0 ms-spec ms-spec-d
+                                   rev-on-range))
+                  :use ((:instance ms-loop0-is-msspec-d (s 0) (e 8) (n 100) (dst (+ src 8)))
+                        (:instance ms-spec-d-is-ms-spec (e 8) (dst (+ src 8)))))))
 
 ;; ============================ xor_columns ============================
 (defun xc-word (left cur dror)
