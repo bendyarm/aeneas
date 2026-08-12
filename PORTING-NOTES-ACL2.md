@@ -113,12 +113,12 @@ script-verified against the reference copy):
 | Delta class | Functions | Nature |
 |---|---|---|
 | Byte-identical | `ror`, `ror_distance`, `rotate_rows_*`, `rotate_rows_and_columns_*`, `delta_swap_1/2` (10 fns), and the whole `define_mix_columns!` macro | none |
-| Signature-only (`&mut [u32]` -> `&mut State`/`&[u32;88]`) | `sub_bytes` (the 113-gate S-box network: body verbatim, `debug_assert` restored), `sub_bytes_nots` (assert restored), `inv_sub_bytes` (assert restored), `add_round_constant_bit`, `xor_columns`, `inv_shift_rows_1/2/3` (no asserts upstream: thin wrappers) | zero gate changes |
-| `iter_mut`/`zip` -> indexed `for` | `shift_rows_1/2/3` (asserts restored), `add_round_key` (upstream's `rkey.len()` assert has no analog until the roadmap-#7 subslice signature returns) | same ops, indexed |
+| ~~Signature-only~~ RESOLVED (pass 7): `sub_bytes`/`sub_bytes_nots`/`inv_sub_bytes`, `shift_rows_*`/`inv_shift_rows_*`, `add_round_constant_bit`, `xor_columns` all take upstream's `&mut [u32]` slices (asserts restored where upstream has them; `mix_columns_*` keep upstream's own `&mut State`) | -- | none |
+| `iter_mut`/`zip` -> indexed `for` | `shift_rows_1/2/3` (asserts restored), `add_round_key` (upstream `(state, rkey: &[u32])` signature and `rkey.len()` assert RESTORED in pass 7; only the loop de-sugar remains) | same ops, indexed |
 | LE byte plumbing (`from_le_bytes`+`try_into` -> `ld_le`; `to_le_bytes`+`copy_from_slice` -> explicit arrays of upstream's own bare `as u8` truncating casts) | `bitslice` (both input asserts restored; the `output.len()` assert has no analog: ours returns `State` instead of taking `&mut [u32]`), `inv_bitslice` (assert restored) | endianness-explicit |
-| Subslice borrows -> `(array, offset)` + `read8`/`write8`/`*_at` wrappers | `aes128_key_schedule` call sites, `sub_bytes_at` etc. (vendored-only helpers) | structural |
+| Subslice borrows -> `(array, offset)` + `read8`/`write8`/`*_at` wrappers | KEY SCHEDULE ONLY now (`aes128_key_schedule` + its `*_at` helpers); the encrypt/decrypt sides pass upstream's `&rkeys[..]` subslices as of pass 7 | structural |
 | Loop unrolls | ~~encrypt round loop~~ RESTORED (de-vendor pass 3): the bare `loop { ... if rk_off == 80 { break; } ... }` is verbatim upstream, extracted as a recursive loop function; key-schedule rcon loop re-rolled earlier; the decrypt loop arrives with the decrypt side | control flow |
-| ~~`memshift32` forward-loop delta~~ RESOLVED (de-vendor pass 1): body is now VERBATIM upstream -- `for i in (0..8).rev()` restored AND both `debug_assert`s restored (they survive the charon preset and extract as `massert`s, so the certified book carries upstream's own alignment/bounds checks as hypotheses) | `memshift32` | signature-only remains (`&mut [u32; 88]` vs upstream `&mut [u32]`) |
+| ~~`memshift32` forward-loop delta~~ FULLY RESOLVED (passes 1 + 7): body verbatim upstream (`.rev()` + both `debug_assert`s, extracting as `massert`s) AND the upstream `&mut [u32]` signature | `memshift32` | none |
 | Dropped | `aes192_*`/`aes256_*`, cipher-crate API, `cfg(aes_backend_soft = "compact")` branches (non-compact path vendored) | scope reduction |
 
 **De-vendoring roadmap** — what the toolchain needs so each delta can be
@@ -215,10 +215,21 @@ deleted and the audited subject moves toward verbatim upstream:
    identity backward.  vec-index-range/vec-update-range come with the
    window nth/len/true-listp interface rules.  Validated by
    tests/src/subslice_probe.rs + known-answer AND symbolic proofs.
-   Remaining for the full delta deletion: rewrite the AES source to
-   upstream signatures/call sites (encrypt side, then the key schedule --
-   which also needs a StepBy<Range> synthesis for its (8..72).step_by(32)
-   fold) and rework the window-form proof layer accordingly.
+   ENCRYPT SIDE DONE: every op now has upstream's slice signature
+   (sub_bytes/sub_bytes_nots/inv_sub_bytes, shift_rows_*/inv_shift_rows_*,
+   add_round_constant_bit, xor_columns, memshift32 -- closing memshift32's
+   LAST delta); add_round_key has upstream's (state, rkey: &[u32])
+   signature WITH its restored rkey.len() debug_assert, and the
+   encrypt/decrypt call sites pass upstream's own &rkeys[..8] /
+   &rkeys[rk_off..(rk_off + 8)] / &rkeys[80..] subslices.  Proof
+   architecture: enc-chain and everything downstream (ladder, rounds,
+   final) are UNTOUCHED -- six window lemmas rewrite each synthesized
+   Index<RangeX> read composed with add_round_key straight to the old
+   (arkw-spec 0 8 s rk off) form via take8-nthcdr-is-rd8 and an
+   arkw-spec window-shift.  Remaining: the key SCHEDULE's (rkeys, off) +
+   read8/write8/*_at wrapper layer (needs the StepBy<Range> synthesis for
+   its (8..72).step_by(32) fold and a restructure of the Phase-4
+   window-form proof stack).
 8. `iter_mut()`/`.zip()` over slices: needs `core::slice::IterMut` (and `Zip`)
    extraction — an Aeneas-core capability question, not just the printer.
    Probe first; possibly an upstream Aeneas contribution. Largest unknown.

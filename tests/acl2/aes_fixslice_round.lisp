@@ -105,7 +105,7 @@
   (implies (and (wstatep s) (wstatep k))
            (equal (result-ok->val
                     (aes-fixslice-encrypt-inv-bitslice
-                      (result-ok->val (aes-fixslice-encrypt-add-round-key 100 s k 0))))
+                      (result-ok->val (aes-fixslice-encrypt-add-round-key 100 s k))))
                   (list (xorbytes (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice s))) (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice k))))
                         (xorbytes (cadr (result-ok->val (aes-fixslice-encrypt-inv-bitslice s))) (cadr (result-ok->val (aes-fixslice-encrypt-inv-bitslice k)))))))
   :hints (("Goal"
@@ -148,11 +148,11 @@
 
 (gl::def-gl-thm wstatep-of-addroundkey-gl
   :hyp (and (unsigned-byte-p 32 w0) (unsigned-byte-p 32 w1) (unsigned-byte-p 32 w2) (unsigned-byte-p 32 w3) (unsigned-byte-p 32 w4) (unsigned-byte-p 32 w5) (unsigned-byte-p 32 w6) (unsigned-byte-p 32 w7) (unsigned-byte-p 32 v0) (unsigned-byte-p 32 v1) (unsigned-byte-p 32 v2) (unsigned-byte-p 32 v3) (unsigned-byte-p 32 v4) (unsigned-byte-p 32 v5) (unsigned-byte-p 32 v6) (unsigned-byte-p 32 v7))
-  :concl (wstatep (result-ok->val (aes-fixslice-encrypt-add-round-key 100 (list w0 w1 w2 w3 w4 w5 w6 w7) (list v0 v1 v2 v3 v4 v5 v6 v7) 0)))
+  :concl (wstatep (result-ok->val (aes-fixslice-encrypt-add-round-key 100 (list w0 w1 w2 w3 w4 w5 w6 w7) (list v0 v1 v2 v3 v4 v5 v6 v7))))
   :g-bindings (gl::auto-bindings (:nat w0 32) (:nat w1 32) (:nat w2 32) (:nat w3 32) (:nat w4 32) (:nat w5 32) (:nat w6 32) (:nat w7 32) (:nat v0 32) (:nat v1 32) (:nat v2 32) (:nat v3 32) (:nat v4 32) (:nat v5 32) (:nat v6 32) (:nat v7 32)))
 (defthm wstatep-of-addroundkey
   (implies (and (wstatep s) (wstatep k))
-           (wstatep (result-ok->val (aes-fixslice-encrypt-add-round-key 100 s k 0))))
+           (wstatep (result-ok->val (aes-fixslice-encrypt-add-round-key 100 s k))))
   :hints (("Goal" :in-theory (e/d (expand-len-8 wstatep)
                                   (wstatep-of-addroundkey-gl aes-fixslice-encrypt-add-round-key nth))
            :use (:instance wstatep-of-addroundkey-gl (w0 (nth 0 s)) (w1 (nth 1 s)) (w2 (nth 2 s)) (w3 (nth 3 s)) (w4 (nth 4 s)) (w5 (nth 5 s)) (w6 (nth 6 s)) (w7 (nth 7 s)) (v0 (nth 0 k)) (v1 (nth 1 k)) (v2 (nth 2 k)) (v3 (nth 3 k)) (v4 (nth 4 k)) (v5 (nth 5 k)) (v6 (nth 6 k)) (v7 (nth 7 k))))))
@@ -166,7 +166,7 @@
            (equal (result-ok->val
                     (aes-fixslice-encrypt-inv-bitslice
                       (result-ok->val (aes-fixslice-encrypt-add-round-key 100
-                        (result-ok->val (aes-fixslice-encrypt-mix-columns-0 s)) k 0))))
+                        (result-ok->val (aes-fixslice-encrypt-mix-columns-0 s)) k))))
                   (list (xorbytes (kmix-bytes (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice s))))
                                   (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice k))))
                         (xorbytes (kmix-bytes (cadr (result-ok->val (aes-fixslice-encrypt-inv-bitslice s))))

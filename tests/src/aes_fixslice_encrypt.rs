@@ -1,11 +1,15 @@
 // Vendored AES-128 fixslice ENCRYPT (given expanded key) from RustCrypto aes
 // v0.9.1 (aes/src/soft/fixslice32.rs, MIT/Apache-2.0). Monomorphic, no_std-able,
 // cipher-crate API stripped. Gate logic VERBATIM; documented de-sugarings:
-//  * &mut [u32] -> &mut State ([u32;8]) on sub_bytes/mix_columns/shift_rows
+//  * ops take &mut [u32] slices per upstream (sub_bytes/shift_rows/
+//      inv_shift_rows/add_round_constant_bit/xor_columns/memshift32);
+//      mix_columns_* keep upstream's own &mut State
 //  * from_le_bytes(x[a..b].try_into().unwrap())  -> ld_le() explicit LE assembly
 //  * to_le_bytes()+copy_from_slice()             -> explicit byte array of
 //      upstream's own `(w>>k) as u8` truncating casts
-//  * add_round_key(&mut rkeys[o..o+8]) -> (rkeys:&[u32;88], off) + index
+//  * add_round_key has upstream's (state, rkey: &[u32]) signature and the
+//      encrypt/decrypt call sites pass upstream's &rkeys[..] subslices;
+//      the key SCHEDULE still uses (rkeys, off) + read8/write8 wrappers
 //  * shift_rows_* / add_round_key iter_mut/zip -> `for i in 0..8`
 //  * memshift32 body is now VERBATIM upstream (.rev() + debug_asserts
 //      restored; only the &mut [u32] -> &mut [u32; 88] signature delta remains)
@@ -51,7 +55,7 @@ fn delta_swap_2(a: &mut u32, b: &mut u32, shift: u32, mask: u32) {
     *b ^= t << shift;
 }
 
-fn sub_bytes(state: &mut State) {
+fn sub_bytes(state: &mut [u32]) {
     debug_assert_eq!(state.len(), 8);
 
     let u7 = state[0];
@@ -220,7 +224,7 @@ fn sub_bytes(state: &mut State) {
 }
 
 
-fn sub_bytes_nots(state: &mut State) {
+fn sub_bytes_nots(state: &mut [u32]) {
     debug_assert_eq!(state.len(), 8);
     state[0] ^= 0xffffffff;
     state[1] ^= 0xffffffff;
@@ -228,7 +232,7 @@ fn sub_bytes_nots(state: &mut State) {
     state[6] ^= 0xffffffff;
 }
 
-fn shift_rows_2(state: &mut State) {
+fn shift_rows_2(state: &mut [u32]) {
     debug_assert_eq!(state.len(), 8);
     for i in 0..8 {
         let mut x = state[i];
@@ -442,10 +446,11 @@ define_mix_columns!(
 );
 
 
-fn add_round_key(state: &mut State, rkeys: &[u32; 88], off: usize) {
-    // de-sugared: for (a,b) in state.iter_mut().zip(&rkeys[off..off+8]) { *a ^= b; }
+fn add_round_key(state: &mut State, rkey: &[u32]) {
+    debug_assert_eq!(rkey.len(), 8);
+    // de-sugared: for (a, b) in state.iter_mut().zip(rkey) { *a ^= b; }
     for i in 0..8 {
-        state[i] ^= rkeys[off + i];
+        state[i] ^= rkey[i];
     }
 }
 
@@ -454,13 +459,13 @@ fn add_round_key(state: &mut State, rkeys: &[u32; 88], off: usize) {
 fn aes128_encrypt(rkeys: &[u32; 88], block0: &[u8; 16], block1: &[u8; 16]) -> [[u8; 16]; 2] {
     let mut state: State = bitslice(block0, block1);
 
-    add_round_key(&mut state, rkeys, 0);
+    add_round_key(&mut state, &rkeys[..8]);
 
     let mut rk_off = 8;
     loop {
         sub_bytes(&mut state);
         mix_columns_1(&mut state);
-        add_round_key(&mut state, rkeys, rk_off);
+        add_round_key(&mut state, &rkeys[rk_off..(rk_off + 8)]);
         rk_off += 8;
 
         if rk_off == 80 {
@@ -469,24 +474,24 @@ fn aes128_encrypt(rkeys: &[u32; 88], block0: &[u8; 16], block1: &[u8; 16]) -> [[
 
         sub_bytes(&mut state);
         mix_columns_2(&mut state);
-        add_round_key(&mut state, rkeys, rk_off);
+        add_round_key(&mut state, &rkeys[rk_off..(rk_off + 8)]);
         rk_off += 8;
 
         sub_bytes(&mut state);
         mix_columns_3(&mut state);
-        add_round_key(&mut state, rkeys, rk_off);
+        add_round_key(&mut state, &rkeys[rk_off..(rk_off + 8)]);
         rk_off += 8;
 
         sub_bytes(&mut state);
         mix_columns_0(&mut state);
-        add_round_key(&mut state, rkeys, rk_off);
+        add_round_key(&mut state, &rkeys[rk_off..(rk_off + 8)]);
         rk_off += 8;
     }
 
     shift_rows_2(&mut state);
 
     sub_bytes(&mut state);
-    add_round_key(&mut state, rkeys, 80);
+    add_round_key(&mut state, &rkeys[80..]);
 
     inv_bitslice(&state)
 }
@@ -504,7 +509,7 @@ pub fn encrypt_block(rkeys: [u32; 88], block: [u8; 16]) -> [u8; 16] {
 // whole [u32;88] is mutated by index (no mutable-subslice write-back). Also:
 // the (8..72).step_by(32) adjustment loop -> `while`. Gate logic verbatim.
 
-fn shift_rows_1(state: &mut State) {
+fn shift_rows_1(state: &mut [u32]) {
     debug_assert_eq!(state.len(), 8);
     for i in 0..8 {
         let mut x = state[i];
@@ -513,7 +518,7 @@ fn shift_rows_1(state: &mut State) {
         state[i] = x;
     }
 }
-fn shift_rows_3(state: &mut State) {
+fn shift_rows_3(state: &mut [u32]) {
     debug_assert_eq!(state.len(), 8);
     for i in 0..8 {
         let mut x = state[i];
@@ -522,11 +527,17 @@ fn shift_rows_3(state: &mut State) {
         state[i] = x;
     }
 }
-fn inv_shift_rows_1(state: &mut State) { shift_rows_3(state); }
-fn inv_shift_rows_2(state: &mut State) { shift_rows_2(state); }
-fn inv_shift_rows_3(state: &mut State) { shift_rows_1(state); }
+fn inv_shift_rows_1(state: &mut [u32]) {
+    shift_rows_3(state);
+}
+fn inv_shift_rows_2(state: &mut [u32]) {
+    shift_rows_2(state);
+}
+fn inv_shift_rows_3(state: &mut [u32]) {
+    shift_rows_1(state);
+}
 
-fn add_round_constant_bit(state: &mut State, bit: usize) {
+fn add_round_constant_bit(state: &mut [u32], bit: usize) {
     state[bit] ^= 0x0000c000;
 }
 
@@ -573,7 +584,7 @@ fn inv_shift_rows_3_at(rkeys: &mut [u32; 88], off: usize) {
     write8(rkeys, off, s);
 }
 
-fn memshift32(buffer: &mut [u32; 88], src_offset: usize) {
+fn memshift32(buffer: &mut [u32], src_offset: usize) {
     debug_assert_eq!(src_offset % 8, 0);
 
     let dst_offset = src_offset + 8;
@@ -584,7 +595,7 @@ fn memshift32(buffer: &mut [u32; 88], src_offset: usize) {
     }
 }
 
-fn xor_columns(rkeys: &mut [u32; 88], offset: usize, idx_xor: usize, idx_ror: u32) {
+fn xor_columns(rkeys: &mut [u32], offset: usize, idx_xor: usize, idx_ror: u32) {
     for i in 0..8 {
         let off_i = offset + i;
         let rk = rkeys[off_i - idx_xor] ^ (0x03030303 & ror(rkeys[off_i], idx_ror));
@@ -671,7 +682,7 @@ pub fn encrypt(key: [u8; 16], block: [u8; 16]) -> [u8; 16] {
 // inv_bitslice) and the shared key schedule are already defined above. The
 // 10-round `loop{...break}` is unrolled (fixed count), like encrypt.
 
-fn inv_sub_bytes(state: &mut State) {
+fn inv_sub_bytes(state: &mut [u32]) {
     debug_assert_eq!(state.len(), 8);
 
     let u7 = state[0];
@@ -874,19 +885,19 @@ fn inv_sub_bytes(state: &mut State) {
 
 fn aes128_decrypt(rkeys: &[u32; 88], block0: &[u8; 16], block1: &[u8; 16]) -> [[u8; 16]; 2] {
     let mut state: State = bitslice(block0, block1);
-    add_round_key(&mut state, rkeys, 80);
+    add_round_key(&mut state, &rkeys[80..]);
     inv_sub_bytes(&mut state);
     inv_shift_rows_2(&mut state);
-    add_round_key(&mut state, rkeys, 72); inv_mix_columns_1(&mut state); inv_sub_bytes(&mut state);
-    add_round_key(&mut state, rkeys, 64); inv_mix_columns_0(&mut state); inv_sub_bytes(&mut state);
-    add_round_key(&mut state, rkeys, 56); inv_mix_columns_3(&mut state); inv_sub_bytes(&mut state);
-    add_round_key(&mut state, rkeys, 48); inv_mix_columns_2(&mut state); inv_sub_bytes(&mut state);
-    add_round_key(&mut state, rkeys, 40); inv_mix_columns_1(&mut state); inv_sub_bytes(&mut state);
-    add_round_key(&mut state, rkeys, 32); inv_mix_columns_0(&mut state); inv_sub_bytes(&mut state);
-    add_round_key(&mut state, rkeys, 24); inv_mix_columns_3(&mut state); inv_sub_bytes(&mut state);
-    add_round_key(&mut state, rkeys, 16); inv_mix_columns_2(&mut state); inv_sub_bytes(&mut state);
-    add_round_key(&mut state, rkeys, 8);  inv_mix_columns_1(&mut state); inv_sub_bytes(&mut state);
-    add_round_key(&mut state, rkeys, 0);
+    add_round_key(&mut state, &rkeys[72..(72 + 8)]); inv_mix_columns_1(&mut state); inv_sub_bytes(&mut state);
+    add_round_key(&mut state, &rkeys[64..(64 + 8)]); inv_mix_columns_0(&mut state); inv_sub_bytes(&mut state);
+    add_round_key(&mut state, &rkeys[56..(56 + 8)]); inv_mix_columns_3(&mut state); inv_sub_bytes(&mut state);
+    add_round_key(&mut state, &rkeys[48..(48 + 8)]); inv_mix_columns_2(&mut state); inv_sub_bytes(&mut state);
+    add_round_key(&mut state, &rkeys[40..(40 + 8)]); inv_mix_columns_1(&mut state); inv_sub_bytes(&mut state);
+    add_round_key(&mut state, &rkeys[32..(32 + 8)]); inv_mix_columns_0(&mut state); inv_sub_bytes(&mut state);
+    add_round_key(&mut state, &rkeys[24..(24 + 8)]); inv_mix_columns_3(&mut state); inv_sub_bytes(&mut state);
+    add_round_key(&mut state, &rkeys[16..(16 + 8)]); inv_mix_columns_2(&mut state); inv_sub_bytes(&mut state);
+    add_round_key(&mut state, &rkeys[8..(8 + 8)]);  inv_mix_columns_1(&mut state); inv_sub_bytes(&mut state);
+    add_round_key(&mut state, &rkeys[..8]);
     inv_bitslice(&state)
 }
 

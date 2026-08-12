@@ -25,16 +25,16 @@
 ;; step/base for the extracted loop (write8-loop0 template).
 (defthm ark-loop0-base
   (implies (and (natp i) (natp e) (<= e i) (not (zp n)))
-           (equal (aes-fixslice-encrypt-add-round-key-loop0 n (rng i e) s rk off) (ok s)))
-  :hints (("Goal" :expand ((aes-fixslice-encrypt-add-round-key-loop0 n (rng i e) s rk off))
+           (equal (aes-fixslice-encrypt-add-round-key-loop0 n (rng i e) s w) (ok s)))
+  :hints (("Goal" :expand ((aes-fixslice-encrypt-add-round-key-loop0 n (rng i e) s w))
            :in-theory (enable rnext-on-range))))
 (defthm ark-loop0-step
-  (implies (and (natp i) (natp e) (< i e) (not (zp n)) (natp off)
-                (< (+ off i) (len rk)) (< (len rk) 4294967296) (< i (len s)))
-           (equal (aes-fixslice-encrypt-add-round-key-loop0 n (rng i e) s rk off)
+  (implies (and (natp i) (natp e) (< i e) (not (zp n))
+                (< i (len w)) (< (len w) 4294967296) (< i (len s)))
+           (equal (aes-fixslice-encrypt-add-round-key-loop0 n (rng i e) s w)
                   (aes-fixslice-encrypt-add-round-key-loop0 (1- n) (rng (+ i 1) e)
-                    (update-nth i (u32-xor (nth i s) (nth (+ off i) rk)) s) rk off)))
-  :hints (("Goal" :expand ((aes-fixslice-encrypt-add-round-key-loop0 n (rng i e) s rk off))
+                    (update-nth i (u32-xor (nth i s) (nth i w)) s) w)))
+  :hints (("Goal" :expand ((aes-fixslice-encrypt-add-round-key-loop0 n (rng i e) s w))
            :in-theory (e/d (rnext-on-range) (u32-xor)))))
 
 ;; generic accumulator spec for the loop, then the 8-step instance is arkw.
@@ -49,11 +49,11 @@
       (arkw-ind (1- n) (+ i 1) e (update-nth i (u32-xor (nth i s) (nth (+ off i) rk)) s) rk off)
     (list n i e s rk off)))
 (defthm ark-loop0-is-spec
-  (implies (and (natp i) (natp e) (<= i e) (natp off) (<= (+ off e) (len rk))
-                (< (len rk) 4294967296) (<= e (len s)) (< (- e i) (nfix n)))
-           (equal (aes-fixslice-encrypt-add-round-key-loop0 n (rng i e) s rk off)
-                  (ok (arkw-spec i e s rk off))))
-  :hints (("Goal" :induct (arkw-ind n i e s rk off)
+  (implies (and (natp i) (natp e) (<= i e) (<= e (len w))
+                (< (len w) 4294967296) (<= e (len s)) (< (- e i) (nfix n)))
+           (equal (aes-fixslice-encrypt-add-round-key-loop0 n (rng i e) s w)
+                  (ok (arkw-spec i e s w 0))))
+  :hints (("Goal" :induct (arkw-ind n i e s w 0)
            :in-theory (e/d () (aes-fixslice-encrypt-add-round-key-loop0 u32-xor nth
                                (:executable-counterpart core-ops-range-range-usize-))))))
 
@@ -236,24 +236,21 @@
   (implies (true-listp s) (true-listp (arkw-spec i e s rk off)))
   :hints (("Goal" :induct (arkw-spec i e s rk off)
            :in-theory (e/d () (u32-xor nth)))))
-(defthm ark-form100
-  (implies (and (natp off) (<= (+ off 8) (len rk)) (< (len rk) 4294967296)
-                (<= 8 (len s)))
-           (equal (aes-fixslice-encrypt-add-round-key 100 s rk off)
-                  (ok (arkw-spec 0 8 s rk off))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-add-round-key)
-                                  (aes-fixslice-encrypt-add-round-key-loop0 u32-xor nth))
-           :use (:instance ark-loop0-is-spec (i 0) (e 8) (n 100)))))
-;; generic-fuel form: the re-rolled round loop calls add_round_key at
-;; decremented fuels (99/98/97 across the three expansions).
+;; upstream signature (state, rkey-window): the massert demands the window
+;; length exactly; generic fuel (the round loop calls at 99/98/97).
 (defthm ark-form-n
-  (implies (and (natp off) (<= (+ off 8) (len rk)) (< (len rk) 4294967296)
-                (<= 8 (len s)) (< 8 (nfix n)))
-           (equal (aes-fixslice-encrypt-add-round-key n s rk off)
-                  (ok (arkw-spec 0 8 s rk off))))
+  (implies (and (equal (len w) 8) (<= 8 (len s)) (< 8 (nfix n)))
+           (equal (aes-fixslice-encrypt-add-round-key n s w)
+                  (ok (arkw-spec 0 8 s w 0))))
   :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-add-round-key)
                                   (aes-fixslice-encrypt-add-round-key-loop0 u32-xor nth))
            :use (:instance ark-loop0-is-spec (i 0) (e 8)))))
+(defthm ark-form100
+  (implies (and (equal (len w) 8) (<= 8 (len s)))
+           (equal (aes-fixslice-encrypt-add-round-key 100 s w)
+                  (ok (arkw-spec 0 8 s w 0))))
+  :hints (("Goal" :use (:instance ark-form-n (n 100))
+           :in-theory (disable aes-fixslice-encrypt-add-round-key arkw-spec))))
 
 ;; ===========================================================================
 ;; (C3) enc-model: the encrypt body (prelude ; the restored upstream round
@@ -315,19 +312,69 @@
 (defthm rk-of-sr2-st
   (implies (st8p s) (equal (result-kind (aes-fixslice-encrypt-shift-rows-2 100 s)) :ok))
   :hints (("Goal" :in-theory (e/d (st8p) (aes-fixslice-encrypt-shift-rows-2)))))
-(defthm ark-form100-st
-  (implies (and (st8p s) (true-listp rk) (equal (len rk) 88) (natp off) (<= (+ off 8) 88))
-           (equal (aes-fixslice-encrypt-add-round-key 100 s rk off)
-                  (ok (arkw-spec 0 8 s rk off))))
-  :hints (("Goal" :in-theory (e/d (st8p) (aes-fixslice-encrypt-add-round-key arkw-spec))
-           :use ark-form100)))
 (defthm ark-form-n-st
-  (implies (and (st8p s) (true-listp rk) (equal (len rk) 88) (natp off) (<= (+ off 8) 88)
-                (< 8 (nfix n)))
-           (equal (aes-fixslice-encrypt-add-round-key n s rk off)
-                  (ok (arkw-spec 0 8 s rk off))))
+  (implies (and (st8p s) (equal (len w) 8) (< 8 (nfix n)))
+           (equal (aes-fixslice-encrypt-add-round-key n s w)
+                  (ok (arkw-spec 0 8 s w 0))))
   :hints (("Goal" :in-theory (e/d (st8p) (aes-fixslice-encrypt-add-round-key arkw-spec))
            :use ark-form-n)))
+;; ---- the round-key windows: each synthesized Index<RangeX> read is rd8 ----
+(local (defthm nthcdr-0-id (implies (true-listp rk) (equal (nthcdr 0 rk) rk))))
+(defthm take8-nthcdr-is-rd8
+  (implies (and (natp off) (<= (+ off 8) (len rk)) (true-listp rk))
+           (equal (take 8 (nthcdr off rk)) (rd8 rk off)))
+  :hints ((acl2::equal-by-nths-hint)
+          '(:in-theory (e/d (rd8) (nth take nthcdr)))))
+(local (defthm arkw-window-shift-c   ; arkw-spec over the rd8 window = at off
+  (implies (and (natp i) (natp e) (<= e 8) (natp off))
+           (equal (arkw-spec i e s (rd8 rk off) 0)
+                  (arkw-spec i e s rk off)))
+  :hints (("Goal" :induct (arkw-spec i e s rk off)
+           :in-theory (e/d () (u32-xor nth rd8))))
+  :rule-classes nil))
+(defthm rk-of-window-to
+  (implies (<= 8 (len rk))
+           (equal (result-kind (core-array-impl-core-ops-index-index-core-ops-range-rangeto-usize-for-u32-88usize-index-u32-core-ops-range-rangeto-usize-88usize- rk (core-ops-range-rangeto-usize- 8))) :ok))
+  :hints (("Goal" :in-theory (enable core-array-impl-core-ops-index-index-core-ops-range-rangeto-usize-for-u32-88usize-index-u32-core-ops-range-rangeto-usize-88usize-))))
+(defthm ark-of-window-to
+  (implies (and (st8p s) (true-listp rk) (equal (len rk) 88) (< 8 (nfix n)))
+           (equal (aes-fixslice-encrypt-add-round-key n s
+                    (result-ok->val (core-array-impl-core-ops-index-index-core-ops-range-rangeto-usize-for-u32-88usize-index-u32-core-ops-range-rangeto-usize-88usize- rk (core-ops-range-rangeto-usize- 8))))
+                  (ok (arkw-spec 0 8 s rk 0))))
+  :hints (("Goal" :do-not-induct t
+           :in-theory (e/d (core-array-impl-core-ops-index-index-core-ops-range-rangeto-usize-for-u32-88usize-index-u32-core-ops-range-rangeto-usize-88usize-) (aes-fixslice-encrypt-add-round-key arkw-spec rd8 nth))
+           :use ((:instance take8-nthcdr-is-rd8 (off 0))
+                 (:instance ark-form-n (w (rd8 rk 0)))
+                 (:instance arkw-window-shift-c (i 0) (e 8) (off 0))))))
+(defthm rk-of-window-from80
+  (implies (equal (len rk) 88)
+           (equal (result-kind (core-array-impl-core-ops-index-index-core-ops-range-rangefrom-usize-for-u32-88usize-index-u32-core-ops-range-rangefrom-usize-88usize- rk (core-ops-range-rangefrom-usize- 80))) :ok))
+  :hints (("Goal" :in-theory (enable core-array-impl-core-ops-index-index-core-ops-range-rangefrom-usize-for-u32-88usize-index-u32-core-ops-range-rangefrom-usize-88usize-))))
+(defthm ark-of-window-from80
+  (implies (and (st8p s) (true-listp rk) (equal (len rk) 88) (< 8 (nfix n)))
+           (equal (aes-fixslice-encrypt-add-round-key n s
+                    (result-ok->val (core-array-impl-core-ops-index-index-core-ops-range-rangefrom-usize-for-u32-88usize-index-u32-core-ops-range-rangefrom-usize-88usize- rk (core-ops-range-rangefrom-usize- 80))))
+                  (ok (arkw-spec 0 8 s rk 80))))
+  :hints (("Goal" :do-not-induct t
+           :in-theory (e/d (core-array-impl-core-ops-index-index-core-ops-range-rangefrom-usize-for-u32-88usize-index-u32-core-ops-range-rangefrom-usize-88usize-) (aes-fixslice-encrypt-add-round-key arkw-spec rd8 nth))
+           :use ((:instance take8-nthcdr-is-rd8 (off 80))
+                 (:instance ark-form-n (w (rd8 rk 80)))
+                 (:instance arkw-window-shift-c (i 0) (e 8) (off 80))))))
+(defthm rk-of-window-range
+  (implies (and (natp lo) (natp hi) (<= lo hi) (<= hi (len rk)))
+           (equal (result-kind (core-array-impl-core-ops-index-index-core-ops-range-range-usize-for-u32-88usize-index-u32-core-ops-range-range-usize-88usize- rk (core-ops-range-range-usize- lo hi))) :ok))
+  :hints (("Goal" :in-theory (enable core-array-impl-core-ops-index-index-core-ops-range-range-usize-for-u32-88usize-index-u32-core-ops-range-range-usize-88usize-))))
+(defthm ark-of-window-range
+  (implies (and (st8p s) (true-listp rk) (equal (len rk) 88)
+                (natp lo) (<= (+ lo 8) 88) (< 8 (nfix n)))
+           (equal (aes-fixslice-encrypt-add-round-key n s
+                    (result-ok->val (core-array-impl-core-ops-index-index-core-ops-range-range-usize-for-u32-88usize-index-u32-core-ops-range-range-usize-88usize- rk (core-ops-range-range-usize- lo (+ lo 8)))))
+                  (ok (arkw-spec 0 8 s rk lo))))
+  :hints (("Goal" :do-not-induct t
+           :in-theory (e/d (core-array-impl-core-ops-index-index-core-ops-range-range-usize-for-u32-88usize-index-u32-core-ops-range-range-usize-88usize-) (aes-fixslice-encrypt-add-round-key arkw-spec rd8 nth))
+           :use ((:instance take8-nthcdr-is-rd8 (off lo))
+                 (:instance ark-form-n (w (rd8 rk lo)))
+                 (:instance arkw-window-shift-c (i 0) (e 8) (off lo))))))
 
 (defund enc-chain (rk s)
   (b* ((s (arkw-spec 0 8 s rk 0))
@@ -374,7 +421,7 @@
                           (:rewrite rk-of-sb-st)
                           (:rewrite rk-of-mc0-st) (:rewrite rk-of-mc1-st)
                           (:rewrite rk-of-mc2-st) (:rewrite rk-of-mc3-st)
-                          (:rewrite ark-form-n-st)
+                          (:rewrite ark-of-window-range) (:rewrite rk-of-window-range)
                           (:rewrite result-ok->val-of-result-ok)
                           (:rewrite rk-of-ok2)
                           (:executable-counterpart usize-add)
@@ -406,7 +453,8 @@
                           (:rewrite rk-of-mc0-st) (:rewrite rk-of-mc1-st)
                           (:rewrite rk-of-mc2-st) (:rewrite rk-of-mc3-st)
                           (:rewrite rk-of-sr2-st)
-                          (:rewrite ark-form100-st)
+                          (:rewrite ark-of-window-to) (:rewrite rk-of-window-to)
+                          (:rewrite ark-of-window-from80) (:rewrite rk-of-window-from80)
                           (:rewrite enc-loop-collapse)
                           (:rewrite result-ok->val-of-result-ok)
                           (:rewrite rk-of-ok2)

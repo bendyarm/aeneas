@@ -173,7 +173,7 @@
            :in-theory (e/d () (arkw-spec aes-fixslice-encrypt-inv-bitslice aes-fixslice-encrypt-add-round-key rd8 xorbytes nth wstatep
                                inv-bitslice-of-addroundkey))
            :use ((:instance arkw-window-shift-gen (i 0) (e 8))
-                 (:instance ark-form100 (rk (rd8 rk off)) (off 0))
+                 (:instance ark-form100 (w (rd8 rk off)))
                  (:instance inv-bitslice-of-addroundkey (k (rd8 rk off)))
                  (:instance len-when-wstatep (x (rd8 rk off)))
                  (:instance len-when-wstatep (x s))))))
@@ -184,7 +184,7 @@
            :in-theory (e/d () (arkw-spec aes-fixslice-encrypt-add-round-key rd8 nth wstatep
                                wstatep-of-addroundkey))
            :use ((:instance arkw-window-shift-gen (i 0) (e 8))
-                 (:instance ark-form100 (rk (rd8 rk off)) (off 0))
+                 (:instance ark-form100 (w (rd8 rk off)))
                  (:instance wstatep-of-addroundkey (k (rd8 rk off)))
                  (:instance len-when-wstatep (x (rd8 rk off)))
                  (:instance len-when-wstatep (x s))))))
