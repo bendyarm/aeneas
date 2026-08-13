@@ -279,9 +279,39 @@ deleted and the audited subject moves toward verbatim upstream:
      literals), and alignment hypotheses must be stated in MOD form
      (arithmetic-5 normalizes goal-side rem to mod, and backchain relief
      does not cross that normalization).
-8. `iter_mut()`/`.zip()` over slices: needs `core::slice::IterMut` (and `Zip`)
-   extraction — an Aeneas-core capability question, not just the printer.
-   Probe first; possibly an upstream Aeneas contribution. Largest unknown.
+8. PROBED, precisely characterized (was "largest unknown") --
+   `iter_mut()`/`.zip()` over slices, the last structural de-sugar class
+   (shift_rows_*'s per-word loop and add_round_key's iter_mut().zip()).
+   Reproducer: tests/src/itermut_probe.rs (skip-marked; graduated shapes
+   p1 iter / p2 iter_mut / p3 zip / p4 verbatim add_round_key).  Finding:
+   * The fork's Aeneas CORE already supports slice iterators -- under the
+     POLYMORPHIC pipeline (no --monomorphize) all four shapes translate,
+     and the pure form is exactly right for us: IterMut::next returns
+     (elem option, advanced iter, next_back : iter -> option elem -> iter)
+     and the loop threads a composed write-back continuation (see the Lean
+     backend's core.slice.iter.* models; this repo's tests/src/iterators.rs
+     already exercises slice_iter_mut_while).  Nested-borrow research is
+     NOT the blocker.
+   * The blocker is MONOMORPHIZATION, which the ACL2 printer requires:
+     charon --monomorphize materializes region-erased borrow-carrying ADT
+     decls (core::option::Option::<&'_ mut u32>, ::<(&'_ mut u32, &'_ u32)>)
+     and Aeneas's decl-level region analysis rejects RErased in a decl
+     ("Expected a type with regions", RegionsHierarchy via TypesAnalysis);
+     the failure then cascades to IterMut::next's signature and every
+     body using it.  Shared iter() fails one level up for the same reason
+     (opaque Iter<'a, u32> carries the hidden borrow).  The poly pipeline
+     never materializes such decls -- it decomposes borrows under ADTs at
+     SIGNATURE boundaries via the generic decl + instantiation.
+   * Fix paths, in preference order: (a) upstream -- charon mono
+     region-parameterizes instantiated decls and Aeneas's signature
+     decomposition learns decl-level borrow fields (the semantic content
+     already exists on the poly path; the work is plumbing it through the
+     decl-based route); (b) in-fork -- teach the ACL2 printer the poly
+     pipeline's calling convention (trait-instance/dictionary arguments,
+     region-generic std types), a large printer rework with no core
+     changes; (c) status quo -- the two indexed-for loops remain the
+     smallest remaining deltas, pinned by the audit.  We hold at (c) and
+     recommend filing (a) upstream with the reproducer.
 9. Whole-crate extraction (cipher traits, generic-array, batch API, AES-192/256):
    long-term; today's audited claim is module-level (the fixslice32 math).
 
