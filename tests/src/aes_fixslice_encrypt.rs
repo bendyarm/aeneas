@@ -1,26 +1,16 @@
 // Vendored AES-128 fixslice ENCRYPT (given expanded key) from RustCrypto aes
 // v0.9.1 (aes/src/soft/fixslice32.rs, MIT/Apache-2.0). Monomorphic, no_std-able,
-// cipher-crate API stripped. Gate logic VERBATIM; documented de-sugarings:
-//  * ops take &mut [u32] slices per upstream (sub_bytes/shift_rows/
-//      inv_shift_rows/add_round_constant_bit/xor_columns/memshift32);
-//      mix_columns_* keep upstream's own &mut State
-//  * bitslice/inv_bitslice bodies are VERBATIM upstream (from_le_bytes /
-//      try_into / to_le_bytes / copy_from_slice, out-param bitslice with all
-//      three debug_asserts); BatchBlocks/State::default() -> array literals
-//  * add_round_key has upstream's (state, rkey: &[u32]) signature and the
-//      encrypt/decrypt call sites pass upstream's &rkeys[..] subslices;
-//      the key SCHEDULE still uses (rkeys, off) + read8/write8 wrappers
+// cipher-crate API stripped. Gate logic VERBATIM; every function body is
+// upstream text (memshift32, bitslice/inv_bitslice, aes128_key_schedule --
+// including its &mut rkeys[..] subslice borrows and (8..72).step_by(32) fold --
+// and the encrypt round loop{...break}, all with upstream's own signatures and
+// ALL thirteen debug_assert!s restored verbatim); the former read8/write8/
+// *_at/key_round/bitslice_into wrapper layer is DELETED.
+// Documented de-sugarings:
 //  * shift_rows_* / add_round_key iter_mut/zip -> `for i in 0..8`
-//  * memshift32 body is now VERBATIM upstream (.rev() + debug_asserts
-//      restored; only the &mut [u32] -> &mut [u32; 88] signature delta remains)
-//  * the encrypt round `loop{...break}` is VERBATIM upstream (recursive
-//      extraction); key-schedule rcon + fold loops are `for` loops (the
-//      fold's (8..72).step_by(32) -> plain-range equivalent)
-//  * State::default()/BatchBlocks -> explicit [u32;8] / [[u8;16];2] literals
-//  * ALL upstream debug_assert!s RESTORED verbatim, except two whose bound
-//      variable no longer exists under a signature delta: bitslice's
-//      output.len() (ours returns State instead of taking &mut [u32]) and
-//      add_round_key's rkey.len() (ours takes (rkeys,off), see roadmap #7)
+//      (same ops, indexed; roadmap #8)
+//  * State::default()/BatchBlocks -> explicit [u32;8] / [[u8;16];2] literals;
+//      the FixsliceKeys128 type alias -> its definition [u32; 88]
 //  * cfg(aes_backend_soft="compact") branches resolved
 //      to the non-compact path; aes192/aes256 and the cipher-crate API omitted
 // Pristine upstream reference: tests/src/reference/fixslice32-aes-v0.9.1.rs;
@@ -544,49 +534,6 @@ fn add_round_constant_bit(state: &mut [u32], bit: usize) {
     state[bit] ^= 0x0000c000;
 }
 
-fn read8(rkeys: &[u32; 88], off: usize) -> State {
-    [
-        rkeys[off], rkeys[off + 1], rkeys[off + 2], rkeys[off + 3],
-        rkeys[off + 4], rkeys[off + 5], rkeys[off + 6], rkeys[off + 7],
-    ]
-}
-fn write8(rkeys: &mut [u32; 88], off: usize, s: State) {
-    for i in 0..8 {
-        rkeys[off + i] = s[i];
-    }
-}
-
-fn sub_bytes_at(rkeys: &mut [u32; 88], off: usize) {
-    let mut s = read8(rkeys, off);
-    sub_bytes(&mut s);
-    write8(rkeys, off, s);
-}
-fn sub_bytes_nots_at(rkeys: &mut [u32; 88], off: usize) {
-    let mut s = read8(rkeys, off);
-    sub_bytes_nots(&mut s);
-    write8(rkeys, off, s);
-}
-fn add_rc_bit_at(rkeys: &mut [u32; 88], off: usize, bit: usize) {
-    let mut s = read8(rkeys, off);
-    add_round_constant_bit(&mut s, bit);
-    write8(rkeys, off, s);
-}
-fn inv_shift_rows_1_at(rkeys: &mut [u32; 88], off: usize) {
-    let mut s = read8(rkeys, off);
-    inv_shift_rows_1(&mut s);
-    write8(rkeys, off, s);
-}
-fn inv_shift_rows_2_at(rkeys: &mut [u32; 88], off: usize) {
-    let mut s = read8(rkeys, off);
-    inv_shift_rows_2(&mut s);
-    write8(rkeys, off, s);
-}
-fn inv_shift_rows_3_at(rkeys: &mut [u32; 88], off: usize) {
-    let mut s = read8(rkeys, off);
-    inv_shift_rows_3(&mut s);
-    write8(rkeys, off, s);
-}
-
 fn memshift32(buffer: &mut [u32], src_offset: usize) {
     debug_assert_eq!(src_offset % 8, 0);
 
@@ -607,72 +554,51 @@ fn xor_columns(rkeys: &mut [u32], offset: usize, idx_xor: usize, idx_ror: u32) {
     }
 }
 
-fn bitslice_into(rkeys: &mut [u32; 88], off: usize, in0: &[u8; 16], in1: &[u8; 16]) {
-    let mut s = [0u32; 8];
-    bitslice(&mut s, in0, in1);
-    write8(rkeys, off, s);
-}
-
-fn add_rcon(rkeys: &mut [u32; 88], rk_off: usize, rcon: usize) {
-    if rcon < 8 {
-        add_rc_bit_at(rkeys, rk_off, rcon);
-    } else {
-        add_rc_bit_at(rkeys, rk_off, rcon - 8);
-        add_rc_bit_at(rkeys, rk_off, rcon - 7);
-        add_rc_bit_at(rkeys, rk_off, rcon - 5);
-        add_rc_bit_at(rkeys, rk_off, rcon - 4);
-    }
-}
-
 // One key-expansion round, factored OUT of the rcon loop: keeping the loop
 // body a single (non-recursive) call keeps the recursive loop shallow, which
 // ACL2 admits quickly (a deeply-nested body in the recursive fn itself blows
 // up the admission).
-fn key_round(rkeys: &mut [u32; 88], rk_off_in: usize, rcon: usize) -> usize {
-    memshift32(rkeys, rk_off_in);
-    let rk_off = rk_off_in + 8;
-    sub_bytes_at(rkeys, rk_off);
-    sub_bytes_nots_at(rkeys, rk_off);
-    add_rcon(rkeys, rk_off, rcon);
-    xor_columns(rkeys, rk_off, 8, ror_distance(1, 3));
-    rk_off
-}
+
 
 fn aes128_key_schedule(key: &[u8; 16]) -> [u32; 88] {
-    let mut rkeys: [u32; 88] = [0u32; 88];
-    bitslice_into(&mut rkeys, 0, key, key);
-    // The rcon loop (10 rounds, fixed), as in RustCrypto. `-loops-to-rec` emits
-    // a recursive `..._loop0` that calls key_round OPAQUELY (key_round is a
-    // separate fn, not inlined), so admission stays cheap -- like the write8 /
-    // memshift32 loops -- and the recursive form is what the schedule proof
-    // inducts over (the earlier unroll was a workaround that is no longer needed).
+    let mut rkeys = [0u32; 88];
+
+    bitslice(&mut rkeys[..8], key, key);
+
     let mut rk_off = 0;
     for rcon in 0..10 {
-        rk_off = key_round(&mut rkeys, rk_off, rcon);
+        memshift32(&mut rkeys, rk_off);
+        rk_off += 8;
+
+        sub_bytes(&mut rkeys[rk_off..(rk_off + 8)]);
+        sub_bytes_nots(&mut rkeys[rk_off..(rk_off + 8)]);
+
+        if rcon < 8 {
+            add_round_constant_bit(&mut rkeys[rk_off..(rk_off + 8)], rcon);
+        } else {
+            add_round_constant_bit(&mut rkeys[rk_off..(rk_off + 8)], rcon - 8);
+            add_round_constant_bit(&mut rkeys[rk_off..(rk_off + 8)], rcon - 7);
+            add_round_constant_bit(&mut rkeys[rk_off..(rk_off + 8)], rcon - 5);
+            add_round_constant_bit(&mut rkeys[rk_off..(rk_off + 8)], rcon - 4);
+        }
+
+        xor_columns(&mut rkeys, rk_off, 8, ror_distance(1, 3));
     }
-    let _ = rk_off;
-    // Adjust to fixslicing format (non-compact). Upstream iterates
-    // (8..72).step_by(32) = {8, 40}; step_by isn't extractable yet (roadmap),
-    // so the equivalent plain-range form base = 8 + 32*k, k in 0..2 is used.
-    for k in 0..2usize {
-        // base = 8 + 32*k, written branch-free of loop-var multiplication
-        // (k*32 sends ACL2's termination arithmetic nonlinear).
-        let base = if k == 0 { 8 } else { 40 };
-        inv_shift_rows_1_at(&mut rkeys, base);
-        inv_shift_rows_2_at(&mut rkeys, base + 8);
-        inv_shift_rows_3_at(&mut rkeys, base + 16);
+
+    for i in (8..72).step_by(32) {
+        inv_shift_rows_1(&mut rkeys[i..(i + 8)]);
+        inv_shift_rows_2(&mut rkeys[(i + 8)..(i + 16)]);
+        inv_shift_rows_3(&mut rkeys[(i + 16)..(i + 24)]);
     }
-    inv_shift_rows_1_at(&mut rkeys, 72);
-    // Account for NOTs removed from sub_bytes (i = 1..=10), as upstream;
-    // the byte offset 8*i is carried additively for the same reason.
-    let mut off = 8;
-    for _i in 1usize..11 {
-        sub_bytes_nots_at(&mut rkeys, off);
-        off += 8;
+    inv_shift_rows_1(&mut rkeys[72..80]);
+
+    for i in 1..11 {
+        sub_bytes_nots(&mut rkeys[(i * 8)..(i * 8 + 8)]);
     }
-    let _ = off;
+
     rkeys
 }
+
 
 /// Full AES-128: expand the key and encrypt one block.
 pub fn encrypt(key: [u8; 16], block: [u8; 16]) -> [u8; 16] {

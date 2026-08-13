@@ -1,18 +1,31 @@
-; Phase 4 -- key-schedule: ONE key_round == the off-independent window transform
-; krw8, verified for ALL inputs.  Composes the op layer (aes_fixslice_keyops)
-; into a single characterisation of key_round(rkeys,off,c):
-;   * key-round-unfold : the whole round is xor_columns over the arcon of the
-;     sub_bytes_nots of the sub_bytes of the previous window (memshift copies it)
-;   * key-round-car     : returns offset off+8
-;   * key-round-window  : rkeys[off+8..off+16) := krw8(rkeys[off..off+8), c)
-;   * key-round-frame-below / key-round-len : everything below off+8 (all earlier
-;     round keys) is preserved; length unchanged
-;   * wstatep-of-krw8   : the new window is again a wstate (8 u32) -- the loop
+; Phase 4 -- key-schedule: ONE rcon-loop iteration == the pure window model
+; kround, and the window transform it applies == krw8, verified for ALL inputs.
+;
+; The upstream aes128_key_schedule inlines each round in the rcon loop body
+; (memshift32 ; sub_bytes ; sub_bytes_nots ; add_round_constant_bit(s) ;
+; xor_columns, all through &mut rkeys[off..off+8] subslice windows), so the
+; interface here is a LOOP-STEP equation rather than a per-function unfold:
+;   * sched-loop0-step : one iteration of the extracted rcon loop at index c
+;       steps  loop0(n, rng(c,10), rkeys, off)
+;           -> loop0(n-1, rng(c+1,10), kround(rkeys,off,c), off+8)
+;     under LENGTH-ONLY hypotheses (upstream's own debug_asserts: off 8-aligned,
+;     off+16 <= len; no wstate invariant needed for the step itself)
+;   * sched-loop0-done : the loop returns (ok rkeys) once the range is empty
+;   * kround(rk,off,c) = xc-spec(w8-spec(ms-spec(rk), arc-list(sbn(sb(rd8 rk
+;       off))), c), 14) -- the collapsed pure tower; and its readers:
+;     kround-window   : rd8(kround(rk,off,c), off+8) = krw8(rd8(rk,off), c)
+;     kround-len / kround-frame-below / true-listp-of-kround
+;   * wstatep-of-krw8 : the new window is again a wstate (8 u32) -- the loop
 ;     invariant the 10-round chain threads (bitslice of the key seeds it)
-; krw8 is off-INDEPENDENT: exactly the transform the keycore step cruxes prove
-; equals the AES key-expansion recurrence at off=0, so the chain lifts each of
+; krw8 is off-INDEPENDENT: exactly the transform the keystep step-star cruxes
+; prove equals the AES key-expansion recurrence, so the chain lifts each of
 ; the 10 concrete offsets to Kestrel's keyexpansion.  All structured rewriting;
 ; GL only for the irreducible per-op bit facts (S-box, xc-word, bitslice range).
+;
+; RULE-SHAPE NOTE: window arithmetic in left-hand sides is bound as free
+; variables pinned by (equal dst (+ src 8))-style hypotheses -- embedded
+; (+ src 8) patterns never match ACL2's constant-first sum normal form (+ 8 src)
+; nor evaluated literals (see the keychain window-bridge note).
 (in-package "ACL2")
 (include-book "aes_fixslice_keyops")
 (local (include-book "std/lists/nth" :dir :system))
@@ -20,46 +33,144 @@
 (local (include-book "arithmetic-5/top" :dir :system))
 (local (in-theory (disable nth-when-zp)))
 
-;; Connector rules so key_round's hyp relief is one-step at each op: the window
-;; read after each op is a wstate, expressed against the previous window.
-(defthm wstatep-rd8-after-memshift
-  (implies (and (natp src) (wstatep (rd8 buffer src)))
-           (wstatep (rd8 (ms-spec 0 8 buffer src (+ src 8)) (+ src 8)))))
-(defthm wstatep-rd8-after-w8spec-sub
-  (implies (and (natp off) (wstatep s))
-           (wstatep (rd8 (w8-spec 0 8 rkeys off s) off)))
-  :hints (("Goal" :in-theory (disable w8-spec))))
-
 (defthm true-listp-of-ms-spec
   (implies (true-listp buffer) (true-listp (ms-spec i e buffer src dst))))
 
 ;; every schedule call site is 8-aligned; discharge memshift's debug_assert
 ;; hypothesis automatically at (* 8 i) offsets (and by evaluation at literals).
+;; Alignment hypotheses on exported rules are stated in MOD form: arithmetic-5
+;; normalizes goal-side (rem off 8) to (mod off 8), and backchain relief of a
+;; REM-form rule hypothesis does not cross that normalization (rem-to-mod is
+;; restricted during backchaining) -- MOD-form hyps relieve from both.
 (defthm rem-8i (implies (natp i) (equal (rem (* 8 i) 8) 0)))
+(defthm mod-8i (implies (natp i) (equal (mod (* 8 i) 8) 0)))
 
-;; key_round writes only rkeys[off+8..off+16); that window is the xor_columns
-;; recurrence over the arcon(subnots(subbytes(prev-window))) value.
-(defthm key-round-unfold
-  (implies (and (natp off) (equal (rem off 8) 0)
-                (<= (+ off 16) (len rkeys)) (< (len rkeys) 4294967296)
-                (true-listp rkeys) (wstatep (rd8 rkeys off)) (natp c) (< c 12))
-           (equal (aes-fixslice-encrypt-key-round 100 rkeys off c)
-                  (ok (cons (+ off 8)
-                            (xc-spec 0 8
-                              (w8-spec 0 8 (ms-spec 0 8 rkeys off (+ off 8)) (+ off 8)
-                                (arc-list (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots
-                                            (result-ok->val (aes-fixslice-encrypt-sub-bytes (rd8 rkeys off))))) c))
-                              (+ off 8) 8 (result-ok->val (aes-fixslice-encrypt-ror-distance 1 3)))))))
-  :hints (("Goal" :do-not-induct t
-                  :in-theory (e/d (aes-fixslice-encrypt-key-round)
-                                  (w8-spec ms-spec xc-spec nth
-                                   aes-fixslice-encrypt-sub-bytes aes-fixslice-encrypt-sub-bytes-nots
-                                   aes-fixslice-encrypt-add-round-constant-bit
-                                   aes-fixslice-encrypt-xor-columns aes-fixslice-encrypt-memshift32
-                                   aes-fixslice-encrypt-sub-bytes-at aes-fixslice-encrypt-sub-bytes-nots-at
-                                   aes-fixslice-encrypt-add-rcon)))))
+;; ---------------------------------------------------------------------------
+;; generalized (free-variable) window rules for ms-spec -- the shapes that
+;; actually match the normalized goals of the inline loop body.
+(defthm rd8-of-msspec-dst-g      ; memshift copies src-window into dst-window
+  (implies (and (natp src) (equal dst (+ src 8)))
+           (equal (rd8 (ms-spec 0 8 buffer src dst) dst) (rd8 buffer src)))
+  :hints (("Goal" :in-theory (e/d (rd8) (ms-spec nth)))))
+(defthm rd8-of-msspec-frame-g    ; below the dst-window, unchanged
+  (implies (and (natp src) (equal dst (+ src 8)) (natp off) (<= (+ off 8) dst))
+           (equal (rd8 (ms-spec 0 8 buffer src dst) off) (rd8 buffer off)))
+  :hints (("Goal" :in-theory (e/d (rd8) (ms-spec nth)))))
+(defthm len-of-msspec-g
+  (implies (and (natp src) (equal dst (+ src 8)) (<= (+ src 16) (len buffer)))
+           (equal (len (ms-spec 0 8 buffer src dst)) (len buffer)))
+  :hints (("Goal" :use ((:instance len-of-ms-spec (i 0) (e 8)))
+           :in-theory (disable len-of-ms-spec ms-spec))))
 
-;; The off-independent window transform one key_round applies.
+;; ---------------------------------------------------------------------------
+;; generic-fuel op interface for the two loop-based sub-ops (the inline body
+;; calls them at fuel n-1, so the fixed-100 forms never apply).
+(defthm memshift32-is-msspec-n
+  (implies (and (natp src) (equal (mod src 8) 0)
+                (<= (+ src 16) (len buffer)) (< (len buffer) 4294967296)
+                (true-listp buffer) (< 8 (nfix n)))
+           (equal (aes-fixslice-encrypt-memshift32 n buffer src)
+                  (ok (ms-spec 0 8 buffer src (+ src 8)))))
+  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-memshift32)
+                                  (aes-fixslice-encrypt-memshift32-loop0 ms-spec ms-spec-d
+                                   rev-on-range))
+                  :use ((:instance ms-loop0-is-msspec-d (s 0) (e 8) (dst (+ src 8)))
+                        (:instance ms-spec-d-is-ms-spec (e 8) (dst (+ src 8)))))))
+
+(defthm xor-columns-is-xcspec-n
+  (implies (and (natp off) (natp dx) (<= dx off) (<= (+ off 8) (len rkeys))
+                (< (len rkeys) 4294967296) (< 8 (nfix n)))
+           (equal (aes-fixslice-encrypt-xor-columns n rkeys off dx dror)
+                  (ok (xc-spec 0 8 rkeys off dx dror))))
+  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-xor-columns)
+                                  (aes-fixslice-encrypt-xor-columns-loop0 xc-spec))
+                  :use (:instance xc-loop0-is-xcspec (i 0) (e 8)))))
+
+(defthm true-listp-of-xc-spec
+  (implies (true-listp rkeys) (true-listp (xc-spec i e rkeys off dx dror)))
+  :hints (("Goal" :induct (xc-spec i e rkeys off dx dror)
+           :in-theory (disable xc-word))))
+
+;; ---------------------------------------------------------------------------
+;; LENGTH-ONLY :ok / len / true-listp for the straight-line window ops, so the
+;; loop-step equation needs no wstate invariant (the values are irrelevant to
+;; the control flow; upstream's debug_asserts demand exactly len == 8).
+;; sub_bytes: proving :ok/len on a symbolic len-8 list makes the 16 array
+;; bounds case-split (2^16); prove on an EXPLICIT 8-list (everything computes)
+;; and lift via expand-len-8.
+(local (defthm rk-sub-bytes-explicit
+  (equal (result-kind (aes-fixslice-encrypt-sub-bytes (list a0 a1 a2 a3 a4 a5 a6 a7))) :ok)
+  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-sub-bytes) (u32-xor u32-and))))))
+(local (defthm len-sub-bytes-explicit
+  (equal (len (result-ok->val (aes-fixslice-encrypt-sub-bytes (list a0 a1 a2 a3 a4 a5 a6 a7)))) 8)
+  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-sub-bytes) (u32-xor u32-and))))))
+(local (defthm tl-sub-bytes-explicit
+  (true-listp (result-ok->val (aes-fixslice-encrypt-sub-bytes (list a0 a1 a2 a3 a4 a5 a6 a7))))
+  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-sub-bytes) (u32-xor u32-and))))))
+(defthm result-kind-of-sub-bytes-len
+  (implies (and (true-listp s) (equal (len s) 8))
+           (equal (result-kind (aes-fixslice-encrypt-sub-bytes s)) :ok))
+  :hints (("Goal" :in-theory (disable aes-fixslice-encrypt-sub-bytes nth)
+           :use ((:instance rk-sub-bytes-explicit
+                  (a0 (nth 0 s)) (a1 (nth 1 s)) (a2 (nth 2 s)) (a3 (nth 3 s))
+                  (a4 (nth 4 s)) (a5 (nth 5 s)) (a6 (nth 6 s)) (a7 (nth 7 s)))
+                 (:instance expand-len-8 (x s))))))
+(defthm len-of-sub-bytes-len
+  (implies (and (true-listp s) (equal (len s) 8))
+           (equal (len (result-ok->val (aes-fixslice-encrypt-sub-bytes s))) 8))
+  :hints (("Goal" :in-theory (disable aes-fixslice-encrypt-sub-bytes nth)
+           :use ((:instance len-sub-bytes-explicit
+                  (a0 (nth 0 s)) (a1 (nth 1 s)) (a2 (nth 2 s)) (a3 (nth 3 s))
+                  (a4 (nth 4 s)) (a5 (nth 5 s)) (a6 (nth 6 s)) (a7 (nth 7 s)))
+                 (:instance expand-len-8 (x s))))))
+(defthm true-listp-of-sub-bytes-val
+  (implies (and (true-listp s) (equal (len s) 8))
+           (true-listp (result-ok->val (aes-fixslice-encrypt-sub-bytes s))))
+  :hints (("Goal" :in-theory (disable aes-fixslice-encrypt-sub-bytes nth)
+           :use ((:instance tl-sub-bytes-explicit
+                  (a0 (nth 0 s)) (a1 (nth 1 s)) (a2 (nth 2 s)) (a3 (nth 3 s))
+                  (a4 (nth 4 s)) (a5 (nth 5 s)) (a6 (nth 6 s)) (a7 (nth 7 s)))
+                 (:instance expand-len-8 (x s))))))
+;; sub_bytes_nots: straight-line (indices 0,1,5,6) -- direct.
+(defthm result-kind-of-sub-bytes-nots-len
+  (implies (and (true-listp s) (equal (len s) 8))
+           (equal (result-kind (aes-fixslice-encrypt-sub-bytes-nots s)) :ok))
+  :hints (("Goal" :in-theory (enable aes-fixslice-encrypt-sub-bytes-nots))))
+(defthm len-of-sub-bytes-nots-len
+  (implies (and (true-listp s) (equal (len s) 8))
+           (equal (len (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots s))) (len s)))
+  :hints (("Goal" :in-theory (enable aes-fixslice-encrypt-sub-bytes-nots))))
+(defthm true-listp-of-sub-bytes-nots-val
+  (implies (true-listp s)
+           (true-listp (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots s))))
+  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-sub-bytes-nots) (u32-xor nth)))))
+;; add_round_constant_bit (array-index ; xor ; array-update at index bit).
+(defthm result-kind-of-arcbit-len
+  (implies (and (natp bit) (< bit (len s)))
+           (equal (result-kind (aes-fixslice-encrypt-add-round-constant-bit s bit)) :ok))
+  :hints (("Goal" :in-theory (enable aes-fixslice-encrypt-add-round-constant-bit))))
+(defthm len-of-arcbit-len
+  (implies (and (natp bit) (< bit (len s)))
+           (equal (len (result-ok->val (aes-fixslice-encrypt-add-round-constant-bit s bit))) (len s)))
+  :hints (("Goal" :in-theory (enable aes-fixslice-encrypt-add-round-constant-bit))))
+(defthm true-listp-of-arcbit-val
+  (implies (and (true-listp s) (natp bit) (< bit (len s)))
+           (true-listp (result-ok->val (aes-fixslice-encrypt-add-round-constant-bit s bit))))
+  :hints (("Goal" :in-theory (enable aes-fixslice-encrypt-add-round-constant-bit))))
+
+;; ror_distance(1,3) = 14, the concrete rotation the schedule uses.
+(defthm ror-distance-1-3 (equal (aes-fixslice-encrypt-ror-distance 1 3) (ok 14)))
+
+;; ---------------------------------------------------------------------------
+;; The pure model of ONE rcon-loop iteration's effect on rkeys, and the
+;; off-independent window transform it applies.
+(defund kround (rk off c)
+  (xc-spec 0 8
+    (w8-spec 0 8 (ms-spec 0 8 rk off (+ off 8)) (+ off 8)
+      (arc-list (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots
+                  (result-ok->val (aes-fixslice-encrypt-sub-bytes (rd8 rk off))))) c))
+    (+ off 8) 8 14))
+
 (defund krw8 (s8 c)
   (b* ((sb  (result-ok->val (aes-fixslice-encrypt-sub-bytes s8)))
        (sbn (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots sb)))
@@ -70,65 +181,72 @@
           (xc-word (nth 4 s8) (nth 4 d) dror) (xc-word (nth 5 s8) (nth 5 d) dror)
           (xc-word (nth 6 s8) (nth 6 d) dror) (xc-word (nth 7 s8) (nth 7 d) dror))))
 
-(defthm key-round-car
-  (implies (and (natp off) (equal (rem off 8) 0)
-                (<= (+ off 16) (len rkeys)) (< (len rkeys) 4294967296)
-                (true-listp rkeys) (wstatep (rd8 rkeys off)) (natp c) (< c 12))
-           (equal (car (result-ok->val (aes-fixslice-encrypt-key-round 100 rkeys off c)))
-                  (+ off 8)))
-  :hints (("Goal" :do-not-induct t
-                  :use ((:instance key-round-unfold))
-                  :in-theory (disable key-round-unfold aes-fixslice-encrypt-key-round
-                                      w8-spec ms-spec xc-spec nth arc-list rd8
-                                      aes-fixslice-encrypt-sub-bytes
-                                      aes-fixslice-encrypt-sub-bytes-nots
-                                      aes-fixslice-encrypt-ror-distance))))
+;; ---------------------------------------------------------------------------
+;; THE LOOP-STEP EQUATION: one iteration of the extracted rcon loop is kround.
+(defthm sched-loop0-done
+  (implies (and (natp s) (natp e) (<= e s) (not (zp n)))
+           (equal (aes-fixslice-encrypt-aes128-key-schedule-loop0 n (rng s e) rkeys off)
+                  (ok rkeys)))
+  :hints (("Goal" :expand ((aes-fixslice-encrypt-aes128-key-schedule-loop0 n (rng s e) rkeys off))
+                  :in-theory (enable rnext-on-range))))
 
-;; The new window rkeys[off+8..off+16) after one key_round == krw8(prev window).
-(defthm key-round-window
-  (implies (and (natp off) (equal (rem off 8) 0)
+(defthm sched-loop0-step
+  (implies (and (natp c) (< c 10) (natp off) (equal (mod off 8) 0)
                 (<= (+ off 16) (len rkeys)) (< (len rkeys) 4294967296)
-                (true-listp rkeys) (wstatep (rd8 rkeys off)) (natp c) (< c 12))
-           (equal (rd8 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rkeys off c))) (+ off 8))
-                  (krw8 (rd8 rkeys off) c)))
+                (true-listp rkeys) (< 10 (nfix n)))
+           (equal (aes-fixslice-encrypt-aes128-key-schedule-loop0 n (rng c 10) rkeys off)
+                  (aes-fixslice-encrypt-aes128-key-schedule-loop0 (1- n) (rng (+ c 1) 10)
+                    (kround rkeys off c) (+ off 8))))
   :hints (("Goal" :do-not-induct t
-                  :use ((:instance key-round-unfold))
-                  :in-theory (e/d (rd8 krw8)
-                                  (key-round-unfold aes-fixslice-encrypt-key-round
-                                   w8-spec ms-spec xc-spec nth arc-list
-                                   aes-fixslice-encrypt-sub-bytes aes-fixslice-encrypt-sub-bytes-nots
-                                   aes-fixslice-encrypt-ror-distance)))))
+           :expand ((aes-fixslice-encrypt-aes128-key-schedule-loop0 n (rng c 10) rkeys off))
+           :in-theory (e/d (kround arc-list rnext-on-range)
+                           (aes-fixslice-encrypt-aes128-key-schedule-loop0
+                            aes-fixslice-encrypt-memshift32
+                            aes-fixslice-encrypt-xor-columns
+                            aes-fixslice-encrypt-sub-bytes aes-fixslice-encrypt-sub-bytes-nots
+                            aes-fixslice-encrypt-add-round-constant-bit
+                            vec-index-range vec-update-range
+                            w8-spec ms-spec xc-spec rd8 nth wstatep
+                            (:executable-counterpart core-ops-range-range-usize-))))))
 
-(defthm key-round-len
-  (implies (and (natp off) (equal (rem off 8) 0)
-                (<= (+ off 16) (len rkeys)) (< (len rkeys) 4294967296)
-                (true-listp rkeys) (wstatep (rd8 rkeys off)) (natp c) (< c 12))
-           (equal (len (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rkeys off c))))
-                  (len rkeys)))
+;; ---------------------------------------------------------------------------
+;; kround's readers (all length-only; the specs stay closed).
+(defthm kround-len
+  (implies (and (natp off) (<= (+ off 16) (len rk)))
+           (equal (len (kround rk off c)) (len rk)))
   :hints (("Goal" :do-not-induct t
-                  :use ((:instance key-round-unfold))
-                  :in-theory (disable key-round-unfold aes-fixslice-encrypt-key-round
-                                      w8-spec ms-spec xc-spec nth arc-list rd8
-                                      aes-fixslice-encrypt-sub-bytes
-                                      aes-fixslice-encrypt-sub-bytes-nots
-                                      aes-fixslice-encrypt-ror-distance))))
+           :in-theory (e/d (kround)
+                           (w8-spec ms-spec xc-spec rd8 nth arc-list
+                            aes-fixslice-encrypt-sub-bytes aes-fixslice-encrypt-sub-bytes-nots)))))
+
+(defthm true-listp-of-kround
+  (implies (true-listp rk) (true-listp (kround rk off c)))
+  :hints (("Goal" :do-not-induct t
+           :in-theory (e/d (kround)
+                           (w8-spec ms-spec xc-spec rd8 nth arc-list
+                            aes-fixslice-encrypt-sub-bytes aes-fixslice-encrypt-sub-bytes-nots)))))
 
 ;; FRAME: positions strictly below the written window are unchanged, so earlier
-;; round keys survive each subsequent key_round.
-(defthm key-round-frame-below
-  (implies (and (natp off) (equal (rem off 8) 0)
-                (<= (+ off 16) (len rkeys)) (< (len rkeys) 4294967296)
-                (true-listp rkeys) (wstatep (rd8 rkeys off)) (natp c) (< c 12)
+;; round keys survive each subsequent round.
+(defthm kround-frame-below
+  (implies (and (natp off) (<= (+ off 16) (len rk))
                 (natp k) (< k (+ off 8)))
-           (equal (nth k (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rkeys off c))))
-                  (nth k rkeys)))
+           (equal (nth k (kround rk off c)) (nth k rk)))
   :hints (("Goal" :do-not-induct t
-                  :use ((:instance key-round-unfold))
-                  :in-theory (disable key-round-unfold aes-fixslice-encrypt-key-round
-                                      w8-spec ms-spec xc-spec nth arc-list rd8
-                                      aes-fixslice-encrypt-sub-bytes
-                                      aes-fixslice-encrypt-sub-bytes-nots
-                                      aes-fixslice-encrypt-ror-distance))))
+           :in-theory (e/d (kround)
+                           (w8-spec ms-spec xc-spec rd8 arc-list
+                            aes-fixslice-encrypt-sub-bytes aes-fixslice-encrypt-sub-bytes-nots)))))
+
+;; The new window rkeys[off+8..off+16) after one round == krw8(prev window).
+(defthm kround-window
+  (implies (and (natp off) (<= (+ off 16) (len rk)))
+           (equal (rd8 (kround rk off c) (+ off 8))
+                  (krw8 (rd8 rk off) c)))
+  :hints (("Goal" :do-not-induct t
+           :in-theory (e/d (kround krw8 rd8)
+                           (w8-spec ms-spec xc-spec nth arc-list
+                            aes-fixslice-encrypt-sub-bytes aes-fixslice-encrypt-sub-bytes-nots
+                            aes-fixslice-encrypt-ror-distance)))))
 
 ;; xc-word maps u32s to a u32 (all ops mod-2^32); GL at the concrete rotation
 ;; ror_distance(1,3)=14 that krw8 uses (a symbolic amount blows up the BDDs).
@@ -140,8 +258,6 @@
   (implies (and (unsigned-byte-p 32 left) (unsigned-byte-p 32 cur))
            (unsigned-byte-p 32 (xc-word left cur 14)))
   :hints (("Goal" :use u32p-of-xc-word-gl :in-theory (disable u32p-of-xc-word-gl xc-word))))
-
-(defthm ror-distance-1-3 (equal (aes-fixslice-encrypt-ror-distance 1 3) (ok 14)))
 
 ;; extract a u32 element from a wstate at a literal index (syntaxp: no looping)
 (defthm u32-nth-of-wstatep
@@ -181,19 +297,15 @@
 
 ;; ---------------------------------------------------------------------------
 ;; ROADMAP -- remaining for  key_schedule core == bitslice(keyexpansion):
-;; 1. krw8-crux-c (c=0..9): car(inv_bitslice(krw8(bitslice(b,b), c))) =
-;;    kr-spec-bytes(b, xpow c), for any 16-byte b.  Derived from the keycore
-;;    step crux (off=0, rk0 = append(bitslice(b,b), 80 zeros)) by rewriting the
-;;    crux's key_round with key-round-window (rd8(rk1,8) = krw8(bitslice(b,b),c))
-;;    and take-8-nthcdr = rd8; then expand-len-16 to generalise from the 16
-;;    symbolic bytes to any (inp b).  kr-spec-bytes iterated = Kestrel
-;;    keyexpansion is already validated in keycore.
-;; 2. The 10-round chain: bitslice-into seeds window 0 = bitslice(key,key)
-;;    (wstatep-of-bitslice); each key_round writes the next window = krw8(prev)
-;;    (key-round-window) while preserving all earlier windows (key-round-frame-
-;;    below) and keeping the new window a wstate (wstatep-of-krw8).  So
-;;    inv_bitslice(window r) = kk(r) for r=0..10 by unfolding the 10 concrete
-;;    offsets (read-over-write on rd8 at 0,8,...,80).
+;; 1. keystep's step-star-c (c=0..9): krw8(bitslice(b,b),c) =
+;;    bitslice(kr-spec-bytes(b,xpow c), same), for any 16-byte b -- GL directly
+;;    over the pure krw8; kr-spec-bytes iterated = Kestrel keyexpansion is
+;;    validated in keycore.
+;; 2. The 10-round chain (keyexpand): the seed writes window 0 = bitslice(key,
+;;    key); sched-loop0-step advances rkeys by kround per round; kround-window
+;;    + step-star extend the invariant while kround-frame-below preserves the
+;;    earlier windows and wstatep-of-krw8 keeps the new window a wstate.  So
+;;    inv_bitslice(window r) = kk(r) for r=0..10.
 ;; 3. Combine with aes_fixslice_keyschedule's fold layer (sub_bytes_nots = xor63,
-;;    inv_shift_rows_i = invshiftrows^i) to replace that book's concrete
-;;    assert-event with the all-inputs aes128_key_schedule correspondence.
+;;    inv_shift_rows_i = invshiftrows^i) for the full aes128_key_schedule
+;;    correspondence (keyasm/keyread/keymain).

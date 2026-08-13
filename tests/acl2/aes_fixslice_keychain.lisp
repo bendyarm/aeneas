@@ -1,20 +1,24 @@
-; Phase 4 -- key-schedule CORE chaining: the 10 unrolled key_round steps
+; Phase 4 -- key-schedule CORE chaining: the schedule's 10 rcon-loop rounds
 ; compute Kestrel's key expansion (bitsliced), for ALL inputs.
 ;
-; Strategy (structured rewriting, no GL past the per-round cruxes in keycore):
-;  * Each of the three schedule loop shapes (write8, memshift32, xor_columns)
-;    is proven equal to an explicit window-update spec (w8/ms/xc-spec) with a
-;    read-through (nth-of-*) lemma -- this gives LOCALITY and FRAME for free.
-;  * key_round is then a pure window transform krw8 on rkeys[off..off+8),
-;    writing rkeys[off+8..off+16); off-independent.
-;  * The keycore cruxes (off=0) give inv_bitslice(krw8(bitslice(b,b),c)) =
-;    kr-spec-bytes(b, xpow c); chaining the 10 disjoint windows then yields
+; Strategy (structured rewriting; GL only for the per-round bit cruxes):
+;  * Each schedule loop shape (memshift32, xor_columns) is proven equal to an
+;    explicit window-update spec (ms/xc-spec) with a read-through (nth-of-*)
+;    lemma -- this gives LOCALITY and FRAME for free; w8-spec is the window
+;    WRITE spec the subslice vec-update-range borrows bridge to.
+;  * One rcon-loop round is then a pure window transform krw8 on
+;    rkeys[off..off+8), writing rkeys[off+8..off+16); off-independent (kround,
+;    in aes_fixslice_keyround).
+;  * The keystep cruxes give krw8(bitslice(b,b),c) = bitslice(kr-spec-bytes(b,
+;    xpow c), same); chaining the 10 disjoint windows then yields
 ;    inv_bitslice(window r) = kk(r) for every round key.
 (in-package "ACL2")
 (include-book "aes_fixslice_correspondence")
 (local (include-book "arithmetic-5/top" :dir :system))
 (local (include-book "std/lists/update-nth" :dir :system))
 (local (include-book "std/lists/nth" :dir :system))
+(local (include-book "std/lists/take" :dir :system))
+(local (include-book "std/lists/nthcdr" :dir :system))
 
 ;; This proof chain builds on the -gl extraction + centaur/gl (whose `fail`
 ;; FUNCTION rules out including range_for-proofs, which pulls in the `fail`
@@ -56,7 +60,7 @@
 ;; (rng s e)-patterned loop lemmas cannot match.  Books that reason about an
 ;; OPEN body at a symbolic offset either disable this executable counterpart
 ;; locally in the hint, or (better) keep the caller closed and :use the
-;; interface equation -- see key-round-car/window/len/frame-below.
+;; interface equation -- see keyround's kround readers.
 
 ;; Fixed shifts (<32) and the rotate never fail -- lets the b* ok-binders in the
 ;; loop bodies resolve while u32-shl / ror stay opaque to arithmetic-5.
@@ -74,34 +78,6 @@
   (if (and (natp i) (natp e) (< i e))
       (w8-spec (+ i 1) e (update-nth (+ off i) (nth i s) rkeys) off s)
     rkeys))
-(defthm write8-loop0-step-rec
-  (implies (and (natp i) (natp e) (< i e) (not (zp n))
-                (natp off) (< (+ off i) (len rkeys)) (< (len rkeys) 4294967296) (< i (len s)))
-           (equal (aes-fixslice-encrypt-write8-loop0 n (rng i e) rkeys off s)
-                  (aes-fixslice-encrypt-write8-loop0 (1- n) (rng (+ i 1) e)
-                       (update-nth (+ off i) (nth i s) rkeys) off s)))
-  :hints (("Goal" :expand ((aes-fixslice-encrypt-write8-loop0 n (rng i e) rkeys off s))
-                  :in-theory (enable rnext-on-range))))
-(defthm write8-loop0-step-base
-  (implies (and (natp i) (natp e) (<= e i) (not (zp n)))
-           (equal (aes-fixslice-encrypt-write8-loop0 n (rng i e) rkeys off s) (ok rkeys)))
-  :hints (("Goal" :expand ((aes-fixslice-encrypt-write8-loop0 n (rng i e) rkeys off s))
-                  :in-theory (enable rnext-on-range))))
-(defun w8-ind (n i e rkeys off s)
-  (declare (xargs :measure (nfix (- (nfix e) (nfix i)))))
-  (if (and (natp i) (natp e) (< i e) (not (zp n)))
-      (w8-ind (1- n) (+ i 1) e (update-nth (+ off i) (nth i s) rkeys) off s)
-    (list n i e rkeys off s)))
-(defthm write8-loop0-is-w8spec
-  (implies (and (natp i) (natp e) (<= i e) (natp off) (<= (+ off e) (len rkeys))
-                (< (len rkeys) 4294967296) (<= e (len s)) (< (- e i) (nfix n)))
-           (equal (aes-fixslice-encrypt-write8-loop0 n (rng i e) rkeys off s)
-                  (ok (w8-spec i e rkeys off s))))
-  :hints (("Goal" :induct (w8-ind n i e rkeys off s)
-                  :do-not '(eliminate-destructors generalize)
-                  :in-theory (e/d (w8-spec)
-                                  (aes-fixslice-encrypt-write8-loop0 rnext-on-range
-                                   (:executable-counterpart core-ops-range-range-usize-))))))
 (defthm len-of-w8-spec
   (implies (and (natp i) (natp e) (natp off) (<= (+ off e) (len rkeys)))
            (equal (len (w8-spec i e rkeys off s)) (len rkeys))))
@@ -109,14 +85,6 @@
   (implies (and (natp i) (natp e) (natp off) (natp k))
            (equal (nth k (w8-spec i e rkeys off s))
                   (if (and (< i e) (<= (+ off i) k) (< k (+ off e))) (nth (- k off) s) (nth k rkeys)))))
-(defthm write8-is-w8spec
-  (implies (and (natp off) (<= (+ off 8) (len rkeys)) (< (len rkeys) 4294967296) (<= 8 (len s)))
-           (equal (aes-fixslice-encrypt-write8 100 rkeys off s)
-                  (ok (w8-spec 0 8 rkeys off s))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-write8)
-                                  (aes-fixslice-encrypt-write8-loop0 w8-spec))
-                  :use (:instance write8-loop0-is-w8spec (i 0) (e 8) (n 100)))))
-
 ;; ============================ memshift32 ============================
 (defun ms-spec (i e buffer src dst)
   (declare (xargs :measure (nfix (- (nfix e) (nfix i)))))
@@ -284,8 +252,59 @@
 (defun rd8 (rkeys off)
   (list (nth off rkeys) (nth (+ off 1) rkeys) (nth (+ off 2) rkeys) (nth (+ off 3) rkeys)
         (nth (+ off 4) rkeys) (nth (+ off 5) rkeys) (nth (+ off 6) rkeys) (nth (+ off 7) rkeys)))
-(defthm read8-is-rd8
-  (implies (and (natp off) (<= (+ off 8) (len rkeys)) (< (len rkeys) 4294967296))
-           (equal (aes-fixslice-encrypt-read8 rkeys off) (ok (rd8 rkeys off))))
-  :hints (("Goal" :do-not-induct t
-                  :in-theory (e/d (aes-fixslice-encrypt-read8) (nth)))))
+;; ---- window bridges: the schedule's subslice borrows read and write
+;; exactly the rd8 / w8-spec windows the Phase-4 proofs are stated over ----
+(defthm true-listp-of-w8-spec
+  (implies (true-listp rkeys) (true-listp (w8-spec i e rkeys off s))))
+(defthm len-of-rd8-8 (equal (len (rd8 l off)) 8) :hints (("Goal" :in-theory (enable rd8))))
+(defthm true-listp-of-rd8 (true-listp (rd8 l off)) :hints (("Goal" :in-theory (enable rd8))))
+(defthm nth-of-rd8
+  (implies (and (natp n) (< n 8)) (equal (nth n (rd8 l off)) (nth (+ off n) l)))
+  :hints (("Goal" :in-theory (enable rd8)
+           :cases ((equal n 0) (equal n 1) (equal n 2) (equal n 3)
+                   (equal n 4) (equal n 5) (equal n 6) (equal n 7)))))
+(defthm take8-nthcdr-is-rd8-k
+  (implies (and (natp off) (<= (+ off 8) (len rk)) (true-listp rk))
+           (equal (take 8 (nthcdr off rk)) (rd8 rk off)))
+  :hints ((acl2::equal-by-nths-hint)
+          '(:in-theory (e/d () (rd8 nth take nthcdr)))))
+;; NB on rule shape: a (+ off 8) INSIDE a rule's left-hand side never matches
+;; goal terms -- ACL2 normalizes sums constant-first ((+ 8 off)) and literal
+;; windows compute ((vec-index-range rk 72 80)), and one-way unification is
+;; purely syntactic.  So the window bridges bind the upper bound as a FREE
+;; variable and pin it with an (equal hi (+ off 8)) hypothesis, which rewriting
+;; discharges in every form (symbolic sums by arithmetic, literals by
+;; evaluation).  The -k versions below are the fixed-shape originals the
+;; generalized rules are derived from.
+(defthm rk-of-window8-k
+  (implies (and (natp off) (<= (+ off 8) (len rk)))
+           (equal (result-kind (vec-index-range rk off (+ off 8))) :ok)))
+(defthm val-of-window8-k
+  (implies (and (natp off) (<= (+ off 8) (len rk)) (true-listp rk))
+           (equal (result-ok->val (vec-index-range rk off (+ off 8)))
+                  (rd8 rk off)))
+  :hints (("Goal" :in-theory (e/d () (rd8 nth))
+           :use ((:instance take8-nthcdr-is-rd8-k)))))
+(defthm vur8-is-w8spec-k
+  (implies (and (natp off) (<= (+ off 8) (len rk)) (true-listp rk)
+                (true-listp s) (equal (len s) 8))
+           (equal (vec-update-range rk off (+ off 8) s)
+                  (w8-spec 0 8 rk off s)))
+  :hints ((acl2::equal-by-nths-hint)
+          '(:in-theory (e/d () (w8-spec vec-update-range nth)))))
+(defthm rk-of-window8
+  (implies (and (natp off) (equal hi (+ off 8)) (<= hi (len rk)))
+           (equal (result-kind (vec-index-range rk off hi)) :ok))
+  :hints (("Goal" :use rk-of-window8-k
+           :in-theory (disable rk-of-window8-k vec-index-range))))
+(defthm val-of-window8
+  (implies (and (natp off) (equal hi (+ off 8)) (<= hi (len rk)) (true-listp rk))
+           (equal (result-ok->val (vec-index-range rk off hi)) (rd8 rk off)))
+  :hints (("Goal" :use val-of-window8-k
+           :in-theory (disable val-of-window8-k vec-index-range rd8 nth))))
+(defthm vur8-is-w8spec
+  (implies (and (natp off) (equal hi (+ off 8)) (<= hi (len rk)) (true-listp rk)
+                (true-listp s) (equal (len s) 8))
+           (equal (vec-update-range rk off hi s) (w8-spec 0 8 rk off s)))
+  :hints (("Goal" :use vur8-is-w8spec-k
+           :in-theory (disable vur8-is-w8spec-k vec-update-range w8-spec nth))))

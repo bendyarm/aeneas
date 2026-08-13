@@ -1,9 +1,9 @@
-; Phase 4 -- key-schedule assembly: fold at-op infrastructure.
+; Phase 4 -- key-schedule assembly: fold op structure facts.
 ;
-; The fold applies inv_shift_rows_{1,2,3} and sub_bytes_nots "at" a window offset
-; (read8 ; op ; write8).  keyops already has sub-bytes-nots-at-is (= w8-spec);
-; here we add the inv_shift_rows_i analogues, which need wstatep-of-inv-shift-
-; rows-i (each is an alias for shift_rows_{3,2,1}, a wstate permutation -- proved
+; The fold applies inv_shift_rows_{1,2,3} and sub_bytes_nots to 8-word windows
+; of rkeys (through &mut subslices in the upstream source).  Here: each
+; inv_shift_rows_i is a wstate permutation and never fails on a wstate --
+; wstatep-of-inv-shift-rows-i (each is an alias for shift_rows_{3,2,1}, proved
 ; by GL over the 8 u32 words, as wstatep-of-sub-bytes-nots is).
 (in-package "ACL2")
 (include-book "aes_fixslice_keyfold")
@@ -30,13 +30,6 @@
   :hints (("Goal" :in-theory (e/d (expand-len-8 wstatep) (isr1-struct-gl aes-fixslice-encrypt-inv-shift-rows-1 nth))
            :use (:instance isr1-struct-gl (w0 (nth 0 s)) (w1 (nth 1 s)) (w2 (nth 2 s)) (w3 (nth 3 s)) (w4 (nth 4 s)) (w5 (nth 5 s)) (w6 (nth 6 s)) (w7 (nth 7 s))))))
 
-(defthm inv-shift-rows-1-at-is
-  (implies (and (natp off) (<= (+ off 8) (len rkeys)) (< (len rkeys) 4294967296)
-                (wstatep (rd8 rkeys off)))
-           (equal (aes-fixslice-encrypt-inv-shift-rows-1-at 100 rkeys off)
-                  (ok (w8-spec 0 8 rkeys off
-                        (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1 100 (rd8 rkeys off)))))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-1-at len-when-wstatep true-listp-when-wstatep) (aes-fixslice-encrypt-inv-shift-rows-1 w8-spec rd8 nth)))))
 
 ;; ---- inv_shift_rows_2: wstate permutation, and its at-op = w8-spec ----
 (gl::def-gl-thm isr2-struct-gl
@@ -55,13 +48,6 @@
   :hints (("Goal" :in-theory (e/d (expand-len-8 wstatep) (isr2-struct-gl aes-fixslice-encrypt-inv-shift-rows-2 nth))
            :use (:instance isr2-struct-gl (w0 (nth 0 s)) (w1 (nth 1 s)) (w2 (nth 2 s)) (w3 (nth 3 s)) (w4 (nth 4 s)) (w5 (nth 5 s)) (w6 (nth 6 s)) (w7 (nth 7 s))))))
 
-(defthm inv-shift-rows-2-at-is
-  (implies (and (natp off) (<= (+ off 8) (len rkeys)) (< (len rkeys) 4294967296)
-                (wstatep (rd8 rkeys off)))
-           (equal (aes-fixslice-encrypt-inv-shift-rows-2-at 100 rkeys off)
-                  (ok (w8-spec 0 8 rkeys off
-                        (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-2 100 (rd8 rkeys off)))))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-2-at len-when-wstatep true-listp-when-wstatep) (aes-fixslice-encrypt-inv-shift-rows-2 w8-spec rd8 nth)))))
 
 ;; ---- inv_shift_rows_3: wstate permutation, and its at-op = w8-spec ----
 (gl::def-gl-thm isr3-struct-gl
@@ -79,11 +65,3 @@
   (implies (wstatep s) (wstatep (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-3 100 s))))
   :hints (("Goal" :in-theory (e/d (expand-len-8 wstatep) (isr3-struct-gl aes-fixslice-encrypt-inv-shift-rows-3 nth))
            :use (:instance isr3-struct-gl (w0 (nth 0 s)) (w1 (nth 1 s)) (w2 (nth 2 s)) (w3 (nth 3 s)) (w4 (nth 4 s)) (w5 (nth 5 s)) (w6 (nth 6 s)) (w7 (nth 7 s))))))
-
-(defthm inv-shift-rows-3-at-is
-  (implies (and (natp off) (<= (+ off 8) (len rkeys)) (< (len rkeys) 4294967296)
-                (wstatep (rd8 rkeys off)))
-           (equal (aes-fixslice-encrypt-inv-shift-rows-3-at 100 rkeys off)
-                  (ok (w8-spec 0 8 rkeys off
-                        (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-3 100 (rd8 rkeys off)))))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-3-at len-when-wstatep true-listp-when-wstatep) (aes-fixslice-encrypt-inv-shift-rows-3 w8-spec rd8 nth)))))

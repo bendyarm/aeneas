@@ -38,16 +38,14 @@
   (implies (and (true-listp rk) (equal (len rk) 88) (natp i) (<= 1 i) (equal off (* 8 i)))
            (true-listp (sbn-chain rk off i)))
   :hints (("Goal" :induct (sbn-chain rk off i)
-           :in-theory (e/d (sbn-chain sub-bytes-nots-at-form-n mul-8-distrib mul-8-le-80)
-                           (aes-fixslice-encrypt-sub-bytes-nots-at
-                            aes-fixslice-encrypt-sub-bytes-nots w8-spec rd8 nth))))))
+           :in-theory (e/d (sbn-chain mul-8-distrib mul-8-le-80)
+                           (aes-fixslice-encrypt-sub-bytes-nots w8-spec rd8 nth))))))
 (defthm len-of-schedule-val
   (implies (aes::inp key) (equal (len (result-ok->val (aes-fixslice-encrypt-aes128-key-schedule 100 key))) 88))
   :hints (("Goal" :do-not-induct t
            :use (ks-decomp)
            :in-theory (union-theories (theory 'ground-zero)
                         '((:definition ks-fold2)
-                          (:rewrite isr1-at-form100)
                           (:rewrite len-of-w8-spec) (:rewrite true-listp-of-w8-spec)
                           (:rewrite len-of-isr-step) (:rewrite true-listp-of-isr-step-88)
                           (:rewrite len-of-core) (:rewrite true-listp-of-core)
@@ -63,7 +61,6 @@
            :use (ks-decomp)
            :in-theory (union-theories (theory 'ground-zero)
                         '((:definition ks-fold2)
-                          (:rewrite isr1-at-form100)
                           (:rewrite len-of-w8-spec) (:rewrite true-listp-of-w8-spec)
                           (:rewrite len-of-isr-step) (:rewrite true-listp-of-isr-step-88)
                           (:rewrite len-of-core) (:rewrite true-listp-of-core)

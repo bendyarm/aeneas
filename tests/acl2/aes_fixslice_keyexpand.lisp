@@ -1,26 +1,26 @@
-; Phase 4 -- key schedule CORE chain: the extracted 10 key_rounds compute
+; Phase 4 -- key schedule CORE chain: the extracted 10 rcon-loop rounds compute
 ; Kestrel's key expansion, bitsliced, for ALL inputs.
 ;
 ; MAIN THEOREM (core-windows-are-bitslice-of-keyexpansion):
-;   (aes::inp key) =>
-;     (wok (kr-chain (bitslice-into 88-zeros 0 key key) 0 0) key 80 10)
-; i.e. running the extracted seed (bitslice(key,key) into window 0) and the ten
-; key_rounds fills EVERY window r (r = 0..10) with bitslice(kk_r,kk_r), where
-; kk_r = kk-iter(key,r) is the iterated AES key-expansion recurrence.  So the
-; fixslice key-schedule core is exactly Kestrel's key expansion, bitsliced.
+;   (aes::inp key) =>  (wok (kr-chain (seed key) 0 0) key 80 10)
+; i.e. running the extracted seed (bitslice(key,key) written into window 0 of
+; the 88-zero array) and the ten kround steps fills EVERY window r (r = 0..10)
+; with bitslice(kk_r,kk_r), where kk_r = kk-iter(key,r) is the iterated AES
+; key-expansion recurrence.  So the fixslice key-schedule core is exactly
+; Kestrel's key expansion, bitsliced.
 ;
 ; STRUCTURE:
-;   (1) step-star   : one key_round advances a symmetric window (c-uniform).
+;   (1) step-star   : one kround advances a symmetric window (c-uniform).
 ;   (2) inp-of-kk-iter / kx-byte : the recurrence stays inp; rcons are bytes.
 ;   (4) kr-chain / wok : the recursive core model + window-invariant predicate.
-;   (5) wok-of-key-round-below : a round preserves windows at/below its offset,
+;   (5) wok-of-kround-below : a round preserves windows at/below its offset,
 ;       via the congruence wok-cong (wok reads only rd8) + the frame reads
-;       rd8-agree-of-key-round-below (keyframe's rd8-of-key-round-below erases the
-;       key_round term per level, so the wok induction never sees the huge body).
-;   (6) wok-of-key-round : a round EXTENDS the invariant by one window
-;       (key-round-window + step-star + kk-iter-step; wok-construct assembles it).
-;   (7) kr-chain-wok : threads (5)+(6) through the 10 rounds (off = 8i via
-;       key-round-car), and the seed seeds window 0 = bitslice(kk_0,kk_0).
+;       rd8-agree-of-kround-below (keyframe's rd8-of-kround-below erases the
+;       kround term per level, so the wok induction never sees its body).
+;   (6) wok-of-kround : a round EXTENDS the invariant by one window
+;       (kround-window + step-star + kk-iter-step; wok-construct assembles it).
+;   (7) kr-chain-wok : threads (5)+(6) through the 10 rounds (off = 8i,
+;       explicit), and the seed seeds window 0 = bitslice(kk_0,kk_0).
 ; The frame primitives that want arithmetic-5 live in aes_fixslice_keyframe;
 ; this book runs on ground-zero linear arithmetic (arithmetic-5 explodes the
 ; 8-strided offset inductions), with an offset/index (off,i) wok formulation.
@@ -35,7 +35,7 @@
 (local (in-theory (disable len-when-wstatep true-listp-when-wstatep nth-when-zp)))
 
 ;; ---------------------------------------------------------------------------
-;; (1) unified step: one key_round advances a symmetric window, for variable
+;; (1) unified step: one kround advances a symmetric window, for variable
 ;; rcon index c in 0..9.  Case-splits to the ten concrete step-star-c.
 (defthm step-star
   (implies (and (aes::inp b) (natp c) (< c 10))
@@ -70,12 +70,11 @@
 
 ;; ---------------------------------------------------------------------------
 ;; (4) the recursive core model (threads the offset exactly as the extracted
-;; schedule does: off_{i+1} = car of round i) and the window invariant.
+;; schedule does: off advances by 8 per round) and the window invariant.
 (defun kr-chain (rk off i)
   (declare (xargs :measure (nfix (- 10 i))))
   (if (or (not (natp i)) (>= i 10)) rk
-    (b* ((res (result-ok->val (aes-fixslice-encrypt-key-round 100 rk off i))))
-      (kr-chain (cdr res) (car res) (1+ i)))))
+    (kr-chain (kround rk off i) (+ off 8) (1+ i))))
 
 ;; wok rk key off i  <=>  window i is at byte-offset off and equals bitslice(kk_i,kk_i),
 ;; window i-1 at off-8, ... down to window 0 at off-8i.  off and i decrement in
@@ -106,8 +105,8 @@
 
 ;; rd8-agree rk2 rk off i  <=>  rk2 and rk read the same 8-word window at off,
 ;; off-8, ..., down i+1 levels.  wok depends on rk ONLY through these reads, so a
-;; congruence lets us prove the key_round frame WITHOUT the big key_round term
-;; ever entering the wok induction (which otherwise clausifies enormously).
+;; congruence lets us prove the kround frame WITHOUT the kround term ever
+;; entering the wok induction (which otherwise clausifies enormously).
 (defun rd8-agree (rk2 rk off i)
   (declare (xargs :measure (nfix i)))
   (if (zp i) (equal (rd8 rk2 off) (rd8 rk off))
@@ -126,44 +125,33 @@
           ("Subgoal *1/1" :expand ((wok rk key off i) (wok rk2 key off i)
                                     (rd8-agree rk2 rk off i)))))
 
-;; (5b) the frame reads: a key_round at off0 leaves every read at or below off0
-;;      unchanged.  rd8-of-key-round-below rewrites the big term away per level,
+;; (5b) the frame reads: a kround at off0 leaves every read at or below off0
+;;      unchanged.  rd8-of-kround-below rewrites the kround term away per level,
 ;;      so the induction clause stays small.
-(defthm rd8-agree-of-key-round-below
-  (implies (and (natp off0) (equal (rem off0 8) 0)
-                (<= (+ off0 16) (len rkeys)) (< (len rkeys) 4294967296)
-                (true-listp rkeys) (wstatep (rd8 rkeys off0)) (natp c) (< c 12)
+(defthm rd8-agree-of-kround-below
+  (implies (and (natp off0) (<= (+ off0 16) (len rkeys))
                 (natp off) (<= off off0))
-           (rd8-agree (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rkeys off0 c)))
-                      rkeys off i))
-  ;; key-round-unfold MUST stay disabled: it would rewrite (key_round ...) into
-  ;; its giant xc/w8/ms-spec form, after which rd8-of-key-round-below no longer
-  ;; matches and the huge term clausifies.  Keep key_round opaque so the frame
-  ;; rewrite fires and the term is erased per level.
+           (rd8-agree (kround rkeys off0 c) rkeys off i))
+  ;; kround MUST stay disabled: opening it would materialize the xc/w8/ms-spec
+  ;; tower per level, after which rd8-of-kround-below no longer matches and the
+  ;; huge term clausifies.  Keep it opaque so the frame rewrite fires and the
+  ;; term is erased per level.
   :hints (("Goal" :induct (wok-induct off i)
-           :in-theory (disable rd8-agree aes-fixslice-encrypt-key-round key-round-unfold
-                               rd8 wstatep nth))
+           :in-theory (disable rd8-agree kround rd8 wstatep nth))
           ("Subgoal *1/2"
-           :expand ((rd8-agree (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rkeys off0 c)))
-                               rkeys off i)))
+           :expand ((rd8-agree (kround rkeys off0 c) rkeys off i)))
           ("Subgoal *1/1"
-           :expand ((rd8-agree (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rkeys off0 c)))
-                               rkeys off i)))))
+           :expand ((rd8-agree (kround rkeys off0 c) rkeys off i)))))
 
-;; (5) a key_round at offset off0 preserves every window at or below off0.
-(defthm wok-of-key-round-below
-  (implies (and (natp off0) (equal (rem off0 8) 0)
-                (<= (+ off0 16) (len rkeys)) (< (len rkeys) 4294967296)
-                (true-listp rkeys) (wstatep (rd8 rkeys off0)) (natp c) (< c 12)
+;; (5) a kround at offset off0 preserves every window at or below off0.
+(defthm wok-of-kround-below
+  (implies (and (natp off0) (<= (+ off0 16) (len rkeys))
                 (natp off) (<= off off0) (wok rkeys key off i))
-           (wok (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rkeys off0 c)))
-                key off i))
+           (wok (kround rkeys off0 c) key off i))
   :hints (("Goal" :do-not-induct t
-           :in-theory (disable wok rd8-agree aes-fixslice-encrypt-key-round rd8)
-           :use ((:instance wok-cong
-                   (rk rkeys)
-                   (rk2 (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rkeys off0 c)))))
-                 rd8-agree-of-key-round-below))))
+           :in-theory (disable wok rd8-agree kround rd8)
+           :use ((:instance wok-cong (rk rkeys) (rk2 (kround rkeys off0 c)))
+                 rd8-agree-of-kround-below))))
 
 ;; the top window recorded by wok (both the zp and non-zp branches store
 ;; rd8 rk off = bitslice(kk_i,kk_i) for natp i, since kk-iter key 0 = key).
@@ -195,38 +183,35 @@
            :in-theory (disable rd8 aes-fixslice-encrypt-bitslice kk-iter nth))))
 
 ;; ---------------------------------------------------------------------------
-;; (6) a key_round at off0 (rcon i) EXTENDS the invariant by one window:
+;; (6) a kround at off0 (rcon i) EXTENDS the invariant by one window:
 ;;     the new window at off0+8 is bitslice(kk_{i+1},kk_{i+1}), and windows 0..i
-;;     survive (5).  Uses key-round-window (new window = krw8(prev)), step-star
+;;     survive (5).  Uses kround-window (new window = krw8(prev)), step-star
 ;;     (krw8(bitslice(b,b),i) = bitslice(kr(b),kr(b))) and the kk-iter step.
-(defthm wok-of-key-round
+(defthm wok-of-kround
   (implies (and (aes::inp key) (natp i) (< i 10) (natp off0) (<= off0 72)
-                (equal (rem off0 8) 0)
-                (equal (len rkeys) 88) (true-listp rkeys)
+                (equal (len rkeys) 88)
                 (wok rkeys key off0 i))
-           (wok (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rkeys off0 i)))
-                key (+ off0 8) (+ i 1)))
+           (wok (kround rkeys off0 i) key (+ off0 8) (+ i 1)))
   :hints (("Goal" :do-not-induct t
-           :in-theory (disable wok wok-cong rd8-agree aes-fixslice-encrypt-key-round
-                               key-round-unfold krw8 aes-fixslice-encrypt-bitslice
+           :in-theory (disable wok wok-cong rd8-agree kround krw8
+                               aes-fixslice-encrypt-bitslice
                                rd8 kk-iter wstatep nth kr-spec-bytes)
-           ;; new window from key-round-window + step-star + wok-top + kk-iter-step
+           ;; new window from kround-window + step-star + wok-top + kk-iter-step
            ;; (rewrite); windows 0..i survive by (5); wok-construct assembles it.
            :use ((:instance wok-top (rk rkeys) (off off0) (i i))
-                 (:instance key-round-window (rkeys rkeys) (off off0) (c i))
+                 (:instance kround-window (rk rkeys) (off off0) (c i))
                  (:instance step-star (b (kk-iter key i)) (c i))
                  (:instance inp-of-kk-iter (key key) (r i))
-                 (:instance wstatep-of-bitslice (b0 (kk-iter key i)) (b1 (kk-iter key i)))
-                 (:instance wok-of-key-round-below (rkeys rkeys) (off0 off0) (c i)
+                 (:instance wok-of-kround-below (rkeys rkeys) (off0 off0) (c i)
                             (off off0) (i i))
                  (:instance wok-construct
-                            (rk (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rkeys off0 i))))
+                            (rk (kround rkeys off0 i))
                             (off (+ off0 8)) (i (+ i 1)))))))
 
 ;; ---------------------------------------------------------------------------
-;; (7) thread (5)+(6) through kr-chain: off = 8i is maintained by key-round-car,
-;; and every round extends the invariant, so kr-chain(rk,0,0) fills all 11
-;; windows.  A few 8*i facts (kept off arithmetic-5) and a wstatep-from-wok rule.
+;; (7) thread (5)+(6) through kr-chain: off = 8i is explicit, and every round
+;; extends the invariant, so kr-chain(rk,0,0) fills all 11 windows.  A few 8*i
+;; facts (kept off arithmetic-5) and a wstatep-from-wok rule.
 (defthm mul-8-natp (implies (natp i) (natp (* 8 i))) :rule-classes :type-prescription)
 (defthm mul-8-distrib (equal (* 8 (+ 1 i)) (+ 8 (* 8 i))))
 (defthm mul-8-le-72 (implies (and (natp i) (< i 10)) (<= (* 8 i) 72)))
@@ -241,25 +226,25 @@
 
 (defthm kr-chain-wok
   (implies (and (aes::inp key) (natp i) (<= i 10) (equal off (* 8 i))
-                (equal (len rk) 88) (true-listp rk) (wok rk key off i))
+                (equal (len rk) 88) (wok rk key off i))
            (wok (kr-chain rk off i) key 80 10))
   :hints (("Goal" :induct (kr-chain rk off i)
            :in-theory (e/d (kr-chain)
-                           (aes-fixslice-encrypt-key-round key-round-unfold rd8
-                            aes-fixslice-encrypt-bitslice kk-iter krw8 wstatep nth
-                            kr-spec-bytes wok wok-cong rd8-agree)))
-          ;; the step: this round extends the invariant (wok-of-key-round) and
-          ;; car/len/true-listp keep the offset = 8*(i+1) and the array well-formed
-          ;; so the IH applies at the next window.
+                           (kround rd8 aes-fixslice-encrypt-bitslice kk-iter krw8
+                            wstatep nth kr-spec-bytes wok wok-cong rd8-agree)))
+          ;; the step: this round extends the invariant (wok-of-kround) and
+          ;; len keeps the array well-formed so the IH applies at the next window.
           ("Subgoal *1/2"
-           :use ((:instance wok-of-key-round (rkeys rk) (off0 (* 8 i)) (i i))
-                 (:instance key-round-car (rkeys rk) (off (* 8 i)) (c i))
-                 (:instance key-round-len (rkeys rk) (off (* 8 i)) (c i))
-                 (:instance true-listp-of-cdr-key-round (rkeys rk) (off (* 8 i)) (c i))
-                 (:instance wstatep-rd8-of-wok (rk rk) (key key) (off (* 8 i)) (i i))))))
+           :use ((:instance wok-of-kround (rkeys rk) (off0 (* 8 i)) (i i))
+                 (:instance kround-len (rk rk) (off (* 8 i)) (c i))))))
 
 ;; ---------------------------------------------------------------------------
-;; The seed: bitslice(key,key) written into an 88-word zero array (window 0).
+;; The seed: bitslice(key,key) written into window 0 of an 88-word zero array
+;; (the extracted schedule's vec-update-range on the rkeys[..8] subslice).
+(defund seed (key)
+  (vec-update-range (array-repeat 88 0) 0 8
+    (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) key key))))
+
 (defthm true-listp-of-array-repeat (true-listp (array-repeat n x)))
 
 ;; bitslice of two inp blocks never fails (GL fact lifted, as wstatep-of-bitslice).
@@ -274,70 +259,70 @@
                   (b0 (nth 0 b1)) (b1 (nth 1 b1)) (b2 (nth 2 b1)) (b3 (nth 3 b1)) (b4 (nth 4 b1)) (b5 (nth 5 b1)) (b6 (nth 6 b1)) (b7 (nth 7 b1)) (b8 (nth 8 b1)) (b9 (nth 9 b1)) (b10 (nth 10 b1)) (b11 (nth 11 b1)) (b12 (nth 12 b1)) (b13 (nth 13 b1)) (b14 (nth 14 b1)) (b15 (nth 15 b1)))
                  (:instance unsigned-byte-p-8-of-nth-when-inp (x b0) (i 0)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b0) (i 1)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b0) (i 2)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b0) (i 3)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b0) (i 4)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b0) (i 5)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b0) (i 6)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b0) (i 7)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b0) (i 8)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b0) (i 9)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b0) (i 10)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b0) (i 11)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b0) (i 12)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b0) (i 13)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b0) (i 14)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b0) (i 15)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b1) (i 0)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b1) (i 1)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b1) (i 2)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b1) (i 3)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b1) (i 4)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b1) (i 5)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b1) (i 6)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b1) (i 7)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b1) (i 8)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b1) (i 9)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b1) (i 10)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b1) (i 11)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b1) (i 12)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b1) (i 13)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b1) (i 14)) (:instance unsigned-byte-p-8-of-nth-when-inp (x b1) (i 15))))))
 
-(defthm len-of-seed
+;; seed shape: the write is the w8-spec window form; length/true-list/read facts.
+(local (defthm seed-is-w8spec
   (implies (aes::inp key)
-           (equal (len (result-ok->val
-                    (aes-fixslice-encrypt-bitslice-into 100 (array-repeat 88 0) 0 key key)))
-                  88))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-bitslice-into)
-                                  (aes-fixslice-encrypt-bitslice aes-fixslice-encrypt-write8 aes-fixslice-encrypt-write8-loop0 w8-spec rd8 wstatep nth))
+           (equal (seed key)
+                  (w8-spec 0 8 (array-repeat 88 0) 0
+                           (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) key key)))))
+  :hints (("Goal" :in-theory (e/d (seed) (aes-fixslice-encrypt-bitslice w8-spec
+                                          vec-update-range wstatep nth
+                                          (:executable-counterpart array-repeat)))
            :use ((:instance wstatep-of-bitslice (b0 key) (b1 key))
-                 (:instance write8-is-w8spec (rkeys (array-repeat 88 0)) (off 0)
-                            (s (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) key key))))
+                 (:instance len-when-wstatep
+                   (x (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) key key))))
+                 (:instance true-listp-when-wstatep
+                   (x (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) key key))))
+                 (:instance vur8-is-w8spec (rk (array-repeat 88 0)) (off 0) (hi 8)
+                            (s (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) key key)))))))))
+
+(defthm len-of-seed
+  (implies (aes::inp key) (equal (len (seed key)) 88))
+  :hints (("Goal" :in-theory (e/d () (aes-fixslice-encrypt-bitslice w8-spec wstatep nth
+                                      (:executable-counterpart array-repeat)))
+           :use (seed-is-w8spec
                  (:instance len-of-w8-spec (i 0) (e 8) (rkeys (array-repeat 88 0)) (off 0)
                             (s (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) key key))))))))
 
 (defthm true-listp-of-seed
-  (implies (aes::inp key)
-           (true-listp (result-ok->val
-                    (aes-fixslice-encrypt-bitslice-into 100 (array-repeat 88 0) 0 key key))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-bitslice-into)
-                                  (aes-fixslice-encrypt-bitslice aes-fixslice-encrypt-write8 aes-fixslice-encrypt-write8-loop0 w8-spec rd8 wstatep nth))
-           :use ((:instance wstatep-of-bitslice (b0 key) (b1 key))
-                 (:instance write8-is-w8spec (rkeys (array-repeat 88 0)) (off 0)
-                            (s (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) key key))))))))
+  (implies (aes::inp key) (true-listp (seed key)))
+  :hints (("Goal" :in-theory (e/d () (aes-fixslice-encrypt-bitslice w8-spec wstatep nth
+                                      (:executable-counterpart array-repeat)))
+           :use (seed-is-w8spec))))
 
 (defthm rd8-of-seed
   (implies (aes::inp key)
-           (equal (rd8 (result-ok->val
-                    (aes-fixslice-encrypt-bitslice-into 100 (array-repeat 88 0) 0 key key)) 0)
+           (equal (rd8 (seed key) 0)
                   (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) key key))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-bitslice-into)
-                                  (aes-fixslice-encrypt-bitslice aes-fixslice-encrypt-write8 aes-fixslice-encrypt-write8-loop0 w8-spec wstatep nth))
-           :use ((:instance wstatep-of-bitslice (b0 key) (b1 key))
-                 (:instance write8-is-w8spec (rkeys (array-repeat 88 0)) (off 0)
-                            (s (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) key key))))
+  :hints (("Goal" :in-theory (e/d () (aes-fixslice-encrypt-bitslice w8-spec rd8 wstatep nth
+                                      (:executable-counterpart array-repeat)))
+           :use (seed-is-w8spec
+                 (:instance wstatep-of-bitslice (b0 key) (b1 key))
+                 (:instance len-when-wstatep
+                   (x (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) key key))))
+                 (:instance true-listp-when-wstatep
+                   (x (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) key key))))
                  (:instance rd8-of-w8spec-same (off 0) (rkeys (array-repeat 88 0))
                             (s (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) key key))))))))
 
 ;; window 0 = bitslice(kk_0,kk_0) since kk_0 = key.
 (defthm wok-of-seed
-  (implies (aes::inp key)
-           (wok (result-ok->val
-                  (aes-fixslice-encrypt-bitslice-into 100 (array-repeat 88 0) 0 key key))
-                key 0 0))
+  (implies (aes::inp key) (wok (seed key) key 0 0))
   ;; base case (index 0): enable wok/kk-iter to unfold at 0 (kk_0 = key); the
   ;; single read is supplied by rd8-of-seed.  Big functions stay closed.
   :hints (("Goal" :in-theory (e/d (wok kk-iter)
-                                  (aes-fixslice-encrypt-bitslice-into rd8
-                                   aes-fixslice-encrypt-bitslice nth))
+                                  (seed rd8 aes-fixslice-encrypt-bitslice nth))
            :use rd8-of-seed)))
 
 ;; ===========================================================================
-;; MILESTONE A: the extracted key-schedule core -- seed then 10 key_rounds --
+;; MILESTONE A: the extracted key-schedule core -- seed then 10 krounds --
 ;; fills EVERY window r (r = 0..10) with bitslice(kk_r, kk_r), for ALL inputs.
 ;; I.e. the fixslice key expansion computes Kestrel's key expansion, bitsliced.
 ;; ===========================================================================
 (defthm core-windows-are-bitslice-of-keyexpansion
   (implies (aes::inp key)
-           (wok (kr-chain (result-ok->val
-                            (aes-fixslice-encrypt-bitslice-into 100 (array-repeat 88 0) 0 key key))
-                          0 0)
-                key 80 10))
+           (wok (kr-chain (seed key) 0 0) key 80 10))
   :hints (("Goal" :do-not-induct t
-           :in-theory (disable kr-chain wok aes-fixslice-encrypt-bitslice-into)
+           :in-theory (disable kr-chain wok seed)
            :use (wok-of-seed len-of-seed true-listp-of-seed
-                 (:instance kr-chain-wok
-                            (rk (result-ok->val
-                                  (aes-fixslice-encrypt-bitslice-into 100 (array-repeat 88 0) 0 key key)))
-                            (off 0) (i 0))))))
+                 (:instance kr-chain-wok (rk (seed key)) (off 0) (i 0))))))

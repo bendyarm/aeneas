@@ -95,32 +95,6 @@
            :use (:instance add-rc-bit-struct-gl (w0 (nth 0 s)) (w1 (nth 1 s)) (w2 (nth 2 s)) (w3 (nth 3 s))
                            (w4 (nth 4 s)) (w5 (nth 5 s)) (w6 (nth 6 s)) (w7 (nth 7 s))))))
 
-;; -at ops as window updates (wstatep window discharges write8's length need)
-(defthm sub-bytes-at-is
-  (implies (and (natp off) (<= (+ off 8) (len rkeys)) (< (len rkeys) 4294967296)
-                (wstatep (rd8 rkeys off)))
-           (equal (aes-fixslice-encrypt-sub-bytes-at 100 rkeys off)
-                  (ok (w8-spec 0 8 rkeys off
-                        (result-ok->val (aes-fixslice-encrypt-sub-bytes (rd8 rkeys off)))))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-sub-bytes-at)
-                                  (aes-fixslice-encrypt-sub-bytes w8-spec rd8 nth)))))
-(defthm sub-bytes-nots-at-is
-  (implies (and (natp off) (<= (+ off 8) (len rkeys)) (< (len rkeys) 4294967296)
-                (wstatep (rd8 rkeys off)))
-           (equal (aes-fixslice-encrypt-sub-bytes-nots-at 100 rkeys off)
-                  (ok (w8-spec 0 8 rkeys off
-                        (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots (rd8 rkeys off)))))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-sub-bytes-nots-at)
-                                  (aes-fixslice-encrypt-sub-bytes-nots w8-spec rd8 nth)))))
-(defthm add-rc-bit-at-is
-  (implies (and (natp off) (<= (+ off 8) (len rkeys)) (< (len rkeys) 4294967296)
-                (wstatep (rd8 rkeys off)) (unsigned-byte-p 3 bit))
-           (equal (aes-fixslice-encrypt-add-rc-bit-at 100 rkeys off bit)
-                  (ok (w8-spec 0 8 rkeys off
-                        (result-ok->val (aes-fixslice-encrypt-add-round-constant-bit (rd8 rkeys off) bit))))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-add-rc-bit-at)
-                                  (aes-fixslice-encrypt-add-round-constant-bit w8-spec rd8 nth)))))
-
 ;; ===== rd8 read-through helpers for composing the key_round ops =====
 (defthm rd8-of-w8spec-same     ; read the just-written window
   (implies (and (natp off) (true-listp s) (equal (len s) 8))
@@ -168,15 +142,6 @@
   (implies (and (wstatep s8) (natp c) (< c 12)) (wstatep (arc-list s8 c)))
   :hints (("Goal" :in-theory (e/d (arc-list unsigned-byte-p)
                                   (aes-fixslice-encrypt-add-round-constant-bit wstatep)))))
-
-(defthm add-rcon-is
-  (implies (and (natp off) (<= (+ off 8) (len rkeys)) (< (len rkeys) 4294967296)
-                (true-listp rkeys) (wstatep (rd8 rkeys off)) (natp c) (< c 12))
-           (equal (aes-fixslice-encrypt-add-rcon 100 rkeys off c)
-                  (ok (w8-spec 0 8 rkeys off (arc-list (rd8 rkeys off) c)))))
-  :hints (("Goal" :do-not-induct t
-                  :in-theory (e/d (aes-fixslice-encrypt-add-rcon arc-list unsigned-byte-p)
-                                  (w8-spec rd8 nth wstatep aes-fixslice-encrypt-add-round-constant-bit)))))
 
 ;; ROADMAP (next): compose these window transforms into one key_round --
 ;;   key_round(rkeys,off,c) writes only rkeys[off+8..off+16) with the

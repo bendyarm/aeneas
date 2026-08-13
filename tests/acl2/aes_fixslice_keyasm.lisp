@@ -1,137 +1,36 @@
-; Phase 4 -- key-schedule ASSEMBLY, part 1: the extracted schedule decomposes.
+; Phase 4 -- key-schedule ASSEMBLY: the extracted schedule decomposes.
 ;
 ;   ks-decomp:  (aes::inp key) =>
-;     aes128-key-schedule(100, key)
-;       = (ok (ks-fold (kr-chain (seed key) 0 0)))
+;     aes128-key-schedule(100, key)  =  (ok (ks-fold2 (kr-chain (seed key) 0 0)))
 ;
-; The recursive extraction makes this tractable: the schedule body is now
-; seed ; ONE recursive loop0 call ; 17 single-threaded fold at-ops -- no
-; unrolled (off . rkeys) car/cdr splits at the top level.  Two layers here:
+; The upstream schedule body is: seed (bitslice into the rkeys[..8] subslice) ;
+; the recursive rcon loop ; a step_by(32) loop of inv_shift_rows triples ;
+; one inv_shift_rows_1 window at 72 ; the sub_bytes_nots loop over 1..11.
+; Three loop collapses feed the decomposition:
 ;
-; (1) FUEL CANONICALIZATION.  loop0 calls key_round at fuel 99,98,...,90, but
-;     every interface lemma is pinned at fuel 100.  The sub-op loop lemmas
-;     (write8/ms/xc-loop0-is-*) are already fuel-generic, so we restate the
-;     op-level forms at generic fuel (length-only hypotheses) and conclude
-;     key-round-fuel-canon: key_round(m) = key_round(100) for m > 10 -- both
-;     sides equal the same fuel-free spec form.  Downstream @100 lemmas then
-;     apply verbatim inside the loop induction.
-;
-; (2) THE LOOP IS kr-chain.  ks-loop0-is-kr-chain: for off = 8c,
-;     loop0(m, rng(c,10), rk, off) = (ok (kr-chain rk off c)) by induction on
-;     the rounds remaining -- purely length-based hypotheses (the :ok of each
-;     round needs only array bounds, NOT the wok invariant; wok is only needed
-;     later to say what the core VALUE is).  ks-decomp then collapses the
-;     schedule: seed facts + the loop lemma + the 17 fold :ok/len rewrites.
+; (1) ks-loop0-is-kr-chain : the rcon loop IS kr-chain, by induction on the
+;     rounds remaining over keyround's sched-loop0-step (length-only: each
+;     round's :ok needs only array bounds, NOT the wok invariant; wok is only
+;     needed later to say what the core VALUE is).  off = 8c keeps the offset
+;     arithmetic linear.
+; (2) ks-loop1-collapse : the (8..72).step_by(32) loop runs exactly twice
+;     (i = 8, 40) -- explicit expansion through the synthesized StepBy next --
+;     each iteration an isr-step (three w8-spec windows).  The isr ops run at
+;     symbolic fuel, canonicalized to 100 by two-fuel inductions on the
+;     shift-rows loops.
+; (3) ks-loop2-is-sbn-chain : the NOTs loop is sbn-chain, by induction with
+;     the byte offset 8i in lockstep.
 (in-package "ACL2")
 (include-book "aes_fixslice_keydecomp")
 (local (include-book "std/lists/nth" :dir :system))
 (local (in-theory (disable len-when-wstatep true-listp-when-wstatep nth-when-zp)))
 
 ;; ---------------------------------------------------------------------------
-;; (1) generic-fuel op forms (length-only), mirroring the @100 versions.
-(defthm write8-is-w8spec-n
-  (implies (and (natp off) (<= (+ off 8) (len rkeys)) (< (len rkeys) 4294967296)
-                (<= 8 (len s)) (< 8 (nfix n)))
-           (equal (aes-fixslice-encrypt-write8 n rkeys off s)
-                  (ok (w8-spec 0 8 rkeys off s))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-write8)
-                                  (aes-fixslice-encrypt-write8-loop0 w8-spec))
-                  :use (:instance write8-loop0-is-w8spec (i 0) (e 8)))))
-
-(defthm memshift32-is-msspec-n
-  (implies (and (natp src) (equal (rem src 8) 0)
-                (<= (+ src 16) (len buffer)) (< (len buffer) 4294967296)
-                (true-listp buffer) (< 8 (nfix n)))
-           (equal (aes-fixslice-encrypt-memshift32 n buffer src)
-                  (ok (ms-spec 0 8 buffer src (+ src 8)))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-memshift32)
-                                  (aes-fixslice-encrypt-memshift32-loop0 ms-spec ms-spec-d
-                                   rev-on-range))
-                  :use ((:instance ms-loop0-is-msspec-d (s 0) (e 8) (dst (+ src 8)))
-                        (:instance ms-spec-d-is-ms-spec (e 8) (dst (+ src 8)))))))
-
-(defthm xor-columns-is-xcspec-n
-  (implies (and (natp off) (natp dx) (<= dx off) (<= (+ off 8) (len rkeys))
-                (< (len rkeys) 4294967296) (< 8 (nfix n)))
-           (equal (aes-fixslice-encrypt-xor-columns n rkeys off dx dror)
-                  (ok (xc-spec 0 8 rkeys off dx dror))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-xor-columns)
-                                  (aes-fixslice-encrypt-xor-columns-loop0 xc-spec))
-                  :use (:instance xc-loop0-is-xcspec (i 0) (e 8)))))
-
-(defthm sub-bytes-at-form-n
-  (implies (and (natp off) (<= (+ off 8) (len rk)) (< (len rk) 4294967296)
-                (< 8 (nfix n)))
-           (equal (aes-fixslice-encrypt-sub-bytes-at n rk off)
-                  (ok (w8-spec 0 8 rk off
-                        (result-ok->val (aes-fixslice-encrypt-sub-bytes (rd8 rk off)))))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-sub-bytes-at)
-                                  (aes-fixslice-encrypt-sub-bytes w8-spec rd8 nth
-                                   aes-fixslice-encrypt-write8)))))
-
-(defthm sub-bytes-nots-at-form-n
-  (implies (and (natp off) (<= (+ off 8) (len rk)) (< (len rk) 4294967296)
-                (< 8 (nfix n)))
-           (equal (aes-fixslice-encrypt-sub-bytes-nots-at n rk off)
-                  (ok (w8-spec 0 8 rk off
-                        (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots (rd8 rk off)))))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-sub-bytes-nots-at)
-                                  (aes-fixslice-encrypt-sub-bytes-nots w8-spec rd8 nth
-                                   aes-fixslice-encrypt-write8)))))
-
-(defthm add-rc-bit-at-form-n
-  (implies (and (natp off) (<= (+ off 8) (len rk)) (< (len rk) 4294967296)
-                (natp bit) (< bit 8) (< 8 (nfix n)))
-           (equal (aes-fixslice-encrypt-add-rc-bit-at n rk off bit)
-                  (ok (w8-spec 0 8 rk off
-                        (result-ok->val (aes-fixslice-encrypt-add-round-constant-bit (rd8 rk off) bit))))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-add-rc-bit-at)
-                                  (aes-fixslice-encrypt-add-round-constant-bit w8-spec rd8 nth
-                                   aes-fixslice-encrypt-write8)))))
-
-;; add-rcon at generic fuel: for c < 12 both branches are chains of
-;; add-rc-bit-at at bits < 8; keep the result as the nested form (fuel-free).
-(defthm add-rcon-fuel-canon
-  (implies (and (syntaxp (not (equal n ''100)))  ; output has fuel 100: don't re-match it
-                (natp off) (<= (+ off 8) (len rk)) (< (len rk) 4294967296)
-                (natp c) (< c 12) (< 8 (nfix n)))
-           (equal (aes-fixslice-encrypt-add-rcon n rk off c)
-                  (aes-fixslice-encrypt-add-rcon 100 rk off c)))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-add-rcon)
-                                  (aes-fixslice-encrypt-add-round-constant-bit
-                                   aes-fixslice-encrypt-add-rc-bit-at w8-spec rd8 nth))
-           :use ((:instance add-rc-bit-at-form-n (bit c))
-                 (:instance add-rc-bit-at-form-n (n 100) (bit c))))))
-
-;; ---------------------------------------------------------------------------
-;; key_round at any sufficient fuel equals key_round at 100 (length-only).
-(defthm key-round-fuel-canon
-  (implies (and (syntaxp (not (equal m ''100)))  ; output has fuel 100: don't re-match it
-                (natp off) (equal (rem off 8) 0)
-                (<= (+ off 16) (len rk)) (< (len rk) 4294967296)
-                (true-listp rk) (natp c) (< c 12) (< 10 (nfix m)))
-           (equal (aes-fixslice-encrypt-key-round m rk off c)
-                  (aes-fixslice-encrypt-key-round 100 rk off c)))
-  :hints (("Goal" :do-not-induct t
-           :in-theory (e/d (aes-fixslice-encrypt-key-round)
-                           (aes-fixslice-encrypt-memshift32 aes-fixslice-encrypt-sub-bytes-at
-                            aes-fixslice-encrypt-sub-bytes-nots-at aes-fixslice-encrypt-add-rcon
-                            aes-fixslice-encrypt-xor-columns aes-fixslice-encrypt-sub-bytes
-                            aes-fixslice-encrypt-sub-bytes-nots
-                            aes-fixslice-encrypt-add-round-constant-bit
-                            w8-spec ms-spec xc-spec rd8 nth)))))
-
-;; ---------------------------------------------------------------------------
-;; (2) the recursive rcon loop IS kr-chain.  Length-only hypotheses: each
-;; round's :ok needs only array bounds, so no wok/inp appears here at all --
-;; the invariant is only needed later to say what the core VALUE is.
-;; off = 8c keeps the offset arithmetic linear (keyexpand's lockstep trick).
+;; (1) the recursive rcon loop IS kr-chain.  Length-only hypotheses.
 (defun ks-li (m c rk off)  ; induction scheme mirroring the loop's recursion
   (declare (xargs :measure (nfix (- 10 (nfix c)))))
   (if (or (not (natp c)) (>= c 10)) (list m c rk off)
-    (ks-li (1- m) (1+ c)
-           (cdr (result-ok->val (aes-fixslice-encrypt-key-round 100 rk off c)))
-           (+ off 8))))
+    (ks-li (1- m) (1+ c) (kround rk off c) (+ off 8))))
 
 (defthm ks-loop0-is-kr-chain
   (implies (and (natp c) (<= c 10) (equal off (* 8 c)) (equal (len rk) 88)
@@ -140,40 +39,22 @@
                   (ok (kr-chain rk off c))))
   :hints (("Goal" :induct (ks-li m c rk off)
            :in-theory (e/d (kr-chain)
-                           (aes-fixslice-encrypt-key-round key-round-unfold
-                            key-round-window key-round-car key-round-len
-                            key-round-frame-below rd8-of-key-round-below
-                            true-listp-of-cdr-key-round result-kind-of-key-round
-                            w8-spec ms-spec xc-spec rd8 nth wstatep
+                           (kround sched-loop0-step sched-loop0-done
+                            aes-fixslice-encrypt-aes128-key-schedule-loop0
+                            rd8 nth wstatep
                             (:executable-counterpart core-ops-range-range-usize-))))
           ("Subgoal *1/2"
-           :expand ((aes-fixslice-encrypt-aes128-key-schedule-loop0 m (rng c 10) rk off)
-                    (kr-chain rk off c)))
+           :expand ((kr-chain rk off c))
+           :use ((:instance sched-loop0-step (n m) (rkeys rk) (off off) (c c))
+                 (:instance mod-8i (i c))
+                 (:instance kround-len (rk rk) (off off) (c c))
+                 (:instance true-listp-of-kround (rk rk) (off off) (c c))))
           ("Subgoal *1/1"
-           :expand ((aes-fixslice-encrypt-aes128-key-schedule-loop0 m (rng c 10) rk off)
-                    (kr-chain rk off c)))))
+           :expand ((kr-chain rk off c))
+           :use ((:instance sched-loop0-done (n m) (s c) (e 10) (rkeys rk) (off off))))))
 
 ;; ---------------------------------------------------------------------------
-;; (3) THE DECOMPOSITION: the extracted schedule = fold over the core chain.
-;; With the loop collapsed by ks-loop0-is-kr-chain, the schedule body is
-;; seed ; (ok core) ; 17 single-threaded fold at-ops.  The theory is pinned to
-;; ground-zero + exactly the needed rewrites: the 20-deep ok-binder if-nest
-;; otherwise sends the default theory's preprocessor into an exponential
-;; clause split (390s+ of clausification with 0.05s of actual proving).
-;; (result-kind (ok x)) = :ok, proved here in the full theory so the pinned
-;; ks-decomp theory below can use the single rune without opening the tagsum.
-(defthm rk-of-ok (equal (result-kind (result-ok x)) :ok))
-
-
-;; ===========================================================================
-;; (3) The FOLD loops (recursive extraction of the fold section).
-;; loop1 = the (8..72).step_by(32)-equivalent isr triple at base 8+32k, k<2;
-;; loop2 = the NOTs loop, sub_bytes_nots_at(8i) for i in 1..11.
-;; Same recipe as the rcon loop: fuel-canonicalize each at-op, then collapse
-;; the loop to a spec chain (loop1 by explicit 2-step expansion; loop2 by
-;; induction).
-;; ===========================================================================
-;; ---- shift-rows loops are fuel-irrelevant (value-level): two-fuel equality
+;; (2) shift-rows loops are fuel-irrelevant (value-level): two-fuel equality
 ;; by SIMULTANEOUS induction on both fuels (an IH at one decremented fuel
 ;; cannot reach the other side), gates kept closed; then the isr ops
 ;; canonicalize to fuel 100.
@@ -252,66 +133,41 @@
   :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-3 aes-fixslice-encrypt-shift-rows-1)
                                   (aes-fixslice-encrypt-shift-rows-1-loop0))
            :use ((:instance sr1-loop0-two-fuel (i 0) (e 8) (n1 n) (n2 100))))))
-;; at-level canonicalization (length-only): open the -at, canonicalize the op
-;; inside (rd8 windows are always len-8 true-lists), keep write8 via the
-;; generic w8spec form on both sides.
-(defthm isr1-at-fuel-canon
-  (implies (and (syntaxp (not (equal m ''100)))
-                (natp off) (<= (+ off 8) (len rk)) (< (len rk) 4294967296) (< 8 (nfix m)))
-           (equal (aes-fixslice-encrypt-inv-shift-rows-1-at m rk off)
-                  (aes-fixslice-encrypt-inv-shift-rows-1-at 100 rk off)))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-1-at)
-                                  (aes-fixslice-encrypt-inv-shift-rows-1 w8-spec rd8 nth
-                                   aes-fixslice-encrypt-write8)))))
-(defthm isr2-at-fuel-canon
-  (implies (and (syntaxp (not (equal m ''100)))
-                (natp off) (<= (+ off 8) (len rk)) (< (len rk) 4294967296) (< 8 (nfix m)))
-           (equal (aes-fixslice-encrypt-inv-shift-rows-2-at m rk off)
-                  (aes-fixslice-encrypt-inv-shift-rows-2-at 100 rk off)))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-2-at)
-                                  (aes-fixslice-encrypt-inv-shift-rows-2 w8-spec rd8 nth
-                                   aes-fixslice-encrypt-write8)))))
-(defthm isr3-at-fuel-canon
-  (implies (and (syntaxp (not (equal m ''100)))
-                (natp off) (<= (+ off 8) (len rk)) (< (len rk) 4294967296) (< 8 (nfix m)))
-           (equal (aes-fixslice-encrypt-inv-shift-rows-3-at m rk off)
-                  (aes-fixslice-encrypt-inv-shift-rows-3-at 100 rk off)))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-3-at)
-                                  (aes-fixslice-encrypt-inv-shift-rows-3 w8-spec rd8 nth
-                                   aes-fixslice-encrypt-write8)))))
-(defthm sbn-at-fuel-canon
-  (implies (and (syntaxp (not (equal m ''100)))
-                (natp off) (<= (+ off 8) (len rk)) (< (len rk) 4294967296) (< 8 (nfix m)))
-           (equal (aes-fixslice-encrypt-sub-bytes-nots-at m rk off)
-                  (aes-fixslice-encrypt-sub-bytes-nots-at 100 rk off)))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-sub-bytes-nots-at)
-                                  (aes-fixslice-encrypt-sub-bytes-nots w8-spec rd8 nth
-                                   aes-fixslice-encrypt-write8)))))
 
 ;; ---------------------------------------------------------------------------
-;; the spec chains (all at-ops at canonical fuel 100, kept opaque).
+;; the spec chains (pure w8-spec window forms; the ops at canonical fuel 100).
 (defund isr-step (rk base)
-  (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-3-at 100
-    (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-2-at 100
-      (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1-at 100 rk base))
-      (+ base 8)))
-    (+ base 16))))
+  (b* ((rk1 (w8-spec 0 8 rk base
+              (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1 100 (rd8 rk base)))))
+       (rk2 (w8-spec 0 8 rk1 (+ base 8)
+              (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-2 100 (rd8 rk1 (+ base 8)))))))
+    (w8-spec 0 8 rk2 (+ base 16)
+      (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-3 100 (rd8 rk2 (+ base 16)))))))
 
 ;; the NOTs chain, threading the byte offset additively (off = 8i, lockstep).
 (defun sbn-chain (rk off i)
   (declare (xargs :measure (nfix (- 11 (nfix i)))))
   (if (or (not (natp i)) (>= i 11)) rk
-    (sbn-chain (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots-at 100 rk off))
+    (sbn-chain (w8-spec 0 8 rk off
+                 (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots (rd8 rk off))))
                (+ off 8) (1+ i))))
 
-;; length facts for the chains (thread the @100 len lemmas).
+;; length facts for the chains.
 (defthm len-of-isr-step
-  (implies (and (natp base) (<= (+ base 24) (len rk)) (< (len rk) 4294967296))
+  (implies (and (natp base) (<= (+ base 24) (len rk)))
            (equal (len (isr-step rk base)) (len rk)))
-  :hints (("Goal" :in-theory (e/d (isr-step)
-                                  (aes-fixslice-encrypt-inv-shift-rows-1-at
-                                   aes-fixslice-encrypt-inv-shift-rows-2-at
-                                   aes-fixslice-encrypt-inv-shift-rows-3-at)))))
+  :hints (("Goal" :in-theory (e/d (isr-step) (w8-spec rd8 nth
+                                   aes-fixslice-encrypt-inv-shift-rows-1
+                                   aes-fixslice-encrypt-inv-shift-rows-2
+                                   aes-fixslice-encrypt-inv-shift-rows-3)))))
+
+(defthm true-listp-of-isr-step-88
+  (implies (and (natp base) (<= (+ base 24) 88) (equal (len rk) 88) (true-listp rk))
+           (true-listp (isr-step rk base)))
+  :hints (("Goal" :in-theory (e/d (isr-step) (w8-spec rd8 nth
+                                   aes-fixslice-encrypt-inv-shift-rows-1
+                                   aes-fixslice-encrypt-inv-shift-rows-2
+                                   aes-fixslice-encrypt-inv-shift-rows-3)))))
 
 (defthm mul-8-le-80 (implies (and (natp i) (< i 11)) (<= (* 8 i) 80)))
 
@@ -319,104 +175,164 @@
   (implies (and (equal (len rk) 88) (natp i) (<= 1 i) (equal off (* 8 i)))
            (equal (len (sbn-chain rk off i)) 88))
   :hints (("Goal" :induct (sbn-chain rk off i)
-           :in-theory (e/d (sbn-chain) (aes-fixslice-encrypt-sub-bytes-nots-at nth)))))
+           :in-theory (e/d (sbn-chain) (w8-spec rd8 nth
+                            aes-fixslice-encrypt-sub-bytes-nots)))))
 
 ;; ---------------------------------------------------------------------------
-;; loop1 (isr triples at k = 0, 1) collapses by explicit two-step expansion.
+;; loop1 (isr triples at i = 8, 40 via step_by(32)) collapses by explicit
+;; three-step expansion through the synthesized StepBy next.
 (defthm ks-loop1-collapse
-  (implies (and (equal (len rk) 88) (natp m) (< 12 (nfix m)))
-           (equal (aes-fixslice-encrypt-aes128-key-schedule-loop1 m (rng 0 2) rk)
+  (implies (and (equal (len rk) 88) (true-listp rk) (natp m) (< 12 (nfix m)))
+           (equal (aes-fixslice-encrypt-aes128-key-schedule-loop1 m
+                    (core-iter-adapters-step-by-stepby-core-ops-range-range-usize- (rng 8 72) 31 t)
+                    rk)
                   (ok (isr-step (isr-step rk 8) 40))))
   :hints (("Goal" :do-not-induct t
-           :expand ((aes-fixslice-encrypt-aes128-key-schedule-loop1 m (rng 0 2) rk)
-                    (:free (mm rr) (aes-fixslice-encrypt-aes128-key-schedule-loop1 mm (rng 1 2) rr))
-                    (:free (mm rr) (aes-fixslice-encrypt-aes128-key-schedule-loop1 mm (rng 2 2) rr)))
+           :expand ((:free (it) (aes-fixslice-encrypt-aes128-key-schedule-loop1 m it rk))
+                    (:free (mm it rr) (aes-fixslice-encrypt-aes128-key-schedule-loop1 mm it rr)))
            :in-theory (e/d (isr-step)
-                           (aes-fixslice-encrypt-inv-shift-rows-1-at
-                            aes-fixslice-encrypt-inv-shift-rows-2-at
-                            aes-fixslice-encrypt-inv-shift-rows-3-at
-                            aes-fixslice-encrypt-inv-shift-rows-1
+                           (aes-fixslice-encrypt-inv-shift-rows-1
                             aes-fixslice-encrypt-inv-shift-rows-2
                             aes-fixslice-encrypt-inv-shift-rows-3
-                            w8-spec rd8 nth
-                            (:executable-counterpart core-ops-range-range-usize-))))))
+                            vec-index-range vec-update-range
+                            w8-spec rd8 nth wstatep
+                            (:executable-counterpart core-ops-range-range-usize-)
+                            (:executable-counterpart core-iter-adapters-step-by-stepby-core-ops-range-range-usize-))))))
 
 ;; result-p facts (the fty equality (equal x (ok v)) decomposes into
 ;; result-p x + kind + val; the loop needs its own return-type fact).
-(defthm result-p-of-write8-loop0
-  (result-p (aes-fixslice-encrypt-write8-loop0 n iter rkeys off s))
-  :hints (("Goal" :induct (aes-fixslice-encrypt-write8-loop0 n iter rkeys off s))))
-(defthm result-p-of-sbn-at
-  (result-p (aes-fixslice-encrypt-sub-bytes-nots-at n rk off)))
+(local (defthm result-p-of-vec-index-range
+  (result-p (vec-index-range v lo hi))
+  :hints (("Goal" :in-theory (enable vec-index-range)))))
+(local (defthm result-p-of-sub-bytes-nots
+  (result-p (aes-fixslice-encrypt-sub-bytes-nots s))
+  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-sub-bytes-nots)
+                                  (u32-xor nth))))))
 (defthm result-p-of-ks-loop2
-  (result-p (aes-fixslice-encrypt-aes128-key-schedule-loop2 n iter rk off))
-  :hints (("Goal" :induct (aes-fixslice-encrypt-aes128-key-schedule-loop2 n iter rk off)
-           :in-theory (disable aes-fixslice-encrypt-sub-bytes-nots-at))))
+  (result-p (aes-fixslice-encrypt-aes128-key-schedule-loop2 n iter rk))
+  :hints (("Goal" :induct (aes-fixslice-encrypt-aes128-key-schedule-loop2 n iter rk)
+           :in-theory (disable aes-fixslice-encrypt-sub-bytes-nots vec-index-range
+                               vec-update-range nth))))
 
 ;; ---------------------------------------------------------------------------
-;; loop2 (the NOTs) IS sbn-chain, by induction (off in lockstep with i).
-(defun sbn-li (m i rk off)
+;; loop2 (the NOTs) IS sbn-chain, by induction (byte offset 8i in lockstep).
+(defun sbn-li (m i rk)
   (declare (xargs :measure (nfix (- 11 (nfix i)))))
-  (if (or (not (natp i)) (>= i 11)) (list m i rk off)
+  (if (or (not (natp i)) (>= i 11)) (list m i rk)
     (sbn-li (1- m) (1+ i)
-            (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots-at 100 rk off))
-            (+ off 8))))
+            (w8-spec 0 8 rk (* 8 i)
+              (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots (rd8 rk (* 8 i))))))))
 
 (defthm ks-loop2-is-sbn-chain
-  (implies (and (natp i) (<= 1 i) (<= i 11) (equal off (* 8 i)) (equal (len rk) 88)
-                (natp m) (< (+ 12 (- 11 i)) m))
-           (equal (aes-fixslice-encrypt-aes128-key-schedule-loop2 m (rng i 11) rk off)
-                  (ok (sbn-chain rk off i))))
-  :hints (("Goal" :induct (sbn-li m i rk off)
-           :in-theory (e/d (sbn-chain)
-                           (aes-fixslice-encrypt-sub-bytes-nots-at
+  (implies (and (natp i) (<= 1 i) (<= i 11) (equal (len rk) 88) (true-listp rk)
+                (natp m) (< (+ 1 (- 11 i)) m))
+           (equal (aes-fixslice-encrypt-aes128-key-schedule-loop2 m (rng i 11) rk)
+                  (ok (sbn-chain rk (* 8 i) i))))
+  :hints (("Goal" :induct (sbn-li m i rk)
+           :in-theory (e/d (rnext-on-range mul-8-distrib)
+                           (aes-fixslice-encrypt-aes128-key-schedule-loop2
                             aes-fixslice-encrypt-sub-bytes-nots
-                            sub-bytes-nots-at-form-n
-                            w8-spec rd8 nth wstatep
+                            vec-index-range vec-update-range
+                            sbn-chain w8-spec rd8 nth wstatep
                             (:executable-counterpart core-ops-range-range-usize-))))
           ("Subgoal *1/2"
-           :expand ((:free (xoff) (aes-fixslice-encrypt-aes128-key-schedule-loop2 m (rng i 11) rk xoff))
-                    (:free (xoff) (sbn-chain rk xoff i))))
+           :expand ((aes-fixslice-encrypt-aes128-key-schedule-loop2 m (rng i 11) rk)
+                    (sbn-chain rk (* 8 i) i)))
           ("Subgoal *1/1"
-           :expand ((:free (xoff) (aes-fixslice-encrypt-aes128-key-schedule-loop2 m (rng i 11) rk xoff))
-                    (:free (xoff) (sbn-chain rk xoff i))))))
+           :expand ((aes-fixslice-encrypt-aes128-key-schedule-loop2 m (rng i 11) rk)
+                    (sbn-chain rk (* 8 i) i)))))
 
 ;; ---------------------------------------------------------------------------
-;; (4) THE DECOMPOSITION.  With all three loops collapsed, the schedule body
-;; is 8 binds and the last expression is loop2 itself, so the collapse ends in
-;; (ok (sbn-chain ...)) with no constructor residue.
+;; THE DECOMPOSITION.  With all three loops collapsed, the schedule body is
+;; the seed binds, the loop calls, and the isr1 window at 72 -- the collapse
+;; ends in (ok (sbn-chain ...)) with no constructor residue.
 (defund ks-fold2 (w)
   (sbn-chain
-    (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1-at 100
-      (isr-step (isr-step w 8) 40) 72))
+    (w8-spec 0 8 (isr-step (isr-step w 8) 40) 72
+      (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1 100
+        (rd8 (isr-step (isr-step w 8) 40) 72))))
     8 1))
 
 (defthm rk-of-ok2 (equal (result-kind (result-ok x)) :ok))
 
+;; site bridges for the two literal-window subslice borrows in the schedule
+;; body (proved in the full theory, where the range accessors compute; pinned
+;; below, where they must stay closed).  Written with the body's exact shapes.
+(defthm seed-read-ok
+  (equal (result-kind (vec-index-range (array-repeat 88 0) 0
+           (core-ops-range-rangeto-usize-->end (core-ops-range-rangeto-usize- 8))))
+         :ok))
+(defthm seed-read-val
+  (equal (result-ok->val (vec-index-range (array-repeat 88 0) 0
+           (core-ops-range-rangeto-usize-->end (core-ops-range-rangeto-usize- 8))))
+         (list 0 0 0 0 0 0 0 0)))
+(defthm seed-write-is-seed
+  (equal (vec-update-range (array-repeat 88 0) 0
+           (core-ops-range-rangeto-usize-->end (core-ops-range-rangeto-usize- 8))
+           (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) key key)))
+         (seed key))
+  :hints (("Goal" :in-theory (enable seed))))
+(defthm w72-read-ok
+  (implies (equal (len rk) 88)
+           (equal (result-kind (vec-index-range rk
+                    (core-ops-range-range-usize-->start (core-ops-range-range-usize- 72 80))
+                    (core-ops-range-range-usize-->end (core-ops-range-range-usize- 72 80))))
+                  :ok)))
+(defthm w72-read-val
+  (implies (and (equal (len rk) 88) (true-listp rk))
+           (equal (result-ok->val (vec-index-range rk
+                    (core-ops-range-range-usize-->start (core-ops-range-range-usize- 72 80))
+                    (core-ops-range-range-usize-->end (core-ops-range-range-usize- 72 80))))
+                  (rd8 rk 72)))
+  :hints (("Goal" :in-theory (disable rd8 nth))))
+(defthm w72-write
+  (implies (and (equal (len rk) 88) (true-listp rk)
+                (true-listp s) (equal (len s) 8))
+           (equal (vec-update-range rk
+                    (core-ops-range-range-usize-->start (core-ops-range-range-usize- 72 80))
+                    (core-ops-range-range-usize-->end (core-ops-range-range-usize- 72 80))
+                    s)
+                  (w8-spec 0 8 rk 72 s)))
+  :hints (("Goal" :in-theory (disable w8-spec nth))))
+
+;; window facts for the isr1-at-72 step, at the abstraction the pinned proof
+;; uses (rd8 window of the isr-step composition is a len-8 true-list).
+(defthm len-of-rd8-8b (equal (len (rd8 l off)) 8)
+  :hints (("Goal" :in-theory (enable rd8))))
+(defthm true-listp-of-rd8b (true-listp (rd8 l off))
+  :hints (("Goal" :in-theory (enable rd8))))
+
 (defthm ks-decomp
   (implies (aes::inp key)
            (equal (aes-fixslice-encrypt-aes128-key-schedule 100 key)
-                  (ok (ks-fold2 (kr-chain (result-ok->val
-                                 (aes-fixslice-encrypt-bitslice-into 100 (array-repeat 88 0) 0 key key))
-                               0 0)))))
+                  (ok (ks-fold2 (kr-chain (seed key) 0 0)))))
   :hints (("Goal" :do-not-induct t
            :in-theory (union-theories (theory 'ground-zero)
                         '((:definition aes-fixslice-encrypt-aes128-key-schedule)
                           (:definition ks-fold2)
                           (:definition core-iter-traits-collect-impl-core-iter-traits-collect-intoiterator-for-core-ops-range-range-usize-into-iter-core-ops-range-range-usize-)
+                          (:definition core-iter-traits-iterator-iterator-step-by-core-ops-range-range-usize-)
+                          (:definition core-iter-traits-collect-impl-core-iter-traits-collect-intoiterator-for-core-iter-adapters-step-by-stepby-core-ops-range-range-usize-into-iter-core-iter-adapters-step-by-stepby-core-ops-range-range-usize-)
                           (:definition not)
-                          (:rewrite len-of-array-repeat)
-                          (:rewrite result-kind-of-seed) (:rewrite len-of-seed) (:rewrite len-of-core)
-                          (:rewrite true-listp-of-seed)
+                          (:rewrite seed-read-ok) (:rewrite seed-read-val)
+                          (:rewrite seed-write-is-seed)
+                          (:rewrite w72-read-ok) (:rewrite w72-read-val) (:rewrite w72-write)
+                          (:rewrite bitslice-ok)
+                          (:rewrite result-kind-of-isr1-len) (:rewrite len-of-isr1-len)
+                          (:rewrite true-listp-of-isr1-100)
+                          (:rewrite len-of-rd8-8b) (:rewrite true-listp-of-rd8b)
                           (:rewrite ks-loop0-is-kr-chain)
                           (:rewrite ks-loop1-collapse)
                           (:rewrite ks-loop2-is-sbn-chain)
-                          (:rewrite len-of-isr-step)
-                          (:rewrite result-kind-of-isr1-at-len) (:rewrite len-of-isr1-at-len)
+                          (:rewrite len-of-seed) (:rewrite true-listp-of-seed)
+                          (:rewrite len-of-core) (:rewrite true-listp-of-core)
+                          (:rewrite len-of-isr-step) (:rewrite true-listp-of-isr-step-88)
+                          (:rewrite len-of-w8spec-88) (:rewrite true-listp-of-w8-spec)
                           (:rewrite result-ok->val-of-result-ok)
                           (:rewrite rk-of-ok2)
                           (:executable-counterpart nfix) (:executable-counterpart zp)
                           (:executable-counterpart binary-+) (:executable-counterpart binary-*)
                           (:executable-counterpart <) (:executable-counterpart unary--)
                           (:executable-counterpart natp) (:executable-counterpart integerp)
-                          (:executable-counterpart equal) (:executable-counterpart eq))))))
+                          (:executable-counterpart equal) (:executable-counterpart eq)
+                          (:executable-counterpart not))))))

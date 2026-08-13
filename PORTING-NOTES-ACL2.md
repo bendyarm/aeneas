@@ -116,7 +116,7 @@ script-verified against the reference copy):
 | ~~Signature-only~~ RESOLVED (pass 7): `sub_bytes`/`sub_bytes_nots`/`inv_sub_bytes`, `shift_rows_*`/`inv_shift_rows_*`, `add_round_constant_bit`, `xor_columns` all take upstream's `&mut [u32]` slices (asserts restored where upstream has them; `mix_columns_*` keep upstream's own `&mut State`) | -- | none |
 | `iter_mut`/`zip` -> indexed `for` | `shift_rows_1/2/3` (asserts restored), `add_round_key` (upstream `(state, rkey: &[u32])` signature and `rkey.len()` assert RESTORED in pass 7; only the loop de-sugar remains) | same ops, indexed |
 | ~~LE byte plumbing~~ RESOLVED (pass 8): `bitslice`/`inv_bitslice` bodies are VERBATIM upstream (`from_le_bytes`/`try_into`, `to_le_bytes`/`copy_from_slice`, out-param `bitslice` with all three asserts); `ld_le` deleted; `BatchBlocks`/`State::default()` -> array literals remain the documented de-sugar | -- | none |
-| Subslice borrows -> `(array, offset)` + `read8`/`write8`/`*_at` wrappers | KEY SCHEDULE ONLY now (`aes128_key_schedule` + its `*_at` helpers); the encrypt/decrypt sides pass upstream's `&rkeys[..]` subslices as of pass 7 | structural |
+| ~~Subslice borrows -> `(array, offset)` + `read8`/`write8`/`*_at` wrappers~~ RESOLVED (pass 9): `aes128_key_schedule` is verbatim upstream (`&mut rkeys[..8]`/`[off..off+8]` subslice borrows, `(8..72).step_by(32)` fold, `for i in 1..11` NOTs loop); the read8/write8/sub_bytes_at/sub_bytes_nots_at/add_rc_bit_at/inv_shift_rows_*_at/bitslice_into/add_rcon/key_round wrapper layer is DELETED | -- | none |
 | Loop unrolls | ~~encrypt round loop~~ RESTORED (de-vendor pass 3): the bare `loop { ... if rk_off == 80 { break; } ... }` is verbatim upstream, extracted as a recursive loop function; key-schedule rcon loop re-rolled earlier; the decrypt loop arrives with the decrypt side | control flow |
 | ~~`memshift32` forward-loop delta~~ FULLY RESOLVED (passes 1 + 7): body verbatim upstream (`.rev()` + both `debug_assert`s, extracting as `massert`s) AND the upstream `&mut [u32]` signature | `memshift32` | none |
 | Dropped | `aes192_*`/`aes256_*`, cipher-crate API, `cfg(aes_backend_soft = "compact")` branches (non-compact path vendored) | scope reduction |
@@ -134,11 +134,11 @@ deleted and the audited subject moves toward verbatim upstream:
    lemma pair: sub_bytes_nots's :ok/len characterization needed only
    len >= 7 (it touches indices 0,1,5,6) but upstream's assert demands
    len == 8 exactly -- the hypothesis tightened to match, and every call
-   site already reads exact-length windows.  The two upstream asserts NOT
-   restored bind variables that do not exist under remaining signature
-   deltas: bitslice's `output.len()` (ours returns `State` by value) and
-   add_round_key's `rkey.len()` (returns with the roadmap-#7 subslice
-   signature).
+   site already reads exact-length windows.  The remaining two arrived with
+   the signature reversion passes: add_round_key's `rkey.len()` (pass 7,
+   with the (state, rkey: &[u32]) signature) and bitslice's `output.len()`
+   (pass 8, with the out-param signature) -- ALL THIRTEEN upstream asserts
+   are now present verbatim.
 3. DONE for everything vendored -- loop re-rolls: key schedule (rcon + fold
    loops) and now the ENCRYPT ROUND LOOP.  The upstream shape is a bare
    `loop` over a mutated `rk_off` counter with the break in the MIDDLE of
@@ -215,7 +215,7 @@ deleted and the audited subject moves toward verbatim upstream:
    add-round-key-through-packing crux went from OOM-at-7GB to 8 seconds on
    this change alone); the explicit inv-bitslice :ok/len lemmas keep the
    window prims at their nth/len interface instead of opening take/append.
-7. MACHINERY DONE (source reversion pending) -- subslice borrows: Aeneas
+7. DONE, both sides -- subslice borrows: Aeneas
    splits `&mut a[lo..hi]` into a forward read returning a (subslice,
    backward-closure) pair, bound via an intermediate pair variable and a
    tuple-destructuring let.  The printer now: synthesizes every shared
@@ -240,10 +240,45 @@ deleted and the audited subject moves toward verbatim upstream:
    final) are UNTOUCHED -- six window lemmas rewrite each synthesized
    Index<RangeX> read composed with add_round_key straight to the old
    (arkw-spec 0 8 s rk off) form via take8-nthcdr-is-rd8 and an
-   arkw-spec window-shift.  Remaining: the key SCHEDULE's (rkeys, off) +
-   read8/write8/*_at wrapper layer (needs the StepBy<Range> synthesis for
-   its (8..72).step_by(32) fold and a restructure of the Phase-4
-   window-form proof stack).
+   arkw-spec window-shift.  SCHEDULE SIDE DONE (pass 9), closing the class:
+   * StepBy<Range<usize>> synthesis: StepBy is opaque in the LLBC, so the
+     printer emits its own defprod {iter, step, first-take} and synthesizes
+     the trio by name -- step_by(step) fails on step == 0 and stores
+     step - 1 with first_take = t (upstream's own representation);
+     into_iter is the identity; next specializes Iterator::nth to Range
+     (first take yields start; afterwards jump to start + (step-1), i.e.
+     advance to start + step of the previous yield; park at (end, end)
+     when past the end).  Pinned by tests/src/subslice_probe.rs's
+     stepby_sum probe (known-answer proof).
+   * aes128_key_schedule is verbatim upstream: bitslice into
+     &mut rkeys[..8], the rcon loop through &mut rkeys[off..off+8]
+     subslices, the (8..72).step_by(32) inv_shift_rows fold, the trailing
+     window at [72..80], and the 1..11 NOTs loop; the whole wrapper layer
+     (read8/write8/*_at/bitslice_into/add_rcon/key_round) is deleted.
+   * Phase-4 proof restack (the schedule now extracts as one inline
+     rcon-loop body instead of a key_round function): keyround proves ONE
+     LOOP-STEP EQUATION sched-loop0-step -- an iteration of the extracted
+     loop0 at index c equals the pure window model kround(rkeys,off,c)
+     (the old key-round-unfold's xc/w8/ms-spec tower) -- under LENGTH-ONLY
+     hypotheses, so keyasm's loop collapse needs no invariant and no fuel
+     canonicalization at all; kround's readers (window/len/frame-below/
+     true-listp) replace the key_round interface with strictly weaker
+     hypotheses (no wstate, no alignment).  keystep's step-star GL cruxes
+     are stated directly over the pure krw8, so keycore's per-round GL
+     cruxes over the deleted wrapper went away entirely.  The seed is the
+     vec-update-range window form (defund seed).  keyasm collapses the
+     three loops -- rcon by induction over sched-loop0-step, the step_by
+     fold by explicit three-step expansion through the synthesized StepBy
+     next (yields 8, 40, then None), the NOTs loop by the lockstep
+     off = 8i induction -- into the same ks-decomp shape, and keyread/
+     keymain/windows/ladder are unchanged modulo (seed key).  Two
+     rule-shape lessons are recorded in the books: window arithmetic in
+     left-hand sides must be a free variable pinned by an
+     (equal hi (+ off 8)) hypothesis (embedded (+ off 8) patterns match
+     neither ACL2's constant-first sum normal form nor evaluated
+     literals), and alignment hypotheses must be stated in MOD form
+     (arithmetic-5 normalizes goal-side rem to mod, and backchain relief
+     does not cross that normalization).
 8. `iter_mut()`/`.zip()` over slices: needs `core::slice::IterMut` (and `Zip`)
    extraction — an Aeneas-core capability question, not just the printer.
    Probe first; possibly an upstream Aeneas contribution. Largest unknown.

@@ -10,9 +10,10 @@
 ;
 ; where kk_r = kk-iter(key, r) is the iterated key-expansion recurrence.
 ; Layering: (A) pure array bookkeeping -- what each fold op leaves at each
-; 8-aligned window (rd8-of-w8spec same/frame threading; all length-only);
-; (B) per-window composition over ks-fold2; (C) the core windows from wok;
-; then the keyfold fk-read facts finish each window in byte terms.
+; 8-aligned window (rd8-of-w8spec same/frame threading over the isr-step /
+; sbn-chain window forms; all length-only); (B) per-window composition over
+; ks-fold2; (C) the core windows from wok; then the keyfold fk-read facts
+; finish each window in byte terms.
 (in-package "ACL2")
 (include-book "aes_fixslice_keyasm")
 (local (include-book "std/lists/nth" :dir :system))
@@ -20,99 +21,19 @@
 (local (in-theory (disable len-when-wstatep true-listp-when-wstatep nth-when-zp)))
 
 ;; ===========================================================================
-(local (defthm true-listp-of-update-nth-when-true-listp
-  (implies (true-listp l) (true-listp (update-nth k v l)))
-  :hints (("Goal" :in-theory (enable update-nth)))))
-
-;; (A0) true-listp preservation for the isr ops (the shift-rows loops), so
-;; rd8-of-w8spec-same applies to their outputs.  Mirrors the len lemmas.
-(defthm true-listp-of-sr3-loop0
-  (implies (and (natp i) (natp e) (<= i e) (< (len s) 4294967296) (<= e (len s))
-                (< (- e i) (nfix n)) (true-listp s))
-           (true-listp (result-ok->val (aes-fixslice-encrypt-shift-rows-3-loop0 n (rng i e) s))))
-  :hints (("Goal" :induct (sr3-ind n i e s)
-           :in-theory (disable aes-fixslice-encrypt-shift-rows-3-loop0 aes-fixslice-encrypt-delta-swap-1
-                               (:executable-counterpart core-ops-range-range-usize-)))))
-(defthm true-listp-of-sr2-loop0
-  (implies (and (natp i) (natp e) (<= i e) (< (len s) 4294967296) (<= e (len s))
-                (< (- e i) (nfix n)) (true-listp s))
-           (true-listp (result-ok->val (aes-fixslice-encrypt-shift-rows-2-loop0 n (rng i e) s))))
-  :hints (("Goal" :induct (sr2-ind n i e s)
-           :in-theory (disable aes-fixslice-encrypt-shift-rows-2-loop0 aes-fixslice-encrypt-delta-swap-1
-                               (:executable-counterpart core-ops-range-range-usize-)))))
-(defthm true-listp-of-sr1-loop0
-  (implies (and (natp i) (natp e) (<= i e) (< (len s) 4294967296) (<= e (len s))
-                (< (- e i) (nfix n)) (true-listp s))
-           (true-listp (result-ok->val (aes-fixslice-encrypt-shift-rows-1-loop0 n (rng i e) s))))
-  :hints (("Goal" :induct (sr1-ind n i e s)
-           :in-theory (disable aes-fixslice-encrypt-shift-rows-1-loop0 aes-fixslice-encrypt-delta-swap-1
-                               (:executable-counterpart core-ops-range-range-usize-)))))
-
-(defthm true-listp-of-isr1-100
-  (implies (and (true-listp s) (equal (len s) 8))
-           (true-listp (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1 100 s))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-1 aes-fixslice-encrypt-shift-rows-3)
-                                  (aes-fixslice-encrypt-shift-rows-3-loop0))
-           :use (:instance true-listp-of-sr3-loop0 (i 0) (e 8) (n 100)))))
-(defthm true-listp-of-isr2-100
-  (implies (and (true-listp s) (equal (len s) 8))
-           (true-listp (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-2 100 s))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-2 aes-fixslice-encrypt-shift-rows-2)
-                                  (aes-fixslice-encrypt-shift-rows-2-loop0))
-           :use (:instance true-listp-of-sr2-loop0 (i 0) (e 8) (n 100)))))
-(defthm true-listp-of-isr3-100
-  (implies (and (true-listp s) (equal (len s) 8))
-           (true-listp (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-3 100 s))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-3 aes-fixslice-encrypt-shift-rows-1)
-                                  (aes-fixslice-encrypt-shift-rows-1-loop0))
-           :use (:instance true-listp-of-sr1-loop0 (i 0) (e 8) (n 100)))))
-(defthm true-listp-of-sub-bytes-nots-val
-  (implies (true-listp s)
-           (true-listp (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots s))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-sub-bytes-nots) (u32-xor nth)))))
-
-;; ===========================================================================
-;; (A1) w8-spec forms for the isr at-ops at fuel 100 (length-only, exported
-;; here; keydecomp's were book-local).
-(defthm isr1-at-form100
-  (implies (and (natp off) (<= (+ off 8) (len rk)) (< (len rk) 4294967296))
-           (equal (aes-fixslice-encrypt-inv-shift-rows-1-at 100 rk off)
-                  (ok (w8-spec 0 8 rk off (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1 100 (rd8 rk off)))))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-1-at)
-                                  (aes-fixslice-encrypt-inv-shift-rows-1 w8-spec rd8 nth
-                                   aes-fixslice-encrypt-write8)))))
-(defthm isr2-at-form100
-  (implies (and (natp off) (<= (+ off 8) (len rk)) (< (len rk) 4294967296))
-           (equal (aes-fixslice-encrypt-inv-shift-rows-2-at 100 rk off)
-                  (ok (w8-spec 0 8 rk off (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-2 100 (rd8 rk off)))))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-2-at)
-                                  (aes-fixslice-encrypt-inv-shift-rows-2 w8-spec rd8 nth
-                                   aes-fixslice-encrypt-write8)))))
-(defthm isr3-at-form100
-  (implies (and (natp off) (<= (+ off 8) (len rk)) (< (len rk) 4294967296))
-           (equal (aes-fixslice-encrypt-inv-shift-rows-3-at 100 rk off)
-                  (ok (w8-spec 0 8 rk off (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-3 100 (rd8 rk off)))))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-3-at)
-                                  (aes-fixslice-encrypt-inv-shift-rows-3 w8-spec rd8 nth
-                                   aes-fixslice-encrypt-write8)))))
-
-;; ===========================================================================
-;; (A2) reading isr-step: the three written windows and the frame.  Pinned
+;; (A) reading isr-step: the three written windows and the frame.  Pinned
 ;; theory: exactly the w8-spec same/frame algebra plus the length facts that
 ;; discharge their hypotheses (the default theory's arithmetic diverges on the
 ;; nested window threading).
 (defthm rd8-of-isr-step-w1
-  (implies (and (natp base) (<= (+ base 24) (len rk)) (< (len rk) 4294967296)
-                (true-listp rk))
+  (implies (and (natp base) (<= (+ base 24) (len rk)))
            (equal (rd8 (isr-step rk base) base)
                   (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1 100 (rd8 rk base)))))
   :hints (("Goal" :do-not-induct t
            :in-theory (union-theories (theory 'ground-zero)
                         '((:definition isr-step)
-                          (:rewrite isr1-at-form100) (:rewrite isr2-at-form100) (:rewrite isr3-at-form100)
-                          (:rewrite result-ok->val-of-result-ok)
                           (:rewrite rd8-of-w8spec-same) (:rewrite rd8-of-w8spec-frame)
-                          (:rewrite len-of-w8-spec)
+                          (:rewrite len-of-w8-spec) (:rewrite true-listp-of-w8-spec)
                           (:rewrite len-of-rd8-8) (:rewrite true-listp-of-rd8)
                           (:rewrite len-of-isr1-len) (:rewrite len-of-isr2-len) (:rewrite len-of-isr3-len)
                           (:rewrite true-listp-of-isr1-100) (:rewrite true-listp-of-isr2-100) (:rewrite true-listp-of-isr3-100)
@@ -120,17 +41,14 @@
                           (:executable-counterpart natp) (:executable-counterpart equal)
                           (:executable-counterpart unary--))))))
 (defthm rd8-of-isr-step-w2
-  (implies (and (natp base) (<= (+ base 24) (len rk)) (< (len rk) 4294967296)
-                (true-listp rk))
+  (implies (and (natp base) (<= (+ base 24) (len rk)))
            (equal (rd8 (isr-step rk base) (+ base 8))
                   (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-2 100 (rd8 rk (+ base 8))))))
   :hints (("Goal" :do-not-induct t
            :in-theory (union-theories (theory 'ground-zero)
                         '((:definition isr-step)
-                          (:rewrite isr1-at-form100) (:rewrite isr2-at-form100) (:rewrite isr3-at-form100)
-                          (:rewrite result-ok->val-of-result-ok)
                           (:rewrite rd8-of-w8spec-same) (:rewrite rd8-of-w8spec-frame)
-                          (:rewrite len-of-w8-spec)
+                          (:rewrite len-of-w8-spec) (:rewrite true-listp-of-w8-spec)
                           (:rewrite len-of-rd8-8) (:rewrite true-listp-of-rd8)
                           (:rewrite len-of-isr1-len) (:rewrite len-of-isr2-len) (:rewrite len-of-isr3-len)
                           (:rewrite true-listp-of-isr1-100) (:rewrite true-listp-of-isr2-100) (:rewrite true-listp-of-isr3-100)
@@ -138,17 +56,14 @@
                           (:executable-counterpart natp) (:executable-counterpart equal)
                           (:executable-counterpart unary--))))))
 (defthm rd8-of-isr-step-w3
-  (implies (and (natp base) (<= (+ base 24) (len rk)) (< (len rk) 4294967296)
-                (true-listp rk))
+  (implies (and (natp base) (<= (+ base 24) (len rk)))
            (equal (rd8 (isr-step rk base) (+ base 16))
                   (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-3 100 (rd8 rk (+ base 16))))))
   :hints (("Goal" :do-not-induct t
            :in-theory (union-theories (theory 'ground-zero)
                         '((:definition isr-step)
-                          (:rewrite isr1-at-form100) (:rewrite isr2-at-form100) (:rewrite isr3-at-form100)
-                          (:rewrite result-ok->val-of-result-ok)
                           (:rewrite rd8-of-w8spec-same) (:rewrite rd8-of-w8spec-frame)
-                          (:rewrite len-of-w8-spec)
+                          (:rewrite len-of-w8-spec) (:rewrite true-listp-of-w8-spec)
                           (:rewrite len-of-rd8-8) (:rewrite true-listp-of-rd8)
                           (:rewrite len-of-isr1-len) (:rewrite len-of-isr2-len) (:rewrite len-of-isr3-len)
                           (:rewrite true-listp-of-isr1-100) (:rewrite true-listp-of-isr2-100) (:rewrite true-listp-of-isr3-100)
@@ -156,16 +71,14 @@
                           (:executable-counterpart natp) (:executable-counterpart equal)
                           (:executable-counterpart unary--))))))
 (defthm rd8-of-isr-step-frame
-  (implies (and (natp base) (<= (+ base 24) (len rk)) (< (len rk) 4294967296)
+  (implies (and (natp base) (<= (+ base 24) (len rk))
                 (natp j8) (or (<= (+ j8 8) base) (<= (+ base 24) j8)))
            (equal (rd8 (isr-step rk base) j8) (rd8 rk j8)))
   :hints (("Goal" :do-not-induct t
            :in-theory (union-theories (theory 'ground-zero)
                         '((:definition isr-step)
-                          (:rewrite isr1-at-form100) (:rewrite isr2-at-form100) (:rewrite isr3-at-form100)
-                          (:rewrite result-ok->val-of-result-ok)
                           (:rewrite rd8-of-w8spec-same) (:rewrite rd8-of-w8spec-frame)
-                          (:rewrite len-of-w8-spec)
+                          (:rewrite len-of-w8-spec) (:rewrite true-listp-of-w8-spec)
                           (:rewrite len-of-rd8-8) (:rewrite true-listp-of-rd8)
                           (:rewrite len-of-isr1-len) (:rewrite len-of-isr2-len) (:rewrite len-of-isr3-len)
                           (:rewrite true-listp-of-isr1-100) (:rewrite true-listp-of-isr2-100) (:rewrite true-listp-of-isr3-100)
@@ -185,25 +98,8 @@
                     (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots (rd8 rk (* 8 r)))))))
   :hints (("Goal" :induct (sbn-chain rk off i)
            :in-theory (e/d (sbn-chain)
-                           (aes-fixslice-encrypt-sub-bytes-nots-at
-                            aes-fixslice-encrypt-sub-bytes-nots
+                           (aes-fixslice-encrypt-sub-bytes-nots
                             w8-spec rd8 nth wstatep)))))
-;; ===========================================================================
-;; (A4) true-listp through w8-spec and isr-step (pinned; the default theory's
-;; arithmetic diverges on the window threading).
-(defthm true-listp-of-isr-step-88
-  (implies (and (natp base) (<= (+ base 24) 88) (equal (len rk) 88) (true-listp rk))
-           (true-listp (isr-step rk base)))
-  :hints (("Goal" :do-not-induct t
-           :in-theory (union-theories (theory 'ground-zero)
-                        '((:definition isr-step)
-                          (:rewrite isr1-at-form100) (:rewrite isr2-at-form100) (:rewrite isr3-at-form100)
-                          (:rewrite result-ok->val-of-result-ok)
-                          (:rewrite true-listp-of-w8-spec) (:rewrite len-of-w8-spec)
-                          (:rewrite len-of-rd8-8) (:rewrite true-listp-of-rd8)
-                          (:rewrite len-of-isr1-len) (:rewrite len-of-isr2-len) (:rewrite len-of-isr3-len)
-                          (:executable-counterpart binary-+) (:executable-counterpart <)
-                          (:executable-counterpart natp) (:executable-counterpart equal))))))
 
 ;; ===========================================================================
 ;; (B) per-window reads over the whole fold ks-fold2.
@@ -212,12 +108,11 @@
   (implies (and (equal (len w) 88) (true-listp w))
            (equal (rd8 (ks-fold2 w) 0) (rd8 w 0)))
   :hints (("Goal" :do-not-induct t
-           :use ((:instance rd8-of-sbn-chain (rk (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1-at 100 (isr-step (isr-step w 8) 40) 72))) (off 8) (i 1) (r 0)))
+           :use ((:instance rd8-of-sbn-chain (rk (w8-spec 0 8 (isr-step (isr-step w 8) 40) 72 (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1 100 (rd8 (isr-step (isr-step w 8) 40) 72))))) (off 8) (i 1) (r 0)))
            :in-theory (union-theories (theory 'ground-zero)
                         '((:definition ks-fold2)
                           (:rewrite rd8-of-isr-step-w1) (:rewrite rd8-of-isr-step-w2) (:rewrite rd8-of-isr-step-w3)
                           (:rewrite rd8-of-isr-step-frame)
-                          (:rewrite isr1-at-form100)
                           (:rewrite rd8-of-w8spec-same) (:rewrite rd8-of-w8spec-frame)
                           (:rewrite result-ok->val-of-result-ok)
                           (:rewrite len-of-w8-spec) (:rewrite true-listp-of-w8-spec) (:rewrite len-of-isr-step)
@@ -233,12 +128,11 @@
   (implies (and (equal (len w) 88) (true-listp w))
            (equal (rd8 (ks-fold2 w) 8) (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1 100 (rd8 w 8)))))))
   :hints (("Goal" :do-not-induct t
-           :use ((:instance rd8-of-sbn-chain (rk (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1-at 100 (isr-step (isr-step w 8) 40) 72))) (off 8) (i 1) (r 1)))
+           :use ((:instance rd8-of-sbn-chain (rk (w8-spec 0 8 (isr-step (isr-step w 8) 40) 72 (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1 100 (rd8 (isr-step (isr-step w 8) 40) 72))))) (off 8) (i 1) (r 1)))
            :in-theory (union-theories (theory 'ground-zero)
                         '((:definition ks-fold2)
                           (:rewrite rd8-of-isr-step-w1) (:rewrite rd8-of-isr-step-w2) (:rewrite rd8-of-isr-step-w3)
                           (:rewrite rd8-of-isr-step-frame)
-                          (:rewrite isr1-at-form100)
                           (:rewrite rd8-of-w8spec-same) (:rewrite rd8-of-w8spec-frame)
                           (:rewrite result-ok->val-of-result-ok)
                           (:rewrite len-of-w8-spec) (:rewrite true-listp-of-w8-spec) (:rewrite len-of-isr-step)
@@ -254,12 +148,11 @@
   (implies (and (equal (len w) 88) (true-listp w))
            (equal (rd8 (ks-fold2 w) 16) (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-2 100 (rd8 w 16)))))))
   :hints (("Goal" :do-not-induct t
-           :use ((:instance rd8-of-sbn-chain (rk (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1-at 100 (isr-step (isr-step w 8) 40) 72))) (off 8) (i 1) (r 2)))
+           :use ((:instance rd8-of-sbn-chain (rk (w8-spec 0 8 (isr-step (isr-step w 8) 40) 72 (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1 100 (rd8 (isr-step (isr-step w 8) 40) 72))))) (off 8) (i 1) (r 2)))
            :in-theory (union-theories (theory 'ground-zero)
                         '((:definition ks-fold2)
                           (:rewrite rd8-of-isr-step-w1) (:rewrite rd8-of-isr-step-w2) (:rewrite rd8-of-isr-step-w3)
                           (:rewrite rd8-of-isr-step-frame)
-                          (:rewrite isr1-at-form100)
                           (:rewrite rd8-of-w8spec-same) (:rewrite rd8-of-w8spec-frame)
                           (:rewrite result-ok->val-of-result-ok)
                           (:rewrite len-of-w8-spec) (:rewrite true-listp-of-w8-spec) (:rewrite len-of-isr-step)
@@ -275,12 +168,11 @@
   (implies (and (equal (len w) 88) (true-listp w))
            (equal (rd8 (ks-fold2 w) 24) (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-3 100 (rd8 w 24)))))))
   :hints (("Goal" :do-not-induct t
-           :use ((:instance rd8-of-sbn-chain (rk (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1-at 100 (isr-step (isr-step w 8) 40) 72))) (off 8) (i 1) (r 3)))
+           :use ((:instance rd8-of-sbn-chain (rk (w8-spec 0 8 (isr-step (isr-step w 8) 40) 72 (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1 100 (rd8 (isr-step (isr-step w 8) 40) 72))))) (off 8) (i 1) (r 3)))
            :in-theory (union-theories (theory 'ground-zero)
                         '((:definition ks-fold2)
                           (:rewrite rd8-of-isr-step-w1) (:rewrite rd8-of-isr-step-w2) (:rewrite rd8-of-isr-step-w3)
                           (:rewrite rd8-of-isr-step-frame)
-                          (:rewrite isr1-at-form100)
                           (:rewrite rd8-of-w8spec-same) (:rewrite rd8-of-w8spec-frame)
                           (:rewrite result-ok->val-of-result-ok)
                           (:rewrite len-of-w8-spec) (:rewrite true-listp-of-w8-spec) (:rewrite len-of-isr-step)
@@ -296,12 +188,11 @@
   (implies (and (equal (len w) 88) (true-listp w))
            (equal (rd8 (ks-fold2 w) 32) (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots (rd8 w 32)))))
   :hints (("Goal" :do-not-induct t
-           :use ((:instance rd8-of-sbn-chain (rk (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1-at 100 (isr-step (isr-step w 8) 40) 72))) (off 8) (i 1) (r 4)))
+           :use ((:instance rd8-of-sbn-chain (rk (w8-spec 0 8 (isr-step (isr-step w 8) 40) 72 (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1 100 (rd8 (isr-step (isr-step w 8) 40) 72))))) (off 8) (i 1) (r 4)))
            :in-theory (union-theories (theory 'ground-zero)
                         '((:definition ks-fold2)
                           (:rewrite rd8-of-isr-step-w1) (:rewrite rd8-of-isr-step-w2) (:rewrite rd8-of-isr-step-w3)
                           (:rewrite rd8-of-isr-step-frame)
-                          (:rewrite isr1-at-form100)
                           (:rewrite rd8-of-w8spec-same) (:rewrite rd8-of-w8spec-frame)
                           (:rewrite result-ok->val-of-result-ok)
                           (:rewrite len-of-w8-spec) (:rewrite true-listp-of-w8-spec) (:rewrite len-of-isr-step)
@@ -317,12 +208,11 @@
   (implies (and (equal (len w) 88) (true-listp w))
            (equal (rd8 (ks-fold2 w) 40) (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1 100 (rd8 w 40)))))))
   :hints (("Goal" :do-not-induct t
-           :use ((:instance rd8-of-sbn-chain (rk (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1-at 100 (isr-step (isr-step w 8) 40) 72))) (off 8) (i 1) (r 5)))
+           :use ((:instance rd8-of-sbn-chain (rk (w8-spec 0 8 (isr-step (isr-step w 8) 40) 72 (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1 100 (rd8 (isr-step (isr-step w 8) 40) 72))))) (off 8) (i 1) (r 5)))
            :in-theory (union-theories (theory 'ground-zero)
                         '((:definition ks-fold2)
                           (:rewrite rd8-of-isr-step-w1) (:rewrite rd8-of-isr-step-w2) (:rewrite rd8-of-isr-step-w3)
                           (:rewrite rd8-of-isr-step-frame)
-                          (:rewrite isr1-at-form100)
                           (:rewrite rd8-of-w8spec-same) (:rewrite rd8-of-w8spec-frame)
                           (:rewrite result-ok->val-of-result-ok)
                           (:rewrite len-of-w8-spec) (:rewrite true-listp-of-w8-spec) (:rewrite len-of-isr-step)
@@ -338,12 +228,11 @@
   (implies (and (equal (len w) 88) (true-listp w))
            (equal (rd8 (ks-fold2 w) 48) (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-2 100 (rd8 w 48)))))))
   :hints (("Goal" :do-not-induct t
-           :use ((:instance rd8-of-sbn-chain (rk (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1-at 100 (isr-step (isr-step w 8) 40) 72))) (off 8) (i 1) (r 6)))
+           :use ((:instance rd8-of-sbn-chain (rk (w8-spec 0 8 (isr-step (isr-step w 8) 40) 72 (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1 100 (rd8 (isr-step (isr-step w 8) 40) 72))))) (off 8) (i 1) (r 6)))
            :in-theory (union-theories (theory 'ground-zero)
                         '((:definition ks-fold2)
                           (:rewrite rd8-of-isr-step-w1) (:rewrite rd8-of-isr-step-w2) (:rewrite rd8-of-isr-step-w3)
                           (:rewrite rd8-of-isr-step-frame)
-                          (:rewrite isr1-at-form100)
                           (:rewrite rd8-of-w8spec-same) (:rewrite rd8-of-w8spec-frame)
                           (:rewrite result-ok->val-of-result-ok)
                           (:rewrite len-of-w8-spec) (:rewrite true-listp-of-w8-spec) (:rewrite len-of-isr-step)
@@ -359,12 +248,11 @@
   (implies (and (equal (len w) 88) (true-listp w))
            (equal (rd8 (ks-fold2 w) 56) (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-3 100 (rd8 w 56)))))))
   :hints (("Goal" :do-not-induct t
-           :use ((:instance rd8-of-sbn-chain (rk (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1-at 100 (isr-step (isr-step w 8) 40) 72))) (off 8) (i 1) (r 7)))
+           :use ((:instance rd8-of-sbn-chain (rk (w8-spec 0 8 (isr-step (isr-step w 8) 40) 72 (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1 100 (rd8 (isr-step (isr-step w 8) 40) 72))))) (off 8) (i 1) (r 7)))
            :in-theory (union-theories (theory 'ground-zero)
                         '((:definition ks-fold2)
                           (:rewrite rd8-of-isr-step-w1) (:rewrite rd8-of-isr-step-w2) (:rewrite rd8-of-isr-step-w3)
                           (:rewrite rd8-of-isr-step-frame)
-                          (:rewrite isr1-at-form100)
                           (:rewrite rd8-of-w8spec-same) (:rewrite rd8-of-w8spec-frame)
                           (:rewrite result-ok->val-of-result-ok)
                           (:rewrite len-of-w8-spec) (:rewrite true-listp-of-w8-spec) (:rewrite len-of-isr-step)
@@ -380,12 +268,11 @@
   (implies (and (equal (len w) 88) (true-listp w))
            (equal (rd8 (ks-fold2 w) 64) (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots (rd8 w 64)))))
   :hints (("Goal" :do-not-induct t
-           :use ((:instance rd8-of-sbn-chain (rk (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1-at 100 (isr-step (isr-step w 8) 40) 72))) (off 8) (i 1) (r 8)))
+           :use ((:instance rd8-of-sbn-chain (rk (w8-spec 0 8 (isr-step (isr-step w 8) 40) 72 (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1 100 (rd8 (isr-step (isr-step w 8) 40) 72))))) (off 8) (i 1) (r 8)))
            :in-theory (union-theories (theory 'ground-zero)
                         '((:definition ks-fold2)
                           (:rewrite rd8-of-isr-step-w1) (:rewrite rd8-of-isr-step-w2) (:rewrite rd8-of-isr-step-w3)
                           (:rewrite rd8-of-isr-step-frame)
-                          (:rewrite isr1-at-form100)
                           (:rewrite rd8-of-w8spec-same) (:rewrite rd8-of-w8spec-frame)
                           (:rewrite result-ok->val-of-result-ok)
                           (:rewrite len-of-w8-spec) (:rewrite true-listp-of-w8-spec) (:rewrite len-of-isr-step)
@@ -401,12 +288,11 @@
   (implies (and (equal (len w) 88) (true-listp w))
            (equal (rd8 (ks-fold2 w) 72) (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1 100 (rd8 w 72)))))))
   :hints (("Goal" :do-not-induct t
-           :use ((:instance rd8-of-sbn-chain (rk (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1-at 100 (isr-step (isr-step w 8) 40) 72))) (off 8) (i 1) (r 9)))
+           :use ((:instance rd8-of-sbn-chain (rk (w8-spec 0 8 (isr-step (isr-step w 8) 40) 72 (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1 100 (rd8 (isr-step (isr-step w 8) 40) 72))))) (off 8) (i 1) (r 9)))
            :in-theory (union-theories (theory 'ground-zero)
                         '((:definition ks-fold2)
                           (:rewrite rd8-of-isr-step-w1) (:rewrite rd8-of-isr-step-w2) (:rewrite rd8-of-isr-step-w3)
                           (:rewrite rd8-of-isr-step-frame)
-                          (:rewrite isr1-at-form100)
                           (:rewrite rd8-of-w8spec-same) (:rewrite rd8-of-w8spec-frame)
                           (:rewrite result-ok->val-of-result-ok)
                           (:rewrite len-of-w8-spec) (:rewrite true-listp-of-w8-spec) (:rewrite len-of-isr-step)
@@ -422,12 +308,11 @@
   (implies (and (equal (len w) 88) (true-listp w))
            (equal (rd8 (ks-fold2 w) 80) (result-ok->val (aes-fixslice-encrypt-sub-bytes-nots (rd8 w 80)))))
   :hints (("Goal" :do-not-induct t
-           :use ((:instance rd8-of-sbn-chain (rk (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1-at 100 (isr-step (isr-step w 8) 40) 72))) (off 8) (i 1) (r 10)))
+           :use ((:instance rd8-of-sbn-chain (rk (w8-spec 0 8 (isr-step (isr-step w 8) 40) 72 (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1 100 (rd8 (isr-step (isr-step w 8) 40) 72))))) (off 8) (i 1) (r 10)))
            :in-theory (union-theories (theory 'ground-zero)
                         '((:definition ks-fold2)
                           (:rewrite rd8-of-isr-step-w1) (:rewrite rd8-of-isr-step-w2) (:rewrite rd8-of-isr-step-w3)
                           (:rewrite rd8-of-isr-step-frame)
-                          (:rewrite isr1-at-form100)
                           (:rewrite rd8-of-w8spec-same) (:rewrite rd8-of-w8spec-frame)
                           (:rewrite result-ok->val-of-result-ok)
                           (:rewrite len-of-w8-spec) (:rewrite true-listp-of-w8-spec) (:rewrite len-of-isr-step)
@@ -459,7 +344,7 @@
 (defthm window-0-readback
   (implies (aes::inp key)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
-                          (rd8 (ks-fold2 (kr-chain (result-ok->val (aes-fixslice-encrypt-bitslice-into 100 (array-repeat 88 0) 0 key key)) 0 0)) 0))))
+                          (rd8 (ks-fold2 (kr-chain (seed key) 0 0)) 0))))
                   (kk-iter key 0)))
   :hints (("Goal" :do-not-induct t
            :use (core-windows-are-bitslice-of-keyexpansion)
@@ -477,7 +362,7 @@
 (defthm window-1-readback
   (implies (aes::inp key)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
-                          (rd8 (ks-fold2 (kr-chain (result-ok->val (aes-fixslice-encrypt-bitslice-into 100 (array-repeat 88 0) 0 key key)) 0 0)) 8))))
+                          (rd8 (ks-fold2 (kr-chain (seed key) 0 0)) 8))))
                   (sub-bytes-nots-bytes (inv-shift-rows-1-bytes (kk-iter key 1)))))
   :hints (("Goal" :do-not-induct t
            :use (core-windows-are-bitslice-of-keyexpansion)
@@ -495,7 +380,7 @@
 (defthm window-2-readback
   (implies (aes::inp key)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
-                          (rd8 (ks-fold2 (kr-chain (result-ok->val (aes-fixslice-encrypt-bitslice-into 100 (array-repeat 88 0) 0 key key)) 0 0)) 16))))
+                          (rd8 (ks-fold2 (kr-chain (seed key) 0 0)) 16))))
                   (sub-bytes-nots-bytes (inv-shift-rows-2-bytes (kk-iter key 2)))))
   :hints (("Goal" :do-not-induct t
            :use (core-windows-are-bitslice-of-keyexpansion)
@@ -513,7 +398,7 @@
 (defthm window-3-readback
   (implies (aes::inp key)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
-                          (rd8 (ks-fold2 (kr-chain (result-ok->val (aes-fixslice-encrypt-bitslice-into 100 (array-repeat 88 0) 0 key key)) 0 0)) 24))))
+                          (rd8 (ks-fold2 (kr-chain (seed key) 0 0)) 24))))
                   (sub-bytes-nots-bytes (inv-shift-rows-3-bytes (kk-iter key 3)))))
   :hints (("Goal" :do-not-induct t
            :use (core-windows-are-bitslice-of-keyexpansion)
@@ -531,7 +416,7 @@
 (defthm window-4-readback
   (implies (aes::inp key)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
-                          (rd8 (ks-fold2 (kr-chain (result-ok->val (aes-fixslice-encrypt-bitslice-into 100 (array-repeat 88 0) 0 key key)) 0 0)) 32))))
+                          (rd8 (ks-fold2 (kr-chain (seed key) 0 0)) 32))))
                   (sub-bytes-nots-bytes (kk-iter key 4))))
   :hints (("Goal" :do-not-induct t
            :use (core-windows-are-bitslice-of-keyexpansion)
@@ -549,7 +434,7 @@
 (defthm window-5-readback
   (implies (aes::inp key)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
-                          (rd8 (ks-fold2 (kr-chain (result-ok->val (aes-fixslice-encrypt-bitslice-into 100 (array-repeat 88 0) 0 key key)) 0 0)) 40))))
+                          (rd8 (ks-fold2 (kr-chain (seed key) 0 0)) 40))))
                   (sub-bytes-nots-bytes (inv-shift-rows-1-bytes (kk-iter key 5)))))
   :hints (("Goal" :do-not-induct t
            :use (core-windows-are-bitslice-of-keyexpansion)
@@ -567,7 +452,7 @@
 (defthm window-6-readback
   (implies (aes::inp key)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
-                          (rd8 (ks-fold2 (kr-chain (result-ok->val (aes-fixslice-encrypt-bitslice-into 100 (array-repeat 88 0) 0 key key)) 0 0)) 48))))
+                          (rd8 (ks-fold2 (kr-chain (seed key) 0 0)) 48))))
                   (sub-bytes-nots-bytes (inv-shift-rows-2-bytes (kk-iter key 6)))))
   :hints (("Goal" :do-not-induct t
            :use (core-windows-are-bitslice-of-keyexpansion)
@@ -585,7 +470,7 @@
 (defthm window-7-readback
   (implies (aes::inp key)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
-                          (rd8 (ks-fold2 (kr-chain (result-ok->val (aes-fixslice-encrypt-bitslice-into 100 (array-repeat 88 0) 0 key key)) 0 0)) 56))))
+                          (rd8 (ks-fold2 (kr-chain (seed key) 0 0)) 56))))
                   (sub-bytes-nots-bytes (inv-shift-rows-3-bytes (kk-iter key 7)))))
   :hints (("Goal" :do-not-induct t
            :use (core-windows-are-bitslice-of-keyexpansion)
@@ -603,7 +488,7 @@
 (defthm window-8-readback
   (implies (aes::inp key)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
-                          (rd8 (ks-fold2 (kr-chain (result-ok->val (aes-fixslice-encrypt-bitslice-into 100 (array-repeat 88 0) 0 key key)) 0 0)) 64))))
+                          (rd8 (ks-fold2 (kr-chain (seed key) 0 0)) 64))))
                   (sub-bytes-nots-bytes (kk-iter key 8))))
   :hints (("Goal" :do-not-induct t
            :use (core-windows-are-bitslice-of-keyexpansion)
@@ -621,7 +506,7 @@
 (defthm window-9-readback
   (implies (aes::inp key)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
-                          (rd8 (ks-fold2 (kr-chain (result-ok->val (aes-fixslice-encrypt-bitslice-into 100 (array-repeat 88 0) 0 key key)) 0 0)) 72))))
+                          (rd8 (ks-fold2 (kr-chain (seed key) 0 0)) 72))))
                   (sub-bytes-nots-bytes (inv-shift-rows-1-bytes (kk-iter key 9)))))
   :hints (("Goal" :do-not-induct t
            :use (core-windows-are-bitslice-of-keyexpansion)
@@ -639,7 +524,7 @@
 (defthm window-10-readback
   (implies (aes::inp key)
            (equal (car (result-ok->val (aes-fixslice-encrypt-inv-bitslice
-                          (rd8 (ks-fold2 (kr-chain (result-ok->val (aes-fixslice-encrypt-bitslice-into 100 (array-repeat 88 0) 0 key key)) 0 0)) 80))))
+                          (rd8 (ks-fold2 (kr-chain (seed key) 0 0)) 80))))
                   (sub-bytes-nots-bytes (kk-iter key 10))))
   :hints (("Goal" :do-not-induct t
            :use (core-windows-are-bitslice-of-keyexpansion)
