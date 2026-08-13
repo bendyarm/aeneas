@@ -279,39 +279,49 @@ deleted and the audited subject moves toward verbatim upstream:
      literals), and alignment hypotheses must be stated in MOD form
      (arithmetic-5 normalizes goal-side rem to mod, and backchain relief
      does not cross that normalization).
-8. PROBED, precisely characterized (was "largest unknown") --
+8. MACHINERY LANDED, probe certified (was "largest unknown") --
    `iter_mut()`/`.zip()` over slices, the last structural de-sugar class
    (shift_rows_*'s per-word loop and add_round_key's iter_mut().zip()).
-   Reproducer: tests/src/itermut_probe.rs (skip-marked; graduated shapes
-   p1 iter / p2 iter_mut / p3 zip / p4 verbatim add_round_key).  Finding:
-   * The fork's Aeneas CORE already supports slice iterators -- under the
-     POLYMORPHIC pipeline (no --monomorphize) all four shapes translate,
-     and the pure form is exactly right for us: IterMut::next returns
-     (elem option, advanced iter, next_back : iter -> option elem -> iter)
-     and the loop threads a composed write-back continuation (see the Lean
-     backend's core.slice.iter.* models; this repo's tests/src/iterators.rs
-     already exercises slice_iter_mut_while).  Nested-borrow research is
-     NOT the blocker.
-   * The blocker is MONOMORPHIZATION, which the ACL2 printer requires:
-     charon --monomorphize materializes region-erased borrow-carrying ADT
-     decls (core::option::Option::<&'_ mut u32>, ::<(&'_ mut u32, &'_ u32)>)
-     and Aeneas's decl-level region analysis rejects RErased in a decl
-     ("Expected a type with regions", RegionsHierarchy via TypesAnalysis);
-     the failure then cascades to IterMut::next's signature and every
-     body using it.  Shared iter() fails one level up for the same reason
-     (opaque Iter<'a, u32> carries the hidden borrow).  The poly pipeline
-     never materializes such decls -- it decomposes borrows under ADTs at
-     SIGNATURE boundaries via the generic decl + instantiation.
-   * Fix paths, in preference order: (a) upstream -- charon mono
-     region-parameterizes instantiated decls and Aeneas's signature
-     decomposition learns decl-level borrow fields (the semantic content
-     already exists on the poly path; the work is plumbing it through the
-     decl-based route); (b) in-fork -- teach the ACL2 printer the poly
-     pipeline's calling convention (trait-instance/dictionary arguments,
-     region-generic std types), a large printer rework with no core
-     changes; (c) status quo -- the two indexed-for loops remain the
-     smallest remaining deltas, pinned by the audit.  We hold at (c) and
-     recommend filing (a) upstream with the reproducer.
+   Probe: tests/src/itermut_probe.rs (p1 iter / p2 iter_mut / p3 zip /
+   p4 verbatim add_round_key / known-answer driver); its extraction and
+   proofs are IN the certified suite (itermut_probe{,-proofs}.lisp:
+   driver = (ok 44), plus elementwise symbolic theorems with free
+   elements -- any slot transposition or off-by-one in the write-back
+   model would be unprovable).  How it works:
+   * Original finding (still the map): Aeneas CORE supports slice
+     iterators on the POLYMORPHIC path; plain --monomorphize bakes
+     region-erased borrow-carrying decls that decl-level region analysis
+     rejects.  Nested-borrow research was never the blocker.
+   * charon fork, mono carve-out (bendyarm/charon 5695c917 + d49928a2):
+     under --monomorphize --monomorphize-mut=except-types (plus
+     --remove-adt-clauses --lift-associated-types='*'), instantiations
+     whose baking would erase unrecoverable regions stay polymorphic --
+     types with lifetime args / mut-infected args / region-mentioning
+     args; fns with mut-ref signatures under lifetime args; trait
+     decls/impls in lockstep so dictionary witnesses stay coherent.
+     Inert without --monomorphize-mut (AES extraction byte-identical).
+   * aeneas InterpPaths fix (71afbe52): the place write-back check
+     compared an erased against an un-erased type.
+   * ACL2 printer (this commit): the opaque iterators become first-order
+     models -- Iter/IterMut {lst, pos} defprods, Zip {a, b} -- with
+     synthesized ctors/next (next yields (opt . iter') and advances);
+     iter_mut/zip calls are intercepted at their (forward, backward)
+     pair-lets (backward -> closure kinds extracting ->lst / ->a); the
+     next triple's next_back becomes CloNextBack (None-application =
+     identity; Some only inside wrap lambdas); and the loop's
+     arrow-typed back formal is DEFUNCTIONALIZED to a list of pending
+     write values: identity closure literal ~> nil, wrap lambda ~>
+     (cons v back), applied by emitted -apply-back/-wb-some companions
+     on the decrement model (after k nexts pos = k; applying pending
+     writes latest-first lands each in the slot its next read; the
+     backward pair-extraction then reads the final list out).
+     Defunctionalization fires ONLY at loop-call sites; lambdas anywhere
+     else keep the loud v0 skip (and a failed shape-probe restores the
+     gensym counter, keeping skipped-decl output byte-identical).
+   * Remaining for the AES flip: restore shift_rows_*/add_round_key to
+     upstream text, switch the AES crate's charon invocation to the
+     carved pipeline, re-run the audit row, recertify.  (The audit
+     table's iter_mut/zip row stays open until then.)
 9. Whole-crate extraction (cipher traits, generic-array, batch API, AES-192/256):
    long-term; today's audited claim is module-level (the fixslice32 math).
 

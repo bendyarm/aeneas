@@ -81,6 +81,23 @@ type closure_kind =
   | CloIdentityBack
       (** [array_to_slice_mut]: the whole array IS the slice on the list
           model, so the write-back is the identity *)
+  | CloIterMutBack of { tyname : string }
+      (** [slice::iter_mut]'s backward: on the {lst, pos} iterator model the
+          final write-back is reading the list back out: applying to [im]
+          prints (tyname->lst im) *)
+  | CloZipBack of { tyname : string }
+      (** [Iterator::zip]'s backward: recover the &mut side, i.e. the [a]
+          component: applying to [z] prints (tyname->a z) *)
+  | CloNextBack
+      (** the third component of IterMut/Zip::next's triple.  Applying it to
+          [(iter, None)] is the identity (prints as the iterator); [Some]
+          applications only occur inside the loop's wrap lambdas, which
+          [defunct_lambda] rewrites wholesale, so any other use fails. *)
+  | CloBackParam of { apply_fn : string }
+      (** a loop function's defunctionalized back-continuation formal: the
+          variable holds a LIST of pending write values (latest first) and
+          applying it to [im] prints (apply_fn var im); see the companion
+          -apply-back/-wb-some defuns emitted with the iterator models *)
 
 type actx = {
   trans_ctx : trans_ctx;
@@ -99,6 +116,11 @@ type actx = {
       (** (subslice, backward) pair variables awaiting destructuring: maps
           the pair variable's name to the backward kind and the name the
           forward value was bound to *)
+  pending_triples : (string, unit) Hashtbl.t;
+      (** variables bound to an IterMut/Zip::next result awaiting their
+          (elem option, iter, next_back) destructuring: the synthesized
+          next returns (cons opt iter), so the destructure binds car/cdr
+          and registers next_back as [CloNextBack] *)
 }
 
 (* Variable environment: a stack of binder groups (for BVar de Bruijn
@@ -317,6 +339,64 @@ let is_stepby_next (name : string) : bool =
   str_contains name "iterator-iterator-for-core-iter-adapters-step-by-stepby"
   && str_contains name "-next-"
 
+(* Slice iterators (roadmap item 8): under charon's carved pipeline
+   (--monomorphize-mut=except-types --remove-adt-clauses
+   --lift-associated-types='*'), Iter/IterMut/Zip and their methods stay
+   polymorphic (their regions are unrecoverable once baked), arriving as
+   opaque generic decls.  We model the iterators as first-order {lst, pos}
+   defprods (Zip as {a, b}) and synthesize the methods against those models;
+   the write-back continuations are defunctionalized (see [defunct_lambda]
+   and [CloBackParam]).  The ctor names are exact: the decls are generic,
+   so the mangled names are stable across crates. *)
+let str_starts (name : string) (p : string) : bool =
+  String.length name >= String.length p
+  && String.sub name 0 (String.length p) = p
+
+let is_slice_iter_ctor (name : string) : bool = name = "core-slice-t-iter"
+let is_slice_iter_mut_ctor (name : string) : bool = name = "core-slice-t-iter-mut"
+
+(* <&[T] as IntoIterator>::into_iter (wrap the slice as a fresh Iter) *)
+let is_slice_into_iter (name : string) : bool =
+  str_contains name "intoiterator" && str_contains name "core-slice-iter-iter"
+  && str_contains name "into-iter"
+
+(* Iterator::next for Iter (shared) / IterMut / Zip.  NB "itermut" contains
+   "iter" so the shared predicate must exclude it explicitly. *)
+let is_slice_iter_next (name : string) : bool =
+  str_starts name "core-slice-iter-impl" && str_contains name "-next"
+  && not (str_contains name "itermut")
+
+let is_slice_itermut_next (name : string) : bool =
+  str_starts name "core-slice-iter-impl" && str_contains name "itermut"
+  && str_contains name "-next"
+
+let is_zip_next (name : string) : bool =
+  str_starts name "core-iter-adapters-zip-impl" && str_contains name "-next"
+
+(* Iterator::zip (the ctor).  NOT in the synthesized list: it returns a
+   (Zip, backward) pair, so it is only meaningful at a pair-destructuring
+   let ([iter_pair_let]); a call anywhere else must fail loudly. *)
+let is_zip_ctor (name : string) : bool =
+  str_starts name "core-iter-traits-iterator-iterator-zip"
+
+(* value-level BitXorAssign<&u32> for u32 (add_round_key's *a ^= b) *)
+let is_bitxor_assign (name : string) : bool =
+  str_contains name "bitxorassign" && str_contains name "bitxor-assign"
+
+(* The iterator MODEL types, keyed on the mangled generic decl names.
+   One defprod serves every instantiation: the element types are erased to
+   any-p and the {lst, pos} / {a, b} shape is instantiation-uniform.
+   NB "core-slice-iter-iter" is a PREFIX of "core-slice-iter-itermut":
+   test itermut first. *)
+let is_itermut_model_ty (tname : string) : bool =
+  str_contains tname "core-slice-iter-itermut"
+
+let is_iter_model_ty (tname : string) : bool =
+  str_contains tname "core-slice-iter-iter" && not (is_itermut_model_ty tname)
+
+let is_zip_model_ty (tname : string) : bool =
+  str_contains tname "core-iter-adapters-zip-zip"
+
 (* LE byte plumbing (de-vendoring roadmap item 6): `slice.try_into()` to a
    fixed-size byte array (returning core's own Result) and `Result::unwrap`
    on it.  Both synthesize to first-order bodies against the crate-local
@@ -336,6 +416,9 @@ let is_range_iter_method (name : string) : bool =
   || is_subslice_index_shared name
   || is_try_into_array name || is_result_unwrap name
   || is_stepby_ctor name || is_stepby_into_iter name || is_stepby_next name
+  || is_slice_iter_ctor name || is_slice_into_iter name
+  || is_slice_iter_next name || is_slice_itermut_next name
+  || is_zip_next name || is_bitxor_assign name
 
 let fun_name (span : Meta.span) (ctx : actx) (id : FunDeclId.id) : string =
   match FunDeclId.Map.find_opt id ctx.fun_names with
@@ -401,6 +484,23 @@ let binop_to_acl2 (span : Meta.span) (b : binop) : string =
 (* An application in sexp form *)
 let sexp (parts : string list) : string = "(" ^ String.concat " " parts ^ ")"
 
+(* Recognize a constructor of the (crate-local) core::option::Option enum:
+   returns the variant name (lowercased: "none"/"some") and the payload
+   arguments.  Works for both the monomorphized and the generic-applied
+   forms -- we only look at the variant. *)
+let destruct_option_cons (ctx : actx) (e : texpr) : (string * texpr list) option
+    =
+  let head, args = destruct_apps (unmeta e) in
+  match (unmeta head).e with
+  | Qualif { id = AdtCons { adt_id = TAdtId id; variant_id = Some vid }; _ }
+    -> (
+      match TypeDeclId.Map.find_opt id ctx.types with
+      | Some { kind = Enum variants; _ } ->
+          let v = VariantId.nth variants vid in
+          Some (String.lowercase_ascii v.variant_name, args)
+      | _ -> None)
+  | _ -> None
+
 let rec texpr_to_acl2 (span : Meta.span) (ctx : actx) (env : venv) (e : texpr) :
     string =
   match e.e with
@@ -435,13 +535,33 @@ let rec texpr_to_acl2 (span : Meta.span) (ctx : actx) (env : venv) (e : texpr) :
 and app_to_acl2 (span : Meta.span) (ctx : actx) (env : venv) (e : texpr) :
     string =
   let head, args = destruct_apps e in
-  let args_s = List.map (texpr_to_acl2 span ctx env) args in
+  (* Lambda arguments are defunctionalized ONLY at loop-function call
+     sites (the back-continuation convention: the loop's arrow formal is
+     data applied via -apply-back).  A lambda anywhere else keeps the loud
+     v0 failure -- e.g. an identity closure in a RETURNED pair must not
+     silently become nil. *)
+  let is_loop_call =
+    match head.e with
+    | Qualif { id = FunOrOp (Fun (FromLlbc (FunId _, Some _))); _ } -> true
+    | _ -> false
+  in
+  let arg_to_s (a : texpr) : string =
+    match (unmeta a).e with
+    | Lambda _ when is_loop_call -> defunct_lambda span ctx env a
+    | Lambda _ ->
+        [%craise] span
+          "ACL2: lambda in output (backward function or closure); not \
+           supported in v0 -- see the defunctionalization plan"
+    | _ -> texpr_to_acl2 span ctx env a
+  in
+  let args_s = List.map arg_to_s args in
   match head.e with
   | Qualif q -> qualif_app_to_acl2 span ctx env q args args_s
   | FVar _ | BVar _ -> (
       (* Application of a locally-bound function value.  The ONLY such
          values we accept are the backward closures of mutable subslice /
-         array-to-slice borrows, recorded at their let sites: applying one
+         array-to-slice / iterator borrows and the defunctionalized loop
+         back-parameters, recorded at their let/binder sites: applying one
          prints the corresponding write-back. *)
       let hname =
         match head.e with
@@ -452,15 +572,112 @@ and app_to_acl2 (span : Meta.span) (ctx : actx) (env : venv) (e : texpr) :
         | BVar v -> venv_bvar env v
         | _ -> [%craise] span "ACL2: impossible application head"
       in
-      match (Hashtbl.find_opt ctx.closures hname, args_s) with
-      | Some (CloRangeBack { arr; lo; hi }), [ x ] ->
+      match (Hashtbl.find_opt ctx.closures hname, args, args_s) with
+      | Some (CloRangeBack { arr; lo; hi }), _, [ x ] ->
           sexp [ "vec-update-range"; arr; lo; hi; x ]
-      | Some (CloElemBack { arr; idx }), [ x ] ->
+      | Some (CloElemBack { arr; idx }), _, [ x ] ->
           sexp [ "update-nth"; idx; x; arr ]
-      | Some CloIdentityBack, [ x ] -> x
+      | Some CloIdentityBack, _, [ x ] -> x
+      | Some (CloIterMutBack { tyname }), _, [ x ] ->
+          sexp [ tyname ^ "->lst"; x ]
+      | Some (CloZipBack { tyname }), _, [ x ] -> sexp [ tyname ^ "->a"; x ]
+      | Some (CloBackParam { apply_fn }), _, [ x ] ->
+          sexp [ apply_fn; hname; x ]
+      | Some CloNextBack, [ _; opt ], [ x_s; _ ] -> (
+          (* next_back applied to None is the identity on the iterator;
+             Some applications only occur inside wrap lambdas, which
+             [defunct_lambda] consumes wholesale. *)
+          match destruct_option_cons ctx opt with
+          | Some ("none", []) -> x_s
+          | _ ->
+              [%craise] span
+                "ACL2: next_back applied to Some outside a back-continuation \
+                 lambda")
       | _ ->
           [%craise] span "ACL2: application of a function-typed variable (HO)")
   | _ -> [%craise] span "ACL2: unsupported application head"
+
+(* Defunctionalize a lambda literal appearing as a call argument: the loop
+   back-continuations.  On the ACL2 side the continuation is DATA -- the
+   list of pending write-back values, latest first -- applied via the
+   iterator model's -apply-back (see [CloBackParam]).  Exactly two shapes
+   are accepted:
+     fun im => im                                              ~>  nil
+     fun im => let im1 = next_back im (Some v) in back im1     ~>  (cons v back)
+   where [next_back] is a registered [CloNextBack] and [back] the enclosing
+   loop's [CloBackParam] formal.  Anything else fails loudly (never a
+   silent mistranslation). *)
+and defunct_lambda (span : Meta.span) (ctx : actx) (env : venv) (lam : texpr) :
+    string =
+  (* On failure, restore the gensym counter (shape probing binds pattern
+     variables) and fail with the same message as before this machinery
+     existed: a skipped declaration must consume no gensyms, so the
+     numbering of every later declaration stays byte-identical. *)
+  let saved_gensym = ctx.gensym in
+  let fail () : 'a =
+    ctx.gensym <- saved_gensym;
+    [%craise] span
+      "ACL2: lambda in output (backward function or closure); not supported \
+       in v0 -- see the defunctionalization plan"
+  in
+  match (unmeta lam).e with
+  | Lambda (pat, body) -> (
+      let env', names = bind_tpats ctx env [ pat ] in
+      let lam_n =
+        match names with
+        | [ n ] -> n
+        | _ -> fail ()
+      in
+      let var_name (env : venv) (e : texpr) : string option =
+        match (unmeta e).e with
+        | FVar id -> FVarId.Map.find_opt id env.fvars
+        | BVar v -> ( try Some (venv_bvar env v) with _ -> None)
+        | _ -> None
+      in
+      match (unmeta body).e with
+      | (FVar _ | BVar _)
+        when lam_n <> "&" && var_name env' body = Some lam_n -> "nil"
+      | Let (false, pat2, rhs, body2) -> (
+          (* rhs must be: next_back <lam binder> (Some payload) *)
+          let rhs_head, rhs_args = destruct_apps (unmeta rhs) in
+          let nb_ok =
+            match var_name env' rhs_head with
+            | Some n -> Hashtbl.find_opt ctx.closures n = Some CloNextBack
+            | None -> false
+          in
+          let payload =
+            match rhs_args with
+            | [ a1; a2 ] when lam_n <> "&" && var_name env' a1 = Some lam_n
+              -> (
+                match destruct_option_cons ctx a2 with
+                | Some ("some", [ p ]) -> Some p
+                | _ -> None)
+            | _ -> None
+          in
+          let env2, names2 = bind_tpats ctx env' [ pat2 ] in
+          let let_n =
+            match names2 with
+            | [ n ] -> n
+            | _ -> fail ()
+          in
+          let back_name =
+            let b_head, b_args = destruct_apps (unmeta body2) in
+            match (var_name env2 b_head, b_args) with
+            | Some bn, [ barg ]
+              when (match Hashtbl.find_opt ctx.closures bn with
+                   | Some (CloBackParam _) -> true
+                   | _ -> false)
+                   && let_n <> "&"
+                   && var_name env2 barg = Some let_n -> Some bn
+            | _ -> None
+          in
+          match (nb_ok, payload, back_name) with
+          | true, Some p, Some bn ->
+              (* the payload lives under the lambda binder only *)
+              "(cons " ^ texpr_to_acl2 span ctx env' p ^ " " ^ bn ^ ")"
+          | _ -> fail ())
+      | _ -> fail ())
+  | _ -> fail ()
 
 and qualif_app_to_acl2 (span : Meta.span) (ctx : actx) (_env : venv)
     (q : qualif) (args : texpr list) (args_s : string list) : string =
@@ -882,6 +1099,150 @@ and pending_pair_destructure (span : Meta.span) (ctx : actx) (env : venv)
           else Some ("(b* ((" ^ sub_n ^ " " ^ sub_tmp ^ "))\n  " ^ body ^ ")"))
   | _ -> None
 
+(* Slice-iterator ctor pair-lets (roadmap item 8).  Both ctors return a
+   (forward, backward) pair bound to a plain variable and destructured by a
+   later non-monadic let (which [pending_pair_destructure] handles):
+     (pair : (IterMut * (IterMut -> Slice)))  <-- slice::iter_mut xs
+     (pair : (Zip * (Zip -> IterMut)))        <-- Iterator::zip self other
+   We bind the forward MODEL value ({lst, pos} / {a, b}) to a temp and
+   record the backward kind; the ctors are infallible on the model, so the
+   monadic bind collapses to a plain one. *)
+and iter_pair_let (span : Meta.span) (ctx : actx) (env : venv) (monadic : bool)
+    (pat : tpat) (e1 : texpr) (e2 : texpr) : string option =
+  match pat.pat with
+  | PBound (_, _) when monadic -> (
+      let head, args = destruct_apps (unmeta e1) in
+      let hname =
+        match (unmeta head).e with
+        | Qualif { id = FunOrOp (Fun (FromLlbc (FunId (FRegular id), _))); _ }
+          -> FunDeclId.Map.find_opt id ctx.fun_names
+        | _ -> None
+      in
+      (* the forward component of the returned pair, Result stripped *)
+      let fwd_ty =
+        let strip_result (ty : ty) : ty =
+          match ty with
+          | TAdt (TBuiltin TResult, { types = [ t ]; _ }) -> t
+          | _ -> ty
+        in
+        match strip_result e1.ty with
+        | TAdt (TTuple, { types = [ fwd; _ ]; _ }) -> Some fwd
+        | _ -> None
+      in
+      let mk (kind : closure_kind) (fwd_s : string) : string option =
+        let tmp = fresh_tmp ctx in
+        let env', names = bind_tpats ctx env [ pat ] in
+        let pair_n =
+          match names with
+          | [ n ] -> n
+          | _ -> [%craise] span "ACL2: iterator pair binder arity"
+        in
+        if pair_n <> "&" then
+          Hashtbl.replace ctx.pending_pairs pair_n (kind, tmp);
+        let body = texpr_to_acl2 span ctx env' e2 in
+        Some ("(b* ((" ^ tmp ^ " " ^ fwd_s ^ "))\n  " ^ body ^ ")")
+      in
+      match (hname, fwd_ty, args) with
+      | Some n, Some (TAdt (TAdtId im_id, _)), [ xs ]
+        when is_slice_iter_mut_ctor n ->
+          let imname = type_name span ctx im_id in
+          let xs_s = texpr_to_acl2 span ctx env xs in
+          mk
+            (CloIterMutBack { tyname = imname })
+            (sexp [ imname; xs_s; "0" ])
+      | Some n, Some (TAdt (TAdtId zip_id, zgen)), [ self; other ]
+        when is_zip_ctor n -> (
+          let zipname = type_name span ctx zip_id in
+          match zgen.types with
+          | [ _; it_ty ] -> (
+              let self_s = texpr_to_acl2 span ctx env self in
+              let other_s = texpr_to_acl2 span ctx env other in
+              (* zip(self, other: impl IntoIterator): wrap a raw slice /
+                 array as a fresh Iter; pass an existing iterator through *)
+              let other_wrapped =
+                match ((unmeta other).ty, it_ty) with
+                | TAdt (TBuiltin (TSlice | TArray), _), TAdt (TAdtId it_id, _)
+                  -> sexp [ type_name span ctx it_id; other_s; "0" ]
+                | TAdt (TAdtId oid, _), TAdt (TAdtId it_id, _)
+                  when oid = it_id -> other_s
+                | _ ->
+                    [%craise] span
+                      "ACL2: zip: unsupported IntoIterator source"
+              in
+              mk
+                (CloZipBack { tyname = zipname })
+                (sexp [ zipname; self_s; other_wrapped ]))
+          | _ -> [%craise] span "ACL2: zip: unexpected Zip generics")
+      | _ -> None)
+  | _ -> None
+
+(* IterMut/Zip::next triple-lets, step 1: the (elem option, iter, next_back)
+   triple is bound to a plain variable.  The synthesized next returns only
+   (cons opt iter); we record the variable so the later destructuring
+   ([pending_triple_destructure]) binds car/cdr and turns next_back into a
+   [CloNextBack]. *)
+and next_triple_let (span : Meta.span) (ctx : actx) (env : venv)
+    (monadic : bool) (pat : tpat) (e1 : texpr) (e2 : texpr) : string option =
+  match pat.pat with
+  | PBound (_, _) when monadic -> (
+      let head, _ = destruct_apps (unmeta e1) in
+      let hname =
+        match (unmeta head).e with
+        | Qualif { id = FunOrOp (Fun (FromLlbc (FunId (FRegular id), _))); _ }
+          -> FunDeclId.Map.find_opt id ctx.fun_names
+        | _ -> None
+      in
+      match hname with
+      | Some n when is_slice_itermut_next n || is_zip_next n ->
+          let e1_s = texpr_to_acl2 span ctx env e1 in
+          let env', names = bind_tpats ctx env [ pat ] in
+          let tmp_n =
+            match names with
+            | [ n ] -> n
+            | _ -> [%craise] span "ACL2: next triple binder arity"
+          in
+          if tmp_n <> "&" then Hashtbl.replace ctx.pending_triples tmp_n ();
+          let body = texpr_to_acl2 span ctx env' e2 in
+          Some ("(b* (((ok " ^ tmp_n ^ ") " ^ e1_s ^ "))\n  " ^ body ^ ")")
+      | _ -> None)
+  | _ -> None
+
+(* Step 2: let (o, iter1, next_back) = <recorded triple var> *)
+and pending_triple_destructure (span : Meta.span) (ctx : actx) (env : venv)
+    (monadic : bool) (pat : tpat) (e1 : texpr) (e2 : texpr) : string option =
+  match (pat.pat, monadic) with
+  | PAdt { variant_id = None; fields = [ f_o; f_it; f_nb ] }, false -> (
+      let tuple_name =
+        match (unmeta e1).e with
+        | FVar id -> FVarId.Map.find_opt id env.fvars
+        | BVar v -> ( try Some (venv_bvar env v) with _ -> None)
+        | _ -> None
+      in
+      match tuple_name with
+      | Some tn when Hashtbl.mem ctx.pending_triples tn ->
+          let env', names = bind_tpats ctx env [ f_o; f_it; f_nb ] in
+          let o_n, it_n, nb_n =
+            match names with
+            | [ a; b; c ] -> (a, b, c)
+            | _ -> [%craise] span "ACL2: next triple destructure arity"
+          in
+          if nb_n <> "&" then Hashtbl.replace ctx.closures nb_n CloNextBack;
+          let binds =
+            List.filter_map
+              (fun (n, acc) ->
+                if n = "&" then None else Some ("(" ^ n ^ " " ^ acc ^ ")"))
+              [
+                (o_n, "(car " ^ tn ^ ")"); (it_n, "(cdr " ^ tn ^ ")");
+              ]
+          in
+          let body = texpr_to_acl2 span ctx env' e2 in
+          if binds = [] then Some body
+          else
+            Some
+              ("(b* (" ^ String.concat "\n     " binds ^ ")\n  " ^ body ^ ")")
+      | _ -> None)
+  | _ -> None
+
 and let_to_acl2 (span : Meta.span) (ctx : actx) (env : venv) (monadic : bool)
     (pat : tpat) (e1 : texpr) (e2 : texpr) : string =
   match mut_borrow_let span ctx env monadic pat e1 e2 with
@@ -891,6 +1252,15 @@ and let_to_acl2 (span : Meta.span) (ctx : actx) (env : venv) (monadic : bool)
   | Some s -> s
   | None ->
   match pending_pair_destructure span ctx env monadic pat e1 e2 with
+  | Some s -> s
+  | None ->
+  match iter_pair_let span ctx env monadic pat e1 e2 with
+  | Some s -> s
+  | None ->
+  match next_triple_let span ctx env monadic pat e1 e2 with
+  | Some s -> s
+  | None ->
+  match pending_triple_destructure span ctx env monadic pat e1 e2 with
   | Some s -> s
   | None ->
   let e1_s = texpr_to_acl2 span ctx env e1 in
@@ -1064,6 +1434,18 @@ let type_decl_to_acl2 (ctx : actx) (decl : Pure.type_decl) : string =
         "(fty::defprod " ^ tname
         ^ "\n  ((iter acl2::any-p) (step acl2::any-p) (first-take acl2::any-p))"
         ^ "\n  :xvar the-" ^ tname ^ ")"
+      else if is_itermut_model_ty tname || is_iter_model_ty tname then
+        (* slice Iter/IterMut model: the (remaining) list plus a cursor.
+           next reads lst[pos] and advances; IterMut's write-backs run in
+           composed order, walking pos back down (see the -wb-some
+           companion emitted after the type groups). *)
+        "(fty::defprod " ^ tname ^ "\n  ((lst acl2::any-p) (pos acl2::any-p))"
+        ^ "\n  :xvar the-" ^ tname ^ ")"
+      else if is_zip_model_ty tname then
+        (* Zip<A, B> model: the two component iterators; A is the &mut
+           side (zip's backward extracts it). *)
+        "(fty::defprod " ^ tname ^ "\n  ((a acl2::any-p) (b acl2::any-p))"
+        ^ "\n  :xvar the-" ^ tname ^ ")"
       else ";; opaque type " ^ tname ^ " (skipped)"
 
 (* Functions are keyed by (def_id, loop_id): Aeneas gives a loop function
@@ -1216,6 +1598,132 @@ let synth_range_iter_body (span : Meta.span) (ctx : actx) (decl : Pure.fun_decl)
     "(defun " ^ name ^ " (self)\n  (if (eq (" ^ rname
     ^ "-kind self) :ok)\n      (ok (" ^ rname
     ^ "-ok->f0 self))\n    (result-fail (err-failure))))"
+  else if is_slice_iter_ctor name || is_slice_into_iter name then
+    (* <[T]>::iter / <&[T] as IntoIterator>::into_iter: wrap the slice as
+       a fresh {lst, pos} iterator. *)
+    let iter_id =
+      match decl.signature.output with
+      | TAdt (TBuiltin TResult, { types = [ TAdt (TAdtId id, _) ]; _ }) -> id
+      | TAdt (TAdtId id, _) -> id
+      | _ -> [%craise] span "ACL2: slice::iter: unexpected output signature"
+    in
+    let iname = type_name span ctx iter_id in
+    "(defun " ^ name ^ " (self) (ok (" ^ iname ^ " self 0)))"
+  else if is_slice_iter_next name || is_slice_itermut_next name then
+    (* Iterator::next for Iter/IterMut: yield lst[pos] and advance.  The
+       triple's next_back component is defunctionalized away (the
+       synthesized value is just (opt . iter'), see
+       [pending_triple_destructure]). *)
+    let iter_id =
+      match decl.signature.inputs with
+      | TAdt (TAdtId id, _) :: _ -> id
+      | _ -> [%craise] span "ACL2: slice iter next: unexpected input signature"
+    in
+    let option_id =
+      match decl.signature.output with
+      | TAdt
+          ( TBuiltin TResult,
+            {
+              types =
+                [ TAdt (TTuple, { types = TAdt (TAdtId oid, _) :: _; _ }) ];
+              _;
+            } ) -> oid
+      | _ ->
+          [%craise] span "ACL2: slice iter next: unexpected output signature"
+    in
+    let iname = type_name span ctx iter_id in
+    let oname = type_name span ctx option_id in
+    String.concat "\n"
+      [
+        "(defun " ^ name ^ " (self)";
+        "  (b* ((lst (" ^ iname ^ "->lst self))";
+        "       (pos (" ^ iname ^ "->pos self)))";
+        "  (if (< pos (len lst))";
+        "      (ok (cons (" ^ oname ^ "-some (nth pos lst)) (" ^ iname
+        ^ " lst (+ pos 1))))";
+        "    (ok (cons (" ^ oname ^ "-none) self)))))";
+      ]
+  else if is_zip_next name then
+    (* Zip::next: yield (a[pa] . b[pb]) while both sides have elements,
+       advancing both.  (Upstream advances `a` before discovering `b` is
+       exhausted -- observable only for UNEQUAL lengths, and only through
+       the iterator value itself, which the write-back path never reads
+       past its cursor; AES zips equal-length sides, asserted upstream.)
+       The decl may be only partially monomorphized (the carve-out keeps
+       mut-infected arguments generic), so a component that is still a
+       type variable falls back to the crate's unique model of the right
+       polarity (the accessors are uniform per model name). *)
+    let unique_model (pred : string -> bool) (what : string) : string =
+      let hits =
+        TypeDeclId.Map.fold
+          (fun id (d : Pure.type_decl) acc ->
+            match (d.kind, TypeDeclId.Map.find_opt id ctx.type_names) with
+            | Opaque, Some n when pred n -> n :: acc
+            | _ -> acc)
+          ctx.types []
+      in
+      match hits with
+      | [ n ] -> n
+      | _ ->
+          [%craise] span
+            ("ACL2: Zip::next: needs exactly one " ^ what ^ " model")
+    in
+    let zip_id, a_name, b_name =
+      match decl.signature.inputs with
+      | TAdt (TAdtId zid, { types = [ a_ty; b_ty ]; _ }) :: _ ->
+          let comp (t : ty) (pred : string -> bool) (what : string) : string =
+            match t with
+            | TAdt (TAdtId id, _) -> type_name span ctx id
+            | _ -> unique_model pred what
+          in
+          ( zid,
+            comp a_ty is_itermut_model_ty "IterMut",
+            comp b_ty is_iter_model_ty "Iter" )
+      | _ -> [%craise] span "ACL2: Zip::next: unexpected input signature"
+    in
+    let option_id =
+      match decl.signature.output with
+      | TAdt
+          ( TBuiltin TResult,
+            {
+              types =
+                [ TAdt (TTuple, { types = TAdt (TAdtId oid, _) :: _; _ }) ];
+              _;
+            } ) -> oid
+      | _ -> [%craise] span "ACL2: Zip::next: unexpected output signature"
+    in
+    let zname = type_name span ctx zip_id in
+    let aname = a_name in
+    let bname = b_name in
+    let oname = type_name span ctx option_id in
+    String.concat "\n"
+      [
+        "(defun " ^ name ^ " (self)";
+        "  (b* ((ia (" ^ zname ^ "->a self))";
+        "       (ib (" ^ zname ^ "->b self))";
+        "       (la (" ^ aname ^ "->lst ia))";
+        "       (pa (" ^ aname ^ "->pos ia))";
+        "       (lb (" ^ bname ^ "->lst ib))";
+        "       (pb (" ^ bname ^ "->pos ib)))";
+        "  (if (and (< pa (len la)) (< pb (len lb)))";
+        "      (ok (cons (" ^ oname ^ "-some (cons (nth pa la) (nth pb lb)))";
+        "                (" ^ zname ^ " (" ^ aname ^ " la (+ pa 1)) (" ^ bname
+        ^ " lb (+ pb 1)))))";
+        "    (ok (cons (" ^ oname ^ "-none) self)))))";
+      ]
+  else if is_bitxor_assign name then
+    (* value-level BitXorAssign: the target integer type is embedded in the
+       mangled name as "for-<ty>-bitxor" *)
+    let ity =
+      match
+        List.find_opt
+          (fun t -> str_contains name ("for-" ^ t ^ "-bitxor"))
+          [ "u8"; "u16"; "u32"; "u64"; "u128"; "usize" ]
+      with
+      | Some t -> t
+      | None -> [%craise] span "ACL2: bitxor_assign: unrecognized target type"
+    in
+    "(defun " ^ name ^ " (self other) (ok (" ^ ity ^ "-xor self other)))"
   else if is_subslice_index_shared name then
     (* <[T;N] as Index<RangeX<usize>>>::index -- a[r] as a bounds-checked
        window read.  RangeX's missing bound defaults to 0 / (len self). *)
@@ -1448,7 +1956,12 @@ let fun_decl_to_acl2 (ctx : actx) (is_rec : bool) (decl : Pure.fun_decl) :
         base ^ "-loop" ^ LoopId.to_string lp_id
         ^ if is_body then "-body" else ""
   in
-  (if Option.is_some (Sys.getenv_opt "ACL2_DEBUG_BODY") && str_contains name "-go"
+  (if
+     (* Dump the pure AST of every function whose printed name contains the
+        env var's value (a debugging aid for designing new syntheses). *)
+     match Sys.getenv_opt "ACL2_DEBUG_BODY" with
+     | Some sub -> str_contains name sub
+     | None -> false
    then
      match decl.body with
      | Some _ ->
@@ -1469,6 +1982,27 @@ let fun_decl_to_acl2 (ctx : actx) (is_rec : bool) (decl : Pure.fun_decl) :
           if n = "&" then
             [%craise] span "ACL2: composite input pattern not supported")
         input_names;
+      (* Loop functions take their back-continuation as an arrow-typed
+         formal; on the ACL2 side the formal is DATA (the defunctionalized
+         list of pending writes) and applying it prints through the
+         iterator model's -apply-back.  Formals keep their surface names
+         (unlike gensym-unique internal binders), so first clear any stale
+         closure registration a previous declaration left under the same
+         name. *)
+      List.iter (fun n -> Hashtbl.remove ctx.closures n) input_names;
+      List.iter
+        (fun ((n, p) : string * tpat) ->
+          match p.ty with
+          | TArrow (TAdt (TAdtId id, _), _) ->
+              Hashtbl.replace ctx.closures n
+                (CloBackParam
+                   { apply_fn = type_name span ctx id ^ "-apply-back" })
+          | _ ->
+              (* Other arrow-typed formals (e.g. genuine closures over
+                 scalars) stay unregistered: their applications fail
+                 loudly at the use site, exactly as before. *)
+              ())
+        (List.combine input_names body.inputs);
       (* Find the fuel input (if any) for the measure *)
       let fuel_input =
         List.find_map
@@ -1582,6 +2116,7 @@ let extract_crate (out : out_channel) (rust_module_name : string)
       skipped = [];
       closures = Hashtbl.create 16;
       pending_pairs = Hashtbl.create 16;
+      pending_triples = Hashtbl.create 16;
     }
   in
   (* Header *)
@@ -1709,5 +2244,57 @@ let extract_crate (out : out_channel) (rust_module_name : string)
       ctx.crate.declarations
   in
   List.iter emit_group type_groups;
+  (* Iterator-model companions: the decrement-model write-back and the
+     defunctionalized continuation applier, one pair per IterMut model and
+     per Zip model.  A Zip's write-back goes through its &mut component's
+     -wb-some, and the component defprod need not precede the Zip in
+     charon's type order, so these are emitted after ALL type groups (and
+     before any function that applies a continuation). *)
+  let opaque_model_names (pred : string -> bool) : string list =
+    TypeDeclId.Map.fold
+      (fun id (d : Pure.type_decl) acc ->
+        match d.kind with
+        | Opaque -> (
+            match TypeDeclId.Map.find_opt id type_names with
+            | Some n when pred n -> n :: acc
+            | _ -> acc)
+        | _ -> acc)
+      ctx.trans_types []
+    |> List.rev
+  in
+  let itermut_models = opaque_model_names is_itermut_model_ty in
+  let zip_models = opaque_model_names is_zip_model_ty in
+  List.iter
+    (fun im ->
+      Printf.fprintf out
+        "(defun %s-wb-some (v im)\n\
+        \  (%s (update-nth (- (%s->pos im) 1) v (%s->lst im))\n\
+        \      (- (%s->pos im) 1)))\n\n" im im im im im;
+      Printf.fprintf out
+        "(defun %s-apply-back (vs im)\n\
+        \  (if (atom vs)\n\
+        \      im\n\
+        \    (%s-apply-back (cdr vs) (%s-wb-some (car vs) im))))\n\n" im im im)
+    itermut_models;
+  (match (zip_models, itermut_models) with
+  | [], _ -> ()
+  | zs, [ im ] ->
+      List.iter
+        (fun z ->
+          Printf.fprintf out
+            "(defun %s-wb-some (v z)\n\
+            \  (%s (%s-wb-some (car v) (%s->a z)) (%s->b z)))\n\n" z z im z z;
+          Printf.fprintf out
+            "(defun %s-apply-back (vs z)\n\
+            \  (if (atom vs)\n\
+            \      z\n\
+            \    (%s-apply-back (cdr vs) (%s-wb-some (car vs) z))))\n\n" z z z)
+        zs
+  | zs, _ ->
+      List.iter
+        (fun z ->
+          Printf.fprintf out
+            ";; SKIPPED %s companions: needs exactly one IterMut model\n\n" z)
+        zs);
   List.iter emit_group value_groups;
   Printf.fprintf out ";; END OF GENERATED FILE\n"

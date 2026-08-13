@@ -1,32 +1,32 @@
 //@ skip
-// Roadmap item 8 REPRODUCER (does not extract yet -- kept out of the runners
-// via the skip directive above; not part of the certified suite).
+// Roadmap item 8: slice iterator extraction (iter / iter_mut / zip), the
+// last structural de-sugar class in aes_fixslice_encrypt.rs.  (The skip
+// directive keeps this out of the default runners: it needs charon's carved
+// pipeline, not the runners' flags.  The generated book and its proofs ARE
+// part of the certified suite: tests/acl2/itermut_probe{,-proofs}.lisp.)
 //
-// Slice iterator extraction (iter / iter_mut / zip), the last structural
-// de-sugar class in aes_fixslice_encrypt.rs.  Finding (2026-08-13):
+// Pipeline (the mono carve-out, charon fork):
+//   charon rustc --preset=aeneas --monomorphize --monomorphize-mut=except-types \
+//     --remove-adt-clauses --lift-associated-types='*' \
+//     --dest-file=itermut_probe.llbc -- --edition=2021 --crate-type=rlib ...
+//   aeneas -backend acl2 -use-fuel -loops-to-rec itermut_probe.llbc
 //
-//   * POLYMORPHIC pipeline (charon --preset=aeneas, NO --monomorphize):
-//     Aeneas core translates ALL FOUR shapes below -- the fork has upstream's
-//     slice-iterator support.  IterMut::next comes back as a clean triple
-//     (elem option, advanced iter, next_back : iter -> option elem -> iter)
-//     and the loop threads a COMPOSED write-back continuation; see the Lean
-//     backend's output and its core.slice.iter.* library models.
-//   * MONOMORPHIC pipeline (--monomorphize, REQUIRED by the ACL2 backend):
-//     charon materializes region-erased borrow-carrying ADT decls
-//     (core::option::Option::<&'_ mut u32> and ::<(&'_ mut u32, &'_ u32)>),
-//     which Aeneas's decl-level region analysis rejects ("Expected a type
-//     with regions" on RErased, RegionsHierarchy via TypesAnalysis), failing
-//     the decl group, then IterMut::next's signature, then every body below.
-//     Shared iter() fails the same way one level up (opaque Iter<'a,u32>
-//     carries the hidden borrow).
+// Under plain --monomorphize, charon bakes region-erased borrow-carrying
+// decls (Option<&'_ mut u32>, Iter<'_, u32>, ...) that Aeneas's decl-level
+// region analysis rejects.  The carve-out keeps exactly those
+// instantiations polymorphic (baking would erase unrecoverable regions), so
+// Aeneas core translates all four shapes: IterMut::next comes back as the
+// triple (elem option, advanced iter, next_back), loops thread a composed
+// write-back continuation, iter_mut/zip return (iterator, backward) pairs.
 //
-// So item 8 is NOT the nested-borrow research problem: the borrow-monad
-// treatment already exists in core.  It is a monomorphization gap -- either
-// charon mono learns to region-parameterize instantiated decls and Aeneas's
-// signature decomposition learns decl-level borrows (upstream contribution),
-// or the ACL2 printer learns the poly pipeline's dictionary-passing calling
-// convention.  Until one of those lands, the two upstream loops stay as the
-// documented indexed-for de-sugars.
+// The ACL2 printer then models the opaque iterators first-order --
+// Iter/IterMut as {lst, pos} defprods, Zip as {a, b} -- synthesizes the
+// ctors/next methods against those models, and DEFUNCTIONALIZES the loop
+// back-continuations: the arrow-typed loop formal becomes a list of pending
+// write values (identity closure ~> nil, the wrap lambda ~> (cons v back)),
+// applied by the emitted -apply-back/-wb-some companions on the decrement
+// model (after k nexts the cursor is at k; applying the pending writes
+// latest-first lands each in the slot its next read).
 //
 // Shapes:
 //   p1_iter_sum    : shared iteration      for x in xs.iter() { .. }
