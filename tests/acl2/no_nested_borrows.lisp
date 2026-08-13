@@ -7,8 +7,6 @@
 (set-ignore-ok t)
 (set-irrelevant-formals-ok t)
 
-;; SKIPPED function core-mem-replace: ACL2: call to an opaque/std function with no ACL2 mapping yet
-
 ;; unit struct alloc-alloc-global (values are (unit))
 
 (fty::defprod no-nested-borrows-pair
@@ -39,6 +37,34 @@
   (:left ((f0 acl2::any-p)))
   (:right ((f0 acl2::any-p)))
   :xvar the-no-nested-borrows-sum)
+
+;; SKIPPED mutually recursive type group
+
+(fty::defprod no-nested-borrows-structwithtuple
+  ((p acl2::any-p))
+  :xvar the-no-nested-borrows-structwithtuple)
+
+(fty::defprod no-nested-borrows-structwithpair
+  ((p acl2::any-p))
+  :xvar the-no-nested-borrows-structwithpair)
+
+(fty::defprod no-nested-borrows-tuple
+  ((f0 acl2::any-p) (f1 acl2::any-p))
+  :xvar the-no-nested-borrows-tuple)
+
+(fty::defprod no-nested-borrows-idtype
+  ((f0 acl2::any-p))
+  :xvar the-no-nested-borrows-idtype)
+
+(fty::defprod no-nested-borrows-expandsimpliy-wrapper
+  ((f0 acl2::any-p) (f1 acl2::any-p))
+  :xvar the-no-nested-borrows-expandsimpliy-wrapper)
+
+(fty::defprod no-nested-borrows-expandsimpliy-wrapper2
+  ((b acl2::any-p) (x acl2::any-p))
+  :xvar the-no-nested-borrows-expandsimpliy-wrapper2)
+
+;; SKIPPED function core-mem-replace: ACL2: call to an opaque/std function with no ACL2 mapping yet
 
 (defun no-nested-borrows-cast-u32-to-i32 (x)
   (i32-cast x))
@@ -123,8 +149,6 @@
 (defun no-nested-borrows-panic-mut-borrow (v0)
   (result-fail (err-failure)))
 
-;; SKIPPED mutually recursive type group
-
 (defun no-nested-borrows-list-length (n l)
   (declare (xargs :measure (nfix n)
                   :hints (("Goal" :in-theory (theory 'ground-zero)))))
@@ -168,10 +192,6 @@
 
 ;; SKIPPED function no-nested-borrows-id-mut-pair4: ACL2: lambda in output (backward function or closure); not supported in v0 -- see the defunctionalization plan
 
-(fty::defprod no-nested-borrows-structwithtuple
-  ((p acl2::any-p))
-  :xvar the-no-nested-borrows-structwithtuple)
-
 (defun no-nested-borrows-new-tuple1 ()
   (ok (make-no-nested-borrows-structwithtuple :p (cons 1 2))))
 
@@ -180,10 +200,6 @@
 
 (defun no-nested-borrows-new-tuple3 ()
   (ok (make-no-nested-borrows-structwithtuple :p (cons 1 2))))
-
-(fty::defprod no-nested-borrows-structwithpair
-  ((p acl2::any-p))
-  :xvar the-no-nested-borrows-structwithpair)
 
 (defun no-nested-borrows-new-pair1 ()
   (ok (make-no-nested-borrows-structwithpair :p (make-no-nested-borrows-pair :x 1 :y 2))))
@@ -234,10 +250,6 @@
   (b* (((ok x_50) (u32-add x 1)))
   (ok (cons x x_50))))
 
-(fty::defprod no-nested-borrows-tuple
-  ((f0 acl2::any-p) (f1 acl2::any-p))
-  :xvar the-no-nested-borrows-tuple)
-
 (defun no-nested-borrows-read-tuple (x)
   (b* ((acl2tmp51 x)
      (v52_52 (car acl2tmp51)))
@@ -261,10 +273,6 @@
 (defun no-nested-borrows-create-tuple-struct (x y)
   (ok (no-nested-borrows-tuple x y)))
 
-(fty::defprod no-nested-borrows-idtype
-  ((f0 acl2::any-p))
-  :xvar the-no-nested-borrows-idtype)
-
 (defun no-nested-borrows-use-id-type (x)
   (ok x))
 
@@ -280,18 +288,10 @@
 
 ;; SKIPPED function no-nested-borrows-borrow-mut-tuple: ACL2: lambda in output (backward function or closure); not supported in v0 -- see the defunctionalization plan
 
-(fty::defprod no-nested-borrows-expandsimpliy-wrapper
-  ((f0 acl2::any-p) (f1 acl2::any-p))
-  :xvar the-no-nested-borrows-expandsimpliy-wrapper)
-
 (defun no-nested-borrows-expandsimpliy-check-expand-simplify-symb1 (x)
   (b* ((acl2tmp59 x)
      (v60_60 (car acl2tmp59)))
   (if v60_60 (ok x) (ok x))))
-
-(fty::defprod no-nested-borrows-expandsimpliy-wrapper2
-  ((b acl2::any-p) (x acl2::any-p))
-  :xvar the-no-nested-borrows-expandsimpliy-wrapper2)
 
 (defun no-nested-borrows-expandsimpliy-check-expand-simplify-symb2 (x)
   (if (no-nested-borrows-expandsimpliy-wrapper2->b x) (ok x) (ok x)))

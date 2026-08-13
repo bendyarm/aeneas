@@ -16,13 +16,6 @@
   ((start acl2::any-p) (end acl2::any-p))
   :xvar the-core-ops-range-range-i32-)
 
-(defun core-iter-range-impl-core-iter-traits-iterator-iterator-for-core-ops-range-range-i32-next-i32- (self)
-  (b* ((s (core-ops-range-range-i32-->start self))
-       (e (core-ops-range-range-i32-->end self)))
-  (if (< s e)
-      (ok (cons (core-option-option-i32--some s) (core-ops-range-range-i32- (+ s 1) e)))
-    (ok (cons (core-option-option-i32--none) self)))))
-
 (fty::deftagsum core-option-option-usize-
   (:none ())
   (:some ((f0 acl2::any-p)))
@@ -31,6 +24,13 @@
 (fty::defprod core-ops-range-range-usize-
   ((start acl2::any-p) (end acl2::any-p))
   :xvar the-core-ops-range-range-usize-)
+
+(defun core-iter-range-impl-core-iter-traits-iterator-iterator-for-core-ops-range-range-i32-next-i32- (self)
+  (b* ((s (core-ops-range-range-i32-->start self))
+       (e (core-ops-range-range-i32-->end self)))
+  (if (< s e)
+      (ok (cons (core-option-option-i32--some s) (core-ops-range-range-i32- (+ s 1) e)))
+    (ok (cons (core-option-option-i32--none) self)))))
 
 (defun core-iter-range-impl-core-iter-traits-iterator-iterator-for-core-ops-range-range-usize-next-usize- (self)
   (b* ((s (core-ops-range-range-usize-->start self))

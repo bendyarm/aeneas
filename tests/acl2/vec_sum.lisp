@@ -22,6 +22,13 @@
 (defun vec-sum-sum (n v)
   (vec-sum-sum-loop0 n v 0 0))
 
-;; SKIPPED function vec-sum-double-first: ACL2: application of a function-typed variable (HO)
+(defun vec-sum-double-first (v)
+  (b* (((ok v6_6) (vec-len v)))
+  (if (> v6_6 0) (b* (((ok v7_7) (array-index v 0)))
+  (b* (((ok v8_8) (u32-wrapping-add v7_7 v7_7)))
+  (b* ((acl2tmp9 v)
+     (acl2tmp10 0)
+     ((ok acl2tmp11) (array-index acl2tmp9 acl2tmp10)))
+  (ok (update-nth acl2tmp10 v8_8 acl2tmp9))))) (ok v))))
 
 ;; END OF GENERATED FILE

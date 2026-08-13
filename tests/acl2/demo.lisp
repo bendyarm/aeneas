@@ -7,6 +7,11 @@
 (set-ignore-ok t)
 (set-irrelevant-formals-ok t)
 
+(fty::deftagsum demo-clist
+  (:ccons ((f0 acl2::any-p) (f1 demo-clist-p)))
+  (:cnil ())
+  :xvar the-demo-clist)
+
 ;; SKIPPED function demo-choose: ACL2: lambda in output (backward function or closure); not supported in v0 -- see the defunctionalization plan
 
 (defun demo-mul2-add1 (x)
@@ -25,11 +30,6 @@
   (b* (((ok x_4) (demo-incr x_3)))
   (b* (((ok &) (demo-incr x_4)))
   (ok (unit))))))
-
-(fty::deftagsum demo-clist
-  (:ccons ((f0 acl2::any-p) (f1 demo-clist-p)))
-  (:cnil ())
-  :xvar the-demo-clist)
 
 (defun demo-list-nth (n l i)
   (declare (xargs :measure (nfix n)
