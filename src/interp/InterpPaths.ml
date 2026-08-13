@@ -255,15 +255,21 @@ let rec access_place (span : Meta.span) (access : projection_access)
            'static regions are missing from the destination place *)
         let updated_ty = erase_regions updated.ty in
         let v_ty = erase_regions v.ty in
-        (* Type checking *)
-        if updated_ty <> v.ty then (
+        (* Type checking.  Note: compare the two ERASED types -- comparing the
+           erased new type against the un-erased destination type spuriously
+           fails as soon as body types carry regions (e.g. under charon's
+           monomorphize-mut carve-out, where slice-iterator machinery stays
+           region-polymorphic). *)
+        if updated_ty <> v_ty then (
           [%ltrace
             "Not the same type:\n- nv.ty: "
             ^ ty_to_string ctx updated_ty
             ^ "\n- v.ty: " ^ ty_to_string ctx v_ty];
           [%craise] span
-            "Assertion failed: new value doesn't have the same type as its \
-             destination");
+            ("Assertion failed: new value doesn't have the same type as its \
+              destination:\n- nv.ty: "
+            ^ ty_to_string ctx updated_ty
+            ^ "\n- v.ty: " ^ ty_to_string ctx v_ty));
         (ctx, updated)
       in
       Ok (None, v, backward)
