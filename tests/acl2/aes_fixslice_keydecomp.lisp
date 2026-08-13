@@ -31,189 +31,102 @@
                                       (result-ok->val (u32-shl (u32-and (u32-xor a (result-ok->val (u32-shr a shift))) mask) shift))))))
   :hints (("Goal" :in-theory (enable aes-fixslice-encrypt-delta-swap-1))))
 
-;; ---- shift_rows_3 (= inv_shift_rows_1): a map over range 0..8; :ok and len ----
+;; ---- the shift_rows loops (upstream iter_mut form; roadmap #8) ----
+;; The extracted loops iterate the {lst, pos} IterMut model: next reads the
+;; ORIGINAL list (writes are pending in the defunctionalized back list) and
+;; -apply-back walks the cursor back down over them.  At len 8 the whole
+;; loop unrolls by rewriting -- the (:free ...) :expand hint re-fires at
+;; each exposed fuel literal -- so :ok / len / true-listp of the wrappers
+;; come out directly, with the delta-swap values held opaque; no loop
+;; lemmas or inductions are needed.
 (local (include-book "std/lists/update-nth" :dir :system))
-(defthm sr3-loop0-base
-  (implies (and (natp i) (natp e) (<= e i) (not (zp n)))
-           (equal (aes-fixslice-encrypt-shift-rows-3-loop0 n (rng i e) s) (ok s)))
-  :hints (("Goal" :expand ((aes-fixslice-encrypt-shift-rows-3-loop0 n (rng i e) s))
-           :in-theory (enable rnext-on-range))))
-(defthm sr3-loop0-step
-  (implies (and (natp i) (natp e) (< i e) (not (zp n)) (< i (len s)) (< (len s) 4294967296))
-           (equal (aes-fixslice-encrypt-shift-rows-3-loop0 n (rng i e) s)
-                  (aes-fixslice-encrypt-shift-rows-3-loop0 (1- n) (rng (+ i 1) e)
-                    (update-nth i (result-ok->val (aes-fixslice-encrypt-delta-swap-1
-                                    (result-ok->val (aes-fixslice-encrypt-delta-swap-1 (nth i s) 4 51317760))
-                                    2 855651072)) s))))
-  :hints (("Goal" :expand ((aes-fixslice-encrypt-shift-rows-3-loop0 n (rng i e) s))
-           :in-theory (e/d (rnext-on-range) (aes-fixslice-encrypt-delta-swap-1)))))
-(defun sr3-ind (n i e s)
-  (declare (xargs :measure (nfix (- (nfix e) (nfix i)))))
-  (if (and (natp i) (natp e) (< i e) (not (zp n)) (< i (len s)))
-      (sr3-ind (1- n) (+ i 1) e
-        (update-nth i (result-ok->val (aes-fixslice-encrypt-delta-swap-1
-                        (result-ok->val (aes-fixslice-encrypt-delta-swap-1 (nth i s) 4 51317760))
-                        2 855651072)) s))
-    (list n i e s)))
-(defthm result-kind-of-sr3-loop0
-  (implies (and (natp i) (natp e) (<= i e) (< (len s) 4294967296) (<= e (len s)) (< (- e i) (nfix n)))
-           (equal (result-kind (aes-fixslice-encrypt-shift-rows-3-loop0 n (rng i e) s)) :ok))
-  :hints (("Goal" :induct (sr3-ind n i e s)
-           :in-theory (disable aes-fixslice-encrypt-shift-rows-3-loop0 aes-fixslice-encrypt-delta-swap-1
-                               (:executable-counterpart core-ops-range-range-usize-)))))
-(defthm len-of-sr3-loop0
-  (implies (and (natp i) (natp e) (<= i e) (< (len s) 4294967296) (<= e (len s)) (< (- e i) (nfix n)))
-           (equal (len (result-ok->val (aes-fixslice-encrypt-shift-rows-3-loop0 n (rng i e) s))) (len s)))
-  :hints (("Goal" :induct (sr3-ind n i e s)
-           :in-theory (disable aes-fixslice-encrypt-shift-rows-3-loop0 aes-fixslice-encrypt-delta-swap-1
-                               (:executable-counterpart core-ops-range-range-usize-)))))
+
+;; inv_shift_rows_1 = shift_rows_3 (loop body: swaps at masks 51317760, 855651072)
 (defthm result-kind-of-isr1-len
   (implies (and (true-listp s) (equal (len s) 8))
            (equal (result-kind (aes-fixslice-encrypt-inv-shift-rows-1 100 s)) :ok))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-1 aes-fixslice-encrypt-shift-rows-3)
-                                  (aes-fixslice-encrypt-shift-rows-3-loop0))
-           :use (:instance result-kind-of-sr3-loop0 (i 0) (e 8) (n 100)))))
+  :hints (("Goal" :do-not-induct t
+           :expand ((:free (n it bk) (aes-fixslice-encrypt-shift-rows-3-loop0 n it bk)))
+           :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-1
+                            aes-fixslice-encrypt-shift-rows-3)
+                           (aes-fixslice-encrypt-delta-swap-1
+                            u32-xor u32-and u32-shl u32-shr nth)))))
 (defthm len-of-isr1-len
   (implies (and (true-listp s) (equal (len s) 8))
            (equal (len (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1 100 s))) 8))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-1 aes-fixslice-encrypt-shift-rows-3)
-                                  (aes-fixslice-encrypt-shift-rows-3-loop0))
-           :use (:instance len-of-sr3-loop0 (i 0) (e 8) (n 100)))))
-
-;; ---- shift_rows_2 (= inv_shift_rows_2): one delta-swap (mask 251662080) ----
-(defthm sr2-loop0-base
-  (implies (and (natp i) (natp e) (<= e i) (not (zp n)))
-           (equal (aes-fixslice-encrypt-shift-rows-2-loop0 n (rng i e) s) (ok s)))
-  :hints (("Goal" :expand ((aes-fixslice-encrypt-shift-rows-2-loop0 n (rng i e) s))
-           :in-theory (enable rnext-on-range))))
-(defthm sr2-loop0-step
-  (implies (and (natp i) (natp e) (< i e) (not (zp n)) (< i (len s)) (< (len s) 4294967296))
-           (equal (aes-fixslice-encrypt-shift-rows-2-loop0 n (rng i e) s)
-                  (aes-fixslice-encrypt-shift-rows-2-loop0 (1- n) (rng (+ i 1) e)
-                    (update-nth i (result-ok->val (aes-fixslice-encrypt-delta-swap-1 (nth i s) 4 251662080)) s))))
-  :hints (("Goal" :expand ((aes-fixslice-encrypt-shift-rows-2-loop0 n (rng i e) s))
-           :in-theory (e/d (rnext-on-range) (aes-fixslice-encrypt-delta-swap-1)))))
-(defun sr2-ind (n i e s)
-  (declare (xargs :measure (nfix (- (nfix e) (nfix i)))))
-  (if (and (natp i) (natp e) (< i e) (not (zp n)) (< i (len s)))
-      (sr2-ind (1- n) (+ i 1) e
-        (update-nth i (result-ok->val (aes-fixslice-encrypt-delta-swap-1 (nth i s) 4 251662080)) s))
-    (list n i e s)))
-(defthm result-kind-of-sr2-loop0
-  (implies (and (natp i) (natp e) (<= i e) (< (len s) 4294967296) (<= e (len s)) (< (- e i) (nfix n)))
-           (equal (result-kind (aes-fixslice-encrypt-shift-rows-2-loop0 n (rng i e) s)) :ok))
-  :hints (("Goal" :induct (sr2-ind n i e s)
-           :in-theory (disable aes-fixslice-encrypt-shift-rows-2-loop0 aes-fixslice-encrypt-delta-swap-1
-                               (:executable-counterpart core-ops-range-range-usize-)))))
-(defthm len-of-sr2-loop0
-  (implies (and (natp i) (natp e) (<= i e) (< (len s) 4294967296) (<= e (len s)) (< (- e i) (nfix n)))
-           (equal (len (result-ok->val (aes-fixslice-encrypt-shift-rows-2-loop0 n (rng i e) s))) (len s)))
-  :hints (("Goal" :induct (sr2-ind n i e s)
-           :in-theory (disable aes-fixslice-encrypt-shift-rows-2-loop0 aes-fixslice-encrypt-delta-swap-1
-                               (:executable-counterpart core-ops-range-range-usize-)))))
-(defthm result-kind-of-isr2-len
-  (implies (and (true-listp s) (equal (len s) 8))
-           (equal (result-kind (aes-fixslice-encrypt-inv-shift-rows-2 100 s)) :ok))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-2 aes-fixslice-encrypt-shift-rows-2)
-                                  (aes-fixslice-encrypt-shift-rows-2-loop0))
-           :use (:instance result-kind-of-sr2-loop0 (i 0) (e 8) (n 100)))))
-(defthm len-of-isr2-len
-  (implies (and (true-listp s) (equal (len s) 8))
-           (equal (len (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-2 100 s))) 8))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-2 aes-fixslice-encrypt-shift-rows-2)
-                                  (aes-fixslice-encrypt-shift-rows-2-loop0))
-           :use (:instance len-of-sr2-loop0 (i 0) (e 8) (n 100)))))
-
-;; ---- shift_rows_1 (= inv_shift_rows_3): two delta-swaps (202310400, 855651072) ----
-(defthm sr1-loop0-base
-  (implies (and (natp i) (natp e) (<= e i) (not (zp n)))
-           (equal (aes-fixslice-encrypt-shift-rows-1-loop0 n (rng i e) s) (ok s)))
-  :hints (("Goal" :expand ((aes-fixslice-encrypt-shift-rows-1-loop0 n (rng i e) s))
-           :in-theory (enable rnext-on-range))))
-(defthm sr1-loop0-step
-  (implies (and (natp i) (natp e) (< i e) (not (zp n)) (< i (len s)) (< (len s) 4294967296))
-           (equal (aes-fixslice-encrypt-shift-rows-1-loop0 n (rng i e) s)
-                  (aes-fixslice-encrypt-shift-rows-1-loop0 (1- n) (rng (+ i 1) e)
-                    (update-nth i (result-ok->val (aes-fixslice-encrypt-delta-swap-1
-                                    (result-ok->val (aes-fixslice-encrypt-delta-swap-1 (nth i s) 4 202310400))
-                                    2 855651072)) s))))
-  :hints (("Goal" :expand ((aes-fixslice-encrypt-shift-rows-1-loop0 n (rng i e) s))
-           :in-theory (e/d (rnext-on-range) (aes-fixslice-encrypt-delta-swap-1)))))
-(defun sr1-ind (n i e s)
-  (declare (xargs :measure (nfix (- (nfix e) (nfix i)))))
-  (if (and (natp i) (natp e) (< i e) (not (zp n)) (< i (len s)))
-      (sr1-ind (1- n) (+ i 1) e
-        (update-nth i (result-ok->val (aes-fixslice-encrypt-delta-swap-1
-                        (result-ok->val (aes-fixslice-encrypt-delta-swap-1 (nth i s) 4 202310400))
-                        2 855651072)) s))
-    (list n i e s)))
-(defthm result-kind-of-sr1-loop0
-  (implies (and (natp i) (natp e) (<= i e) (< (len s) 4294967296) (<= e (len s)) (< (- e i) (nfix n)))
-           (equal (result-kind (aes-fixslice-encrypt-shift-rows-1-loop0 n (rng i e) s)) :ok))
-  :hints (("Goal" :induct (sr1-ind n i e s)
-           :in-theory (disable aes-fixslice-encrypt-shift-rows-1-loop0 aes-fixslice-encrypt-delta-swap-1
-                               (:executable-counterpart core-ops-range-range-usize-)))))
-(defthm len-of-sr1-loop0
-  (implies (and (natp i) (natp e) (<= i e) (< (len s) 4294967296) (<= e (len s)) (< (- e i) (nfix n)))
-           (equal (len (result-ok->val (aes-fixslice-encrypt-shift-rows-1-loop0 n (rng i e) s))) (len s)))
-  :hints (("Goal" :induct (sr1-ind n i e s)
-           :in-theory (disable aes-fixslice-encrypt-shift-rows-1-loop0 aes-fixslice-encrypt-delta-swap-1
-                               (:executable-counterpart core-ops-range-range-usize-)))))
-(defthm result-kind-of-isr3-len
-  (implies (and (true-listp s) (equal (len s) 8))
-           (equal (result-kind (aes-fixslice-encrypt-inv-shift-rows-3 100 s)) :ok))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-3 aes-fixslice-encrypt-shift-rows-1)
-                                  (aes-fixslice-encrypt-shift-rows-1-loop0))
-           :use (:instance result-kind-of-sr1-loop0 (i 0) (e 8) (n 100)))))
-(defthm len-of-isr3-len
-  (implies (and (true-listp s) (equal (len s) 8))
-           (equal (len (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-3 100 s))) 8))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-3 aes-fixslice-encrypt-shift-rows-1)
-                                  (aes-fixslice-encrypt-shift-rows-1-loop0))
-           :use (:instance len-of-sr1-loop0 (i 0) (e 8) (n 100)))))
-
-
-;; true-listp for the isr ops (the shift-rows loops), so the write-back bridge
-;; applies to their outputs.  Mirrors keydecomp's len lemmas.
-(defthm true-listp-of-sr3-loop0
-  (implies (and (natp i) (natp e) (<= i e) (< (len s) 4294967296) (<= e (len s))
-                (< (- e i) (nfix n)) (true-listp s))
-           (true-listp (result-ok->val (aes-fixslice-encrypt-shift-rows-3-loop0 n (rng i e) s))))
-  :hints (("Goal" :induct (sr3-ind n i e s)
-           :in-theory (disable aes-fixslice-encrypt-shift-rows-3-loop0 aes-fixslice-encrypt-delta-swap-1
-                               (:executable-counterpart core-ops-range-range-usize-)))))
-(defthm true-listp-of-sr2-loop0
-  (implies (and (natp i) (natp e) (<= i e) (< (len s) 4294967296) (<= e (len s))
-                (< (- e i) (nfix n)) (true-listp s))
-           (true-listp (result-ok->val (aes-fixslice-encrypt-shift-rows-2-loop0 n (rng i e) s))))
-  :hints (("Goal" :induct (sr2-ind n i e s)
-           :in-theory (disable aes-fixslice-encrypt-shift-rows-2-loop0 aes-fixslice-encrypt-delta-swap-1
-                               (:executable-counterpart core-ops-range-range-usize-)))))
-(defthm true-listp-of-sr1-loop0
-  (implies (and (natp i) (natp e) (<= i e) (< (len s) 4294967296) (<= e (len s))
-                (< (- e i) (nfix n)) (true-listp s))
-           (true-listp (result-ok->val (aes-fixslice-encrypt-shift-rows-1-loop0 n (rng i e) s))))
-  :hints (("Goal" :induct (sr1-ind n i e s)
-           :in-theory (disable aes-fixslice-encrypt-shift-rows-1-loop0 aes-fixslice-encrypt-delta-swap-1
-                               (:executable-counterpart core-ops-range-range-usize-)))))
+  :hints (("Goal" :do-not-induct t
+           :expand ((:free (n it bk) (aes-fixslice-encrypt-shift-rows-3-loop0 n it bk)))
+           :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-1
+                            aes-fixslice-encrypt-shift-rows-3)
+                           (aes-fixslice-encrypt-delta-swap-1
+                            u32-xor u32-and u32-shl u32-shr nth)))))
 (defthm true-listp-of-isr1-100
   (implies (and (true-listp s) (equal (len s) 8))
            (true-listp (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-1 100 s))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-1 aes-fixslice-encrypt-shift-rows-3)
-                                  (aes-fixslice-encrypt-shift-rows-3-loop0))
-           :use (:instance true-listp-of-sr3-loop0 (i 0) (e 8) (n 100)))))
+  :hints (("Goal" :do-not-induct t
+           :expand ((:free (n it bk) (aes-fixslice-encrypt-shift-rows-3-loop0 n it bk)))
+           :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-1
+                            aes-fixslice-encrypt-shift-rows-3)
+                           (aes-fixslice-encrypt-delta-swap-1
+                            u32-xor u32-and u32-shl u32-shr nth)))))
+
+;; inv_shift_rows_2 = shift_rows_2 (single swap at mask 251662080)
+(defthm result-kind-of-isr2-len
+  (implies (and (true-listp s) (equal (len s) 8))
+           (equal (result-kind (aes-fixslice-encrypt-inv-shift-rows-2 100 s)) :ok))
+  :hints (("Goal" :do-not-induct t
+           :expand ((:free (n it bk) (aes-fixslice-encrypt-shift-rows-2-loop0 n it bk)))
+           :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-2
+                            aes-fixslice-encrypt-shift-rows-2)
+                           (aes-fixslice-encrypt-delta-swap-1
+                            u32-xor u32-and u32-shl u32-shr nth)))))
+(defthm len-of-isr2-len
+  (implies (and (true-listp s) (equal (len s) 8))
+           (equal (len (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-2 100 s))) 8))
+  :hints (("Goal" :do-not-induct t
+           :expand ((:free (n it bk) (aes-fixslice-encrypt-shift-rows-2-loop0 n it bk)))
+           :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-2
+                            aes-fixslice-encrypt-shift-rows-2)
+                           (aes-fixslice-encrypt-delta-swap-1
+                            u32-xor u32-and u32-shl u32-shr nth)))))
 (defthm true-listp-of-isr2-100
   (implies (and (true-listp s) (equal (len s) 8))
            (true-listp (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-2 100 s))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-2 aes-fixslice-encrypt-shift-rows-2)
-                                  (aes-fixslice-encrypt-shift-rows-2-loop0))
-           :use (:instance true-listp-of-sr2-loop0 (i 0) (e 8) (n 100)))))
+  :hints (("Goal" :do-not-induct t
+           :expand ((:free (n it bk) (aes-fixslice-encrypt-shift-rows-2-loop0 n it bk)))
+           :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-2
+                            aes-fixslice-encrypt-shift-rows-2)
+                           (aes-fixslice-encrypt-delta-swap-1
+                            u32-xor u32-and u32-shl u32-shr nth)))))
+
+;; inv_shift_rows_3 = shift_rows_1 (swaps at masks 202310400, 855651072)
+(defthm result-kind-of-isr3-len
+  (implies (and (true-listp s) (equal (len s) 8))
+           (equal (result-kind (aes-fixslice-encrypt-inv-shift-rows-3 100 s)) :ok))
+  :hints (("Goal" :do-not-induct t
+           :expand ((:free (n it bk) (aes-fixslice-encrypt-shift-rows-1-loop0 n it bk)))
+           :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-3
+                            aes-fixslice-encrypt-shift-rows-1)
+                           (aes-fixslice-encrypt-delta-swap-1
+                            u32-xor u32-and u32-shl u32-shr nth)))))
+(defthm len-of-isr3-len
+  (implies (and (true-listp s) (equal (len s) 8))
+           (equal (len (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-3 100 s))) 8))
+  :hints (("Goal" :do-not-induct t
+           :expand ((:free (n it bk) (aes-fixslice-encrypt-shift-rows-1-loop0 n it bk)))
+           :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-3
+                            aes-fixslice-encrypt-shift-rows-1)
+                           (aes-fixslice-encrypt-delta-swap-1
+                            u32-xor u32-and u32-shl u32-shr nth)))))
 (defthm true-listp-of-isr3-100
   (implies (and (true-listp s) (equal (len s) 8))
            (true-listp (result-ok->val (aes-fixslice-encrypt-inv-shift-rows-3 100 s))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-3 aes-fixslice-encrypt-shift-rows-1)
-                                  (aes-fixslice-encrypt-shift-rows-1-loop0))
-           :use (:instance true-listp-of-sr1-loop0 (i 0) (e 8) (n 100)))))
+  :hints (("Goal" :do-not-induct t
+           :expand ((:free (n it bk) (aes-fixslice-encrypt-shift-rows-1-loop0 n it bk)))
+           :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-3
+                            aes-fixslice-encrypt-shift-rows-1)
+                           (aes-fixslice-encrypt-delta-swap-1
+                            u32-xor u32-and u32-shl u32-shr nth)))))
 
 
 ;; ===========================================================================

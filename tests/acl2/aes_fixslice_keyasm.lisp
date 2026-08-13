@@ -54,85 +54,44 @@
            :use ((:instance sched-loop0-done (n m) (s c) (e 10) (rkeys rk) (off off))))))
 
 ;; ---------------------------------------------------------------------------
-;; (2) shift-rows loops are fuel-irrelevant (value-level): two-fuel equality
-;; by SIMULTANEOUS induction on both fuels (an IH at one decremented fuel
-;; cannot reach the other side), gates kept closed; then the isr ops
-;; canonicalize to fuel 100.
-(defun sr3-ind2 (n1 n2 i e s)
-  (declare (xargs :measure (nfix (- (nfix e) (nfix i)))))
-  (if (and (natp i) (natp e) (< i e) (not (zp n1)) (not (zp n2)) (< i (len s)))
-      (sr3-ind2 (1- n1) (1- n2) (+ i 1) e (update-nth i (result-ok->val (aes-fixslice-encrypt-delta-swap-1 (result-ok->val (aes-fixslice-encrypt-delta-swap-1 (nth i s) 4 51317760)) 2 855651072)) s))
-    (list n1 n2 i e s)))
-(defthm sr3-loop0-two-fuel
-  (implies (and (natp i) (natp e) (<= i e) (< (len s) 4294967296) (<= e (len s))
-                (< (- e i) (nfix n1)) (< (- e i) (nfix n2)))
-           (equal (aes-fixslice-encrypt-shift-rows-3-loop0 n1 (rng i e) s)
-                  (aes-fixslice-encrypt-shift-rows-3-loop0 n2 (rng i e) s)))
-  :rule-classes nil
-  :hints (("Goal" :induct (sr3-ind2 n1 n2 i e s)
-           :in-theory (disable aes-fixslice-encrypt-shift-rows-3-loop0
-                               aes-fixslice-encrypt-delta-swap-1
-                               (:executable-counterpart aes-fixslice-encrypt-delta-swap-1)
-                               u32-xor u32-and u32-shl u32-shr nth
-                               (:executable-counterpart core-ops-range-range-usize-)))))
-(defun sr2-ind2 (n1 n2 i e s)
-  (declare (xargs :measure (nfix (- (nfix e) (nfix i)))))
-  (if (and (natp i) (natp e) (< i e) (not (zp n1)) (not (zp n2)) (< i (len s)))
-      (sr2-ind2 (1- n1) (1- n2) (+ i 1) e (update-nth i (result-ok->val (aes-fixslice-encrypt-delta-swap-1 (nth i s) 4 251662080)) s))
-    (list n1 n2 i e s)))
-(defthm sr2-loop0-two-fuel
-  (implies (and (natp i) (natp e) (<= i e) (< (len s) 4294967296) (<= e (len s))
-                (< (- e i) (nfix n1)) (< (- e i) (nfix n2)))
-           (equal (aes-fixslice-encrypt-shift-rows-2-loop0 n1 (rng i e) s)
-                  (aes-fixslice-encrypt-shift-rows-2-loop0 n2 (rng i e) s)))
-  :rule-classes nil
-  :hints (("Goal" :induct (sr2-ind2 n1 n2 i e s)
-           :in-theory (disable aes-fixslice-encrypt-shift-rows-2-loop0
-                               aes-fixslice-encrypt-delta-swap-1
-                               (:executable-counterpart aes-fixslice-encrypt-delta-swap-1)
-                               u32-xor u32-and u32-shl u32-shr nth
-                               (:executable-counterpart core-ops-range-range-usize-)))))
-(defun sr1-ind2 (n1 n2 i e s)
-  (declare (xargs :measure (nfix (- (nfix e) (nfix i)))))
-  (if (and (natp i) (natp e) (< i e) (not (zp n1)) (not (zp n2)) (< i (len s)))
-      (sr1-ind2 (1- n1) (1- n2) (+ i 1) e (update-nth i (result-ok->val (aes-fixslice-encrypt-delta-swap-1 (result-ok->val (aes-fixslice-encrypt-delta-swap-1 (nth i s) 4 202310400)) 2 855651072)) s))
-    (list n1 n2 i e s)))
-(defthm sr1-loop0-two-fuel
-  (implies (and (natp i) (natp e) (<= i e) (< (len s) 4294967296) (<= e (len s))
-                (< (- e i) (nfix n1)) (< (- e i) (nfix n2)))
-           (equal (aes-fixslice-encrypt-shift-rows-1-loop0 n1 (rng i e) s)
-                  (aes-fixslice-encrypt-shift-rows-1-loop0 n2 (rng i e) s)))
-  :rule-classes nil
-  :hints (("Goal" :induct (sr1-ind2 n1 n2 i e s)
-           :in-theory (disable aes-fixslice-encrypt-shift-rows-1-loop0
-                               aes-fixslice-encrypt-delta-swap-1
-                               (:executable-counterpart aes-fixslice-encrypt-delta-swap-1)
-                               u32-xor u32-and u32-shl u32-shr nth
-                               (:executable-counterpart core-ops-range-range-usize-)))))
+;; (2) shift-rows ops are fuel-irrelevant (value-level): at len 8 BOTH fuel
+;; spines unroll completely -- nine next steps each; the (:free ...) :expand
+;; hint re-fires at every exposed fuel term, with (< 8 (nfix n)) deciding
+;; the symbolic side's zp tests -- so the two sides meet syntactically,
+;; delta-swap values held opaque.  The isr ops then canonicalize to 100.
 (defthm isr1-fuel-canon
   (implies (and (syntaxp (not (equal n (quote (quote 100)))))
                 (true-listp s) (equal (len s) 8) (< 8 (nfix n)))
            (equal (aes-fixslice-encrypt-inv-shift-rows-1 n s)
                   (aes-fixslice-encrypt-inv-shift-rows-1 100 s)))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-1 aes-fixslice-encrypt-shift-rows-3)
-                                  (aes-fixslice-encrypt-shift-rows-3-loop0))
-           :use ((:instance sr3-loop0-two-fuel (i 0) (e 8) (n1 n) (n2 100))))))
+  :hints (("Goal" :do-not-induct t
+           :expand ((:free (n it bk) (aes-fixslice-encrypt-shift-rows-3-loop0 n it bk)))
+           :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-1
+                            aes-fixslice-encrypt-shift-rows-3 zp nfix)
+                           (aes-fixslice-encrypt-delta-swap-1
+                            u32-xor u32-and u32-shl u32-shr nth)))))
 (defthm isr2-fuel-canon
   (implies (and (syntaxp (not (equal n (quote (quote 100)))))
                 (true-listp s) (equal (len s) 8) (< 8 (nfix n)))
            (equal (aes-fixslice-encrypt-inv-shift-rows-2 n s)
                   (aes-fixslice-encrypt-inv-shift-rows-2 100 s)))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-2 aes-fixslice-encrypt-shift-rows-2)
-                                  (aes-fixslice-encrypt-shift-rows-2-loop0))
-           :use ((:instance sr2-loop0-two-fuel (i 0) (e 8) (n1 n) (n2 100))))))
+  :hints (("Goal" :do-not-induct t
+           :expand ((:free (n it bk) (aes-fixslice-encrypt-shift-rows-2-loop0 n it bk)))
+           :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-2
+                            aes-fixslice-encrypt-shift-rows-2 zp nfix)
+                           (aes-fixslice-encrypt-delta-swap-1
+                            u32-xor u32-and u32-shl u32-shr nth)))))
 (defthm isr3-fuel-canon
   (implies (and (syntaxp (not (equal n (quote (quote 100)))))
                 (true-listp s) (equal (len s) 8) (< 8 (nfix n)))
            (equal (aes-fixslice-encrypt-inv-shift-rows-3 n s)
                   (aes-fixslice-encrypt-inv-shift-rows-3 100 s)))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-3 aes-fixslice-encrypt-shift-rows-1)
-                                  (aes-fixslice-encrypt-shift-rows-1-loop0))
-           :use ((:instance sr1-loop0-two-fuel (i 0) (e 8) (n1 n) (n2 100))))))
+  :hints (("Goal" :do-not-induct t
+           :expand ((:free (n it bk) (aes-fixslice-encrypt-shift-rows-1-loop0 n it bk)))
+           :in-theory (e/d (aes-fixslice-encrypt-inv-shift-rows-3
+                            aes-fixslice-encrypt-shift-rows-1 zp nfix)
+                           (aes-fixslice-encrypt-delta-swap-1
+                            u32-xor u32-and u32-shl u32-shr nth)))))
 
 ;; ---------------------------------------------------------------------------
 ;; the spec chains (pure w8-spec window forms; the ops at canonical fuel 100).

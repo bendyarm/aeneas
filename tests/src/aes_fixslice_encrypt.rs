@@ -6,9 +6,9 @@
 // and the encrypt round loop{...break}, all with upstream's own signatures and
 // ALL thirteen debug_assert!s restored verbatim); the former read8/write8/
 // *_at/key_round/bitslice_into wrapper layer is DELETED.
-// Documented de-sugarings:
-//  * shift_rows_* / add_round_key iter_mut/zip -> `for i in 0..8`
-//      (same ops, indexed; roadmap #8)
+// Documented de-sugarings (shift_rows_*/add_round_key are VERBATIM upstream
+// iter_mut()/zip() loops since roadmap #8 landed; extraction now requires
+// charon's carved pipeline -- see the Makefile recipe):
 //  * State::default()/BatchBlocks -> explicit [u32;8] / [[u8;16];2] literals;
 //      the FixsliceKeys128 type alias -> its definition [u32; 88]
 //  * cfg(aes_backend_soft="compact") branches resolved
@@ -224,10 +224,8 @@ fn sub_bytes_nots(state: &mut [u32]) {
 
 fn shift_rows_2(state: &mut [u32]) {
     debug_assert_eq!(state.len(), 8);
-    for i in 0..8 {
-        let mut x = state[i];
-        delta_swap_1(&mut x, 4, 0x0f000f00);
-        state[i] = x;
+    for x in state.iter_mut() {
+        delta_swap_1(x, 4, 0x0f000f00);
     }
 }
 
@@ -440,14 +438,13 @@ define_mix_columns!(
 
 fn add_round_key(state: &mut State, rkey: &[u32]) {
     debug_assert_eq!(rkey.len(), 8);
-    // de-sugared: for (a, b) in state.iter_mut().zip(rkey) { *a ^= b; }
-    for i in 0..8 {
-        state[i] ^= rkey[i];
+    for (a, b) in state.iter_mut().zip(rkey) {
+        *a ^= b;
     }
 }
 
-// The 10-round `loop { ... if rk_off == 80 { break } ... }` unrolled: AES-128 has
-// a statically fixed number of rounds, so this is a faithful transformation.
+// Upstream's 10-round `loop { ... if rk_off == 80 { break } ... }` verbatim
+// (cfg(aes_backend_soft) branches resolved to the non-compact path).
 fn aes128_encrypt(rkeys: &[u32; 88], block0: &[u8; 16], block1: &[u8; 16]) -> [[u8; 16]; 2] {
     let mut state = [0u32; 8];
     bitslice(&mut state, block0, block1);
@@ -496,28 +493,23 @@ pub fn encrypt_block(rkeys: [u32; 88], block: [u8; 16]) -> [u8; 16] {
 }
 
 // ----------------------------------------------------------------------------
-// KEY SCHEDULE (vendored from aes128_key_schedule). The reference passes
-// &mut rkeys[a..b] mutable subslices into sub_bytes / inv_shift_rows / etc.;
-// we de-sugar those to read8 / process-on-State / write8 at an offset, so the
-// whole [u32;88] is mutated by index (no mutable-subslice write-back). Also:
-// the (8..72).step_by(32) adjustment loop -> `while`. Gate logic verbatim.
+// KEY SCHEDULE (vendored from aes128_key_schedule; VERBATIM upstream since
+// de-vendoring pass 9): &mut rkeys[a..b] mutable subslices flow into
+// sub_bytes / inv_shift_rows / etc., and the adjustment loop is the upstream
+// (8..72).step_by(32) fold.
 
 fn shift_rows_1(state: &mut [u32]) {
     debug_assert_eq!(state.len(), 8);
-    for i in 0..8 {
-        let mut x = state[i];
-        delta_swap_1(&mut x, 4, 0x0c0f0300);
-        delta_swap_1(&mut x, 2, 0x33003300);
-        state[i] = x;
+    for x in state.iter_mut() {
+        delta_swap_1(x, 4, 0x0c0f0300);
+        delta_swap_1(x, 2, 0x33003300);
     }
 }
 fn shift_rows_3(state: &mut [u32]) {
     debug_assert_eq!(state.len(), 8);
-    for i in 0..8 {
-        let mut x = state[i];
-        delta_swap_1(&mut x, 4, 0x030f0c00);
-        delta_swap_1(&mut x, 2, 0x33003300);
-        state[i] = x;
+    for x in state.iter_mut() {
+        delta_swap_1(x, 4, 0x030f0c00);
+        delta_swap_1(x, 2, 0x33003300);
     }
 }
 fn inv_shift_rows_1(state: &mut [u32]) {

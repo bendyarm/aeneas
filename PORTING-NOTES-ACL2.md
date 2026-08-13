@@ -114,7 +114,7 @@ script-verified against the reference copy):
 |---|---|---|
 | Byte-identical | `ror`, `ror_distance`, `rotate_rows_*`, `rotate_rows_and_columns_*`, `delta_swap_1/2` (10 fns), and the whole `define_mix_columns!` macro | none |
 | ~~Signature-only~~ RESOLVED (pass 7): `sub_bytes`/`sub_bytes_nots`/`inv_sub_bytes`, `shift_rows_*`/`inv_shift_rows_*`, `add_round_constant_bit`, `xor_columns` all take upstream's `&mut [u32]` slices (asserts restored where upstream has them; `mix_columns_*` keep upstream's own `&mut State`) | -- | none |
-| `iter_mut`/`zip` -> indexed `for` | `shift_rows_1/2/3` (asserts restored), `add_round_key` (upstream `(state, rkey: &[u32])` signature and `rkey.len()` assert RESTORED in pass 7; only the loop de-sugar remains) | same ops, indexed |
+| ~~`iter_mut`/`zip` -> indexed `for`~~ RESOLVED (pass 10, roadmap #8): `shift_rows_1/2/3` and `add_round_key` bodies are VERBATIM upstream `iter_mut()`/`.zip()` loops; the crate extracts through charon's mono carve-out pipeline (see the Makefile recipe) with the printer's first-order iterator models | -- | none |
 | ~~LE byte plumbing~~ RESOLVED (pass 8): `bitslice`/`inv_bitslice` bodies are VERBATIM upstream (`from_le_bytes`/`try_into`, `to_le_bytes`/`copy_from_slice`, out-param `bitslice` with all three asserts); `ld_le` deleted; `BatchBlocks`/`State::default()` -> array literals remain the documented de-sugar | -- | none |
 | ~~Subslice borrows -> `(array, offset)` + `read8`/`write8`/`*_at` wrappers~~ RESOLVED (pass 9): `aes128_key_schedule` is verbatim upstream (`&mut rkeys[..8]`/`[off..off+8]` subslice borrows, `(8..72).step_by(32)` fold, `for i in 1..11` NOTs loop); the read8/write8/sub_bytes_at/sub_bytes_nots_at/add_rc_bit_at/inv_shift_rows_*_at/bitslice_into/add_rcon/key_round wrapper layer is DELETED | -- | none |
 | Loop unrolls | ~~encrypt round loop~~ RESTORED (de-vendor pass 3): the bare `loop { ... if rk_off == 80 { break; } ... }` is verbatim upstream, extracted as a recursive loop function; key-schedule rcon loop re-rolled earlier; the decrypt loop arrives with the decrypt side | control flow |
@@ -318,10 +318,27 @@ deleted and the audited subject moves toward verbatim upstream:
      Defunctionalization fires ONLY at loop-call sites; lambdas anywhere
      else keep the loud v0 skip (and a failed shape-probe restores the
      gensym counter, keeping skipped-decl output byte-identical).
-   * Remaining for the AES flip: restore shift_rows_*/add_round_key to
-     upstream text, switch the AES crate's charon invocation to the
-     carved pipeline, re-run the audit row, recertify.  (The audit
-     table's iter_mut/zip row stays open until then.)
+   * AES flip DONE (pass 10): shift_rows_1/2/3 and add_round_key are
+     verbatim upstream text (byte-compared against the pristine
+     reference) and the AES crate extracts through the carved pipeline.
+     Proof restack was three books, all exported statements unchanged:
+     keydecomp's per-loop base/step/inductions became direct
+     wrapper-level unrolls (the (:free ...) :expand hint re-fires at
+     each exposed fuel; next reads the ORIGINAL list, writes pending);
+     keyasm's two-fuel inductions became double unrolls (both fuel
+     spines meet syntactically, (< 8 (nfix n)) deciding the symbolic
+     side's zp tests); cipher's ark-loop0 lemmas became a direct
+     ark-form-n unroll meeting arkw-spec under the std/lists
+     update-nth commuting rules.  The GL books (addroundkey,
+     shiftrows, keyschedule, keyfold) recertify UNCHANGED -- GL
+     symbolically executes the new machinery.  Extraction wart, known
+     and cosmetic: under the carved flags the try_into decl's mangled
+     name embeds a hax name-resolution artifact
+     ("...tryinto-u8-4usize-type-error-can-t-compute-self-type0-...");
+     self-consistent, referenced by no handwritten book, candidate
+     charon-side fix.  The panic-path Option instance also arrives
+     generic (core-option-option) instead of monomorphized; it is
+     referenced by nothing.
 9. Whole-crate extraction (cipher traits, generic-array, batch API, AES-192/256):
    long-term; today's audited claim is module-level (the fixslice32 math).
 

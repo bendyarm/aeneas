@@ -16,48 +16,20 @@
 (local (in-theory (disable len-when-wstatep true-listp-when-wstatep nth-when-zp)))
 
 ;; ===========================================================================
-;; (C1) add_round_key: loop spec (word-wise xor against the rkeys window).
+;; (C1) add_round_key: loop spec (word-wise xor against the rkeys window;
+;; the extracted loop is upstream's iter_mut().zip() -- see ark-form-n).
 (defund arkw (s w)
   (list (u32-xor (nth 0 s) (nth 0 w)) (u32-xor (nth 1 s) (nth 1 w))
         (u32-xor (nth 2 s) (nth 2 w)) (u32-xor (nth 3 s) (nth 3 w))
         (u32-xor (nth 4 s) (nth 4 w)) (u32-xor (nth 5 s) (nth 5 w))
         (u32-xor (nth 6 s) (nth 6 w)) (u32-xor (nth 7 s) (nth 7 w))))
 
-;; step/base for the extracted loop (write8-loop0 template).
-(defthm ark-loop0-base
-  (implies (and (natp i) (natp e) (<= e i) (not (zp n)))
-           (equal (aes-fixslice-encrypt-add-round-key-loop0 n (rng i e) s w) (ok s)))
-  :hints (("Goal" :expand ((aes-fixslice-encrypt-add-round-key-loop0 n (rng i e) s w))
-           :in-theory (enable rnext-on-range))))
-(defthm ark-loop0-step
-  (implies (and (natp i) (natp e) (< i e) (not (zp n))
-                (< i (len w)) (< (len w) 4294967296) (< i (len s)))
-           (equal (aes-fixslice-encrypt-add-round-key-loop0 n (rng i e) s w)
-                  (aes-fixslice-encrypt-add-round-key-loop0 (1- n) (rng (+ i 1) e)
-                    (update-nth i (u32-xor (nth i s) (nth i w)) s) w)))
-  :hints (("Goal" :expand ((aes-fixslice-encrypt-add-round-key-loop0 n (rng i e) s w))
-           :in-theory (e/d (rnext-on-range) (u32-xor)))))
-
-;; generic accumulator spec for the loop, then the 8-step instance is arkw.
+;; the loop spec as a generic accumulator; the 8-step instance is arkw.
 (defun arkw-spec (i e s rk off)
   (declare (xargs :measure (nfix (- (nfix e) (nfix i)))))
   (if (and (natp i) (natp e) (< i e))
       (arkw-spec (+ i 1) e (update-nth i (u32-xor (nth i s) (nth (+ off i) rk)) s) rk off)
     s))
-(defun arkw-ind (n i e s rk off)
-  (declare (xargs :measure (nfix (- (nfix e) (nfix i)))))
-  (if (and (natp i) (natp e) (< i e) (not (zp n)) (< i (len s)))
-      (arkw-ind (1- n) (+ i 1) e (update-nth i (u32-xor (nth i s) (nth (+ off i) rk)) s) rk off)
-    (list n i e s rk off)))
-(defthm ark-loop0-is-spec
-  (implies (and (natp i) (natp e) (<= i e) (<= e (len w))
-                (< (len w) 4294967296) (<= e (len s)) (< (- e i) (nfix n)))
-           (equal (aes-fixslice-encrypt-add-round-key-loop0 n (rng i e) s w)
-                  (ok (arkw-spec i e s w 0))))
-  :hints (("Goal" :induct (arkw-ind n i e s w 0)
-           :in-theory (e/d () (aes-fixslice-encrypt-add-round-key-loop0 u32-xor nth
-                               (:executable-counterpart core-ops-range-range-usize-))))))
-
 ;; ===========================================================================
 ;; (C2) length-only :ok / len / true-listp for the remaining cipher ops.
 ;; All by the explicit-8 template: prove on an explicit 8-list (everything
@@ -244,14 +216,23 @@
   :hints (("Goal" :induct (arkw-spec i e s rk off)
            :in-theory (e/d () (u32-xor nth)))))
 ;; upstream signature (state, rkey-window): the massert demands the window
-;; length exactly; generic fuel (the round loop calls at 99/98/97).
+;; length exactly; generic fuel (the round loop calls at 99/98/97).  The
+;; extracted loop is the upstream iter_mut().zip() form (roadmap #8): next
+;; reads BOTH original lists (writes are pending in the defunctionalized
+;; back list; the &mut side's cursor drives them home afterwards), so at
+;; window length 8 the loop unrolls completely by rewriting -- the
+;; (:free ...) :expand hint re-fires at every exposed fuel, (< 8 (nfix n))
+;; deciding the zp tests -- and the update-nth nest meets arkw-spec's under
+;; the std/lists commuting rules.
 (defthm ark-form-n
   (implies (and (equal (len w) 8) (<= 8 (len s)) (< 8 (nfix n)))
            (equal (aes-fixslice-encrypt-add-round-key n s w)
                   (ok (arkw-spec 0 8 s w 0))))
-  :hints (("Goal" :in-theory (e/d (aes-fixslice-encrypt-add-round-key)
-                                  (aes-fixslice-encrypt-add-round-key-loop0 u32-xor nth))
-           :use (:instance ark-loop0-is-spec (i 0) (e 8)))))
+  :hints (("Goal" :do-not-induct t
+           :expand ((:free (n it bk) (aes-fixslice-encrypt-add-round-key-loop0 n it bk))
+                    (:free (i s) (arkw-spec i 8 s w 0)))
+           :in-theory (e/d (aes-fixslice-encrypt-add-round-key zp nfix)
+                           (u32-xor)))))
 (defthm ark-form100
   (implies (and (equal (len w) 8) (<= 8 (len s)))
            (equal (aes-fixslice-encrypt-add-round-key 100 s w)

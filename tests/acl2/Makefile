@@ -77,10 +77,14 @@ regen:
 	  --crate-type=rlib --allow=unused --allow=non_snake_case >/dev/null 2>&1
 	@$(AENEAS) $(AENEAS_FLAGS) -dest . $(LLBC)/aes_fixslice_core.llbc || true
 	@# Full fixsliced AES-128 encrypt (given expanded key); FIPS-197 C.1 in proofs.
-	@# (--edition=2021 puts TryInto in the prelude for the key schedule's
-	@#  slice.try_into() reads.)
+	@# Carved pipeline (roadmap #8): shift_rows_*/add_round_key are upstream
+	@# iter_mut()/zip() text, so the borrow-carrying iterator instantiations
+	@# must stay polymorphic (--monomorphize-mut=except-types + the two lift
+	@# flags; needs the charon fork).  --edition=2021 puts TryInto in the
+	@# prelude for the key schedule's slice.try_into() reads.
 	@$(CHARON) rustc --dest-file $(LLBC)/aes_fixslice_encrypt.llbc --preset=aeneas \
-	  --monomorphize -- --edition=2021 $(SRC)/aes_fixslice_encrypt.rs --crate-name=aes_fixslice_encrypt \
+	  --monomorphize --monomorphize-mut=except-types --remove-adt-clauses \
+	  --lift-associated-types='*' -- --edition=2021 $(SRC)/aes_fixslice_encrypt.rs --crate-name=aes_fixslice_encrypt \
 	  --crate-type=rlib --allow=unused --allow=non_snake_case >/dev/null 2>&1
 	@$(AENEAS) $(AENEAS_FLAGS) -dest . $(LLBC)/aes_fixslice_encrypt.llbc || true
 
