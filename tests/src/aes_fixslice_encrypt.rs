@@ -805,22 +805,48 @@ fn inv_sub_bytes(state: &mut [u32]) {
     state[7] = s0;
 }
 
+// Upstream's decrypt round loop verbatim (bare loop { ... if rk_off == 0
+// { break; } ... } with the counter descending; cfg(aes_backend_soft)
+// branches resolved to the non-compact path).
 fn aes128_decrypt(rkeys: &[u32; 88], block0: &[u8; 16], block1: &[u8; 16]) -> [[u8; 16]; 2] {
     let mut state = [0u32; 8];
+
     bitslice(&mut state, block0, block1);
+
     add_round_key(&mut state, &rkeys[80..]);
     inv_sub_bytes(&mut state);
+
     inv_shift_rows_2(&mut state);
-    add_round_key(&mut state, &rkeys[72..(72 + 8)]); inv_mix_columns_1(&mut state); inv_sub_bytes(&mut state);
-    add_round_key(&mut state, &rkeys[64..(64 + 8)]); inv_mix_columns_0(&mut state); inv_sub_bytes(&mut state);
-    add_round_key(&mut state, &rkeys[56..(56 + 8)]); inv_mix_columns_3(&mut state); inv_sub_bytes(&mut state);
-    add_round_key(&mut state, &rkeys[48..(48 + 8)]); inv_mix_columns_2(&mut state); inv_sub_bytes(&mut state);
-    add_round_key(&mut state, &rkeys[40..(40 + 8)]); inv_mix_columns_1(&mut state); inv_sub_bytes(&mut state);
-    add_round_key(&mut state, &rkeys[32..(32 + 8)]); inv_mix_columns_0(&mut state); inv_sub_bytes(&mut state);
-    add_round_key(&mut state, &rkeys[24..(24 + 8)]); inv_mix_columns_3(&mut state); inv_sub_bytes(&mut state);
-    add_round_key(&mut state, &rkeys[16..(16 + 8)]); inv_mix_columns_2(&mut state); inv_sub_bytes(&mut state);
-    add_round_key(&mut state, &rkeys[8..(8 + 8)]);  inv_mix_columns_1(&mut state); inv_sub_bytes(&mut state);
+
+    let mut rk_off = 72;
+    loop {
+        add_round_key(&mut state, &rkeys[rk_off..(rk_off + 8)]);
+        inv_mix_columns_1(&mut state);
+        inv_sub_bytes(&mut state);
+        rk_off -= 8;
+
+        if rk_off == 0 {
+            break;
+        }
+
+        add_round_key(&mut state, &rkeys[rk_off..(rk_off + 8)]);
+        inv_mix_columns_0(&mut state);
+        inv_sub_bytes(&mut state);
+        rk_off -= 8;
+
+        add_round_key(&mut state, &rkeys[rk_off..(rk_off + 8)]);
+        inv_mix_columns_3(&mut state);
+        inv_sub_bytes(&mut state);
+        rk_off -= 8;
+
+        add_round_key(&mut state, &rkeys[rk_off..(rk_off + 8)]);
+        inv_mix_columns_2(&mut state);
+        inv_sub_bytes(&mut state);
+        rk_off -= 8;
+    }
+
     add_round_key(&mut state, &rkeys[..8]);
+
     inv_bitslice(&state)
 }
 
