@@ -152,8 +152,14 @@ deleted and the audited subject moves toward verbatim upstream:
    Everything downstream of enc-collapse's equation is untouched.
    Regression crate `tests/src/loop_break.rs` (+ known-answer proofs book)
    pins the loop{...break} extraction shape and the expand-collapse proof
-   pattern.  The decrypt round loop is not a delta today (decrypt is not
-   yet vendored); it re-rolls the same way when the decrypt side lands.
+   pattern.  Pass 11 re-rolled the DECRYPT round loop the same way
+   (descending `rk_off`, break at `rk_off == 0` in the middle of the
+   body); `dec-loop-collapse` proves it by the same three-expansion
+   pattern, and the decrypt proof stack on top of it (per-op push-ins,
+   mask/frame algebra, reverse round ladder, spec hop) closes with
+   DECRYPT-CORRECT: the extracted decrypt -- key schedule and inverse
+   cipher -- equals `aes::aes-128-decrypt` for all keys and blocks
+   (`aes_fixslice_decfinal`).
 4. DONE, both halves -- `Rev<Range<usize>>` support AND the `memshift32`
    source reversion that it unblocks:
    * Backend: `Iterator::rev` and `Rev::next` have real bodies when charon
