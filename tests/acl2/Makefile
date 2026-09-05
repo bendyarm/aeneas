@@ -87,10 +87,33 @@ regen:
 	  --lift-associated-types='*' -- --edition=2021 $(SRC)/aes_fixslice_encrypt.rs --crate-name=aes_fixslice_encrypt \
 	  --crate-type=rlib --allow=unused --allow=non_snake_case >/dev/null 2>&1
 	@$(AENEAS) $(AENEAS_FLAGS) -dest . $(LLBC)/aes_fixslice_encrypt.llbc || true
+	@# Probe crates (regression tests for individual constructs; each has a
+	@# known-answer proofs book).  cast_probe / loop_break / subslice_probe need
+	@# only --monomorphize; lebytes_probe also needs --edition=2021 (TryInto in
+	@# the prelude); itermut_probe goes through the carved pipeline like AES.
+	@for f in cast_probe loop_break subslice_probe; do \
+	  echo "== $$f"; \
+	  $(CHARON) rustc --dest-file $(LLBC)/$$f.llbc --preset=aeneas --monomorphize -- \
+	    $(SRC)/$$f.rs --crate-name=$$f --crate-type=rlib \
+	    --allow=unused --allow=non_snake_case >/dev/null 2>&1; \
+	  $(AENEAS) $(AENEAS_FLAGS) -dest . $(LLBC)/$$f.llbc || true; \
+	done
+	@$(CHARON) rustc --dest-file $(LLBC)/lebytes_probe.llbc --preset=aeneas \
+	  --monomorphize -- --edition=2021 $(SRC)/lebytes_probe.rs --crate-name=lebytes_probe \
+	  --crate-type=rlib --allow=unused --allow=non_snake_case >/dev/null 2>&1
+	@$(AENEAS) $(AENEAS_FLAGS) -dest . $(LLBC)/lebytes_probe.llbc || true
+	@$(CHARON) rustc --dest-file $(LLBC)/itermut_probe.llbc --preset=aeneas \
+	  --monomorphize --monomorphize-mut=except-types --remove-adt-clauses \
+	  --lift-associated-types='*' -- --edition=2021 $(SRC)/itermut_probe.rs --crate-name=itermut_probe \
+	  --crate-type=rlib --allow=unused --allow=non_snake_case >/dev/null 2>&1
+	@$(AENEAS) $(AENEAS_FLAGS) -dest . $(LLBC)/itermut_probe.llbc || true
 
-# Certify every book in the directory (generated + handwritten).
+# Certify every book in the directory (generated + handwritten).  The GL
+# bit-blasting books need several GB each: on machines with less than ~12 GB
+# use `make verify JOBS=1` (with more parallelism they are killed silently).
+JOBS ?= $(shell nproc)
 verify:
-	$(CERT_PL) -j $(shell nproc) \
+	$(CERT_PL) -j $(JOBS) \
 	  rust-primitives demo loops no_nested_borrows proofs \
 	  rust_tea tea-bridges tea-equiv tea-vectors \
 	  rust_tea_arr tea_arr-vectors tea-arr-equiv \
@@ -103,7 +126,12 @@ verify:
 	  aes_fixslice_correspondence aes_fixslice_subbytes \
 	  aes_fixslice_mixcolumns aes_fixslice_addroundkey aes_fixslice_round \
 	  aes_fixslice_shiftrows aes_fixslice_rounds aes_fixslice_keyschedule \
-	  aes_fixslice_keycore aes_fixslice_keychain aes_fixslice_keyops aes_fixslice_keyround aes_fixslice_keycrux aes_fixslice_keystep aes_fixslice_keyframe aes_fixslice_keyexpand aes_fixslice_keyfold aes_fixslice_keysched aes_fixslice_keydecomp aes_fixslice_keyasm aes_fixslice_keyread aes_fixslice_keybridge aes_fixslice_keymain aes_fixslice_cipher aes_fixslice_cipherops aes_fixslice_maskalg aes_fixslice_windows aes_fixslice_ladder aes_fixslice_final
+	  aes_fixslice_keycore aes_fixslice_keychain aes_fixslice_keyops aes_fixslice_keyround aes_fixslice_keycrux aes_fixslice_keystep aes_fixslice_keyframe aes_fixslice_keyexpand aes_fixslice_keyfold aes_fixslice_keysched aes_fixslice_keydecomp aes_fixslice_keyasm aes_fixslice_keyread aes_fixslice_keybridge aes_fixslice_keymain aes_fixslice_cipher aes_fixslice_cipherops aes_fixslice_maskalg aes_fixslice_windows aes_fixslice_ladder aes_fixslice_final \
+	  cast_probe loop_break loop_break-proofs subslice_probe subslice_probe-proofs \
+	  lebytes_probe lebytes_probe-proofs itermut_probe itermut_probe-proofs \
+	  aes_fixslice_invops_defs aes_fixslice_invops aes_fixslice_invops2 aes_fixslice_invops3 \
+	  aes_fixslice_decoptypes aes_fixslice_decipherops aes_fixslice_decmask aes_fixslice_decipher \
+	  aes_fixslice_decladder aes_fixslice_decfinal
 
 clean:
 	rm -f *.cert *.cert.out *.fasl *.port Makefile-tmp
