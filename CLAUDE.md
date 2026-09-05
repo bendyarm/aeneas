@@ -1,3 +1,13 @@
+# Aeneas — ACL2 backend (branch `acl2-backend`)
+
+**Start with `PORTING-NOTES-ACL2.md`.** The design, the de-vendoring roadmap, every
+resolved problem, and the environment facts of the ACL2 backend live there;
+`tests/acl2/README.md` says what each proof book proves, and `tests/acl2/Makefile`
+is the extraction and certification recipe. A prebuilt environment with the
+toolchain, the charon fork, and ACL2 with certified books is at
+https://github.com/bendyarm/aeneas-acl2-devenv. What follows is upstream's
+Lean-oriented guidance; it still applies to the shared compiler code.
+
 # Aeneas — Lean Backend
 
 Aeneas translates Rust programs to pure Lean code for formal verification.

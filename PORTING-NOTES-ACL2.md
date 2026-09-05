@@ -34,19 +34,40 @@ every `match … backend () …` non-exhaustive, which is the work list.
    `make verify-acl2` (cert.pl), per the plan's Stage 2. `Backend.ml`
    already has the `Acl2` variant, deliberately not in `all`.
 
-## Environment facts (Claude cloud sandbox, for CI-of-the-fork planning)
+## Environment facts (Claude cloud sandbox) and the prebuilt dev environment
 
-- ACL2 master builds from source in ~2 min (SBCL); the needed book subset
-  certifies in ~39 min at `-j2`; certified tree ≈ 2.0 GB, ≈ 0.6 GB zstd.
 - The sandbox cannot build charon (needs `nightly-2026-06-01` + rustc-dev;
-  rustup dist server blocked) nor fetch opam packages (opam.ocaml.org
-  blocked). GitHub itself and GitHub release assets ARE reachable.
-- Consequence: to iterate on this branch inside such a sandbox, ship a
-  dev-container rootfs via release assets containing: the opam switch with
-  aeneas deps installed (+ dune), charon built at `charon-pin` (binary +
-  charon-ml built in the switch), the pinned Rust nightly toolchain, and
-  ACL2 + the certified book subset. Then the edit→`dune build`→extract→
-  `cert.pl` loop runs entirely offline.
+  rustup's dist server is blocked) nor fetch opam packages (opam.ocaml.org and
+  codeload.github.com are blocked). Reachable: github.com (git), GitHub release
+  assets (objects.githubusercontent.com), crates.io, and -- once allowed in the
+  cloud environment's network settings -- ghcr.io together with
+  pkg-containers.githubusercontent.com (GHCR redirects every blob download
+  there; ghcr.io alone is not enough). Those settings belong to the
+  environment, not the session, so they persist.
+- Consequence: the toolchain arrives prebuilt. The first cut was the
+  `aeneas-dev-v1` release of this repo (a rootfs tarball built by hand on
+  2026-08-03 from a Dockerfile: opam switch with the aeneas deps, charon at
+  `charon-pin`, the pinned Rust nightly, ACL2 master + a certified book
+  subset). It is superseded by the `aeneas-acl2-devenv` repository
+  (https://github.com/bendyarm/aeneas-acl2-devenv), whose image
+  `ghcr.io/bendyarm/aeneas-acl2-dev` is built by CI from pinned commits of
+  this branch and of bendyarm/charon, takes ACL2 and its certified books from
+  Kestrel's `acl2-kcerts` image (which, unlike the v1 subset, includes
+  centaur/gl and kestrel/crypto), and can be pulled into a sandbox without
+  Docker (`scripts/bootstrap-sandbox.sh`, then `scripts/in-dev.sh`). The
+  edit -> `dune build` -> extract -> `cert.pl` loop then runs offline.
+- Reproduction record (2026-09-04, sandbox with 2 cores / 7 GB): starting
+  from the v1 rootfs moved to this branch @ c1dcfb54 and charon @ 58b7d543,
+  aeneas built in 2m22s and charon in 5m42s (the image's cargo cache is
+  enough to rebuild charon offline); the AES crate extracts in about a
+  minute; `make -C tests/acl2 regen` over all crates reproduces every
+  generated book byte-for-byte; and all 78 books of `tests/acl2` certify
+  against ACL2 @ 0612757b (kcerts, 2026-09-02) in ~16 CPU-minutes. Two
+  things to know: the GL books need `cert.pl -j 1` on machines with less than
+  ~12 GB (with `-j 2` on 7 GB the run died silently in the middle of a book,
+  with no error in the log), and the `verify`/`regen` lists in
+  `tests/acl2/Makefile` had fallen behind the directory (decrypt books,
+  probes) -- fixed alongside this note.
 
 ## Known workaround: unrolling loops that call heavy functions
 
