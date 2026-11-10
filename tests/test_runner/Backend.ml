@@ -9,7 +9,7 @@ type t =
   | BorrowCheck
       (** Borrow check: no backend. We use this when we only want to
           borrow-check the program *)
-[@@deriving ord, sexp]
+[@@deriving ord]
 
 (* TODO: reactivate HOL4 once traits are parameterized by their associated types *)
 (* Acl2 is deliberately NOT in [all] yet: it is driven by an explicit

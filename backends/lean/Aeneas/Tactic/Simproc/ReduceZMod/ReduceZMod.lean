@@ -1,6 +1,9 @@
-import Aeneas.Tactic.Simproc.ReduceZMod.Init
-import Mathlib.Algebra.Algebra.ZMod
-import AeneasMeta.Utils
+module
+public meta import Aeneas.Tactic.Simproc.ReduceZMod.Init
+public meta import Mathlib.Data.Int.GCD
+public import Mathlib.Algebra.Algebra.ZMod
+public import AeneasMeta.Utils
+public section
 
 namespace Aeneas.ReduceZMod
 
@@ -80,9 +83,9 @@ simproc reduceZModInv (@Inv.inv _ (ZMod.instInv _) _) := fun e => do
 simproc reduceZModPow
   (@HPow.hPow _ Nat _
       (@instHPow _ Nat
-        (@Monoid.toPow _
-          (@MonoidWithZero.toMonoid _
-            (@Semiring.toMonoidWithZero _
+        (@NPow.toPow _
+          (@Monoid.toNPow _
+            (@Semiring.toMonoid _
               (@CommSemiring.toSemiring _ (@CommRing.toCommSemiring _ (ZMod.commRing _)))))))
       _ _) := fun e => do
   trace[ReduceZMod] "Visiting: {e}"

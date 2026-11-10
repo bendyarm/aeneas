@@ -1,5 +1,7 @@
-import Aeneas.Std.Scalar.Ops.Add
-import Aeneas.Std.Scalar.Elab
+module
+public import Aeneas.Std.Scalar.Ops.Add
+public import Aeneas.Std.Scalar.Elab
+public section
 
 namespace Aeneas.Std
 
@@ -35,7 +37,7 @@ theorem core.num.checked_add_UScalar_bv_spec {ty} (x y : UScalar ty) :
   have h := UScalar.add_equiv x y
   have hAdd : x + y = UScalar.add x y := by rfl
   rw [hAdd] at h
-  cases hEq : UScalar.add x y <;> simp_all [Option.ofResult, checked_add_UScalar, UScalar.max] <;>
+  split at h <;> simp_all [Option.ofResult, checked_add_UScalar, UScalar.max] <;>
   (have : 0 < 2^ty.numBits := by simp) <;>
   omega
 
@@ -46,7 +48,7 @@ theorem «%S».checked_add_bv_spec (x y : «%S») :
   | none => «%S».max < x.val + y.val := by
   have := core.num.checked_add_UScalar_bv_spec x y
   simp_all [«%S».checked_add, UScalar.max, «%S».bv]
-  cases h: core.num.checked_add_UScalar x y <;> (simp_all [«%S».max, «%S».numBits]; try rfl)
+  cases h: core.num.checked_add_UScalar x y <;> simp_all [«%S».max, «%S».numBits]
 
 /-!
 Signed checked add
@@ -58,7 +60,7 @@ theorem core.num.checked_add_IScalar_bv_spec {ty} (x y : IScalar ty) :
   have h := IScalar.add_equiv x y
   have hAdd : x + y = IScalar.add x y := by rfl
   rw [hAdd] at h
-  cases hEq : IScalar.add x y <;> simp_all [Option.ofResult, checked_add_IScalar, IScalar.min, IScalar.max] <;>
+  split at h <;> simp_all [Option.ofResult, checked_add_IScalar, IScalar.min, IScalar.max] <;>
   omega
 
 iscalar @[step_pure «%S».checked_add x y]
@@ -68,6 +70,6 @@ theorem «%S».checked_add_bv_spec (x y : «%S») :
   | none => ¬ («%S».min ≤ x.val + y.val ∧ x.val + y.val ≤ «%S».max) := by
   have := core.num.checked_add_IScalar_bv_spec x y
   simp_all only [IScalar.min, IScalar.max, «%S».bv, «%S».min, «%S».max, «%S».numBits]
-  cases h: core.num.checked_add_IScalar x y <;> (simp_all; try rfl)
+  cases h: core.num.checked_add_IScalar x y <;> simp_all
 
 end Aeneas.Std

@@ -454,8 +454,8 @@ let field_names (fields : Pure.field list) : string list =
 
 let literal_to_acl2 (span : Meta.span) (l : Pure.literal) : string =
   match l with
-  | VScalar (Values.UnsignedScalar (_, v)) -> Z.to_string v
-  | VScalar (Values.SignedScalar (_, v)) -> Z.to_string v
+  | VScalar (Values.UnsignedInteger (_, v)) -> Z.to_string v
+  | VScalar (Values.SignedInteger (_, v)) -> Z.to_string v
   | VBool true -> "t"
   | VBool false -> "nil"
   | VPureNat v | VPureInt v -> Z.to_string v
@@ -682,7 +682,7 @@ and defunct_lambda (span : Meta.span) (ctx : actx) (env : venv) (lam : texpr) :
 and qualif_app_to_acl2 (span : Meta.span) (ctx : actx) (_env : venv)
     (q : qualif) (args : texpr list) (args_s : string list) : string =
   match q.id with
-  | FunOrOp (Fun (FromLlbc (FunId (FRegular id), lp))) -> (
+  | FunOrOp (Fun (FromLlbc (FunId id, lp))) -> (
       (* opaque std function with a known primitive mapping wins first *)
       match
         Option.bind (FunDeclId.Map.find_opt id ctx.fun_names) std_fun_mapping
@@ -701,55 +701,6 @@ and qualif_app_to_acl2 (span : Meta.span) (ctx : actx) (_env : venv)
                   ^ if is_body then "-body" else ""
             in
             sexp (name :: args_s))
-  | FunOrOp (Fun (FromLlbc (FunId (FBuiltin bid), _))) -> (
-      match bid with
-      | Types.BoxNew -> (
-          (* Box is transparent in the pure model *)
-          match args_s with
-          | [ a ] -> a
-          | _ -> [%craise] span "ACL2: ill-formed Box::new")
-      | Types.ArrayToSliceShared -> (
-          (* identity on the list model *)
-          match args_s with
-          | [ a ] -> a
-          | _ -> [%craise] span "ACL2: ill-formed array-to-slice")
-      | Types.ArrayToSliceMut ->
-          (* returns a (slice, backward) pair: only meaningful at a
-             pair-destructuring let, which [mut_borrow_let] intercepts *)
-          [%craise] span
-            "ACL2: array_to_slice_mut outside a pair-destructuring let"
-      | Types.ArrayRepeat -> (
-          (* [x; N]: N is a const generic. After --monomorphize it is a
-             concrete literal, so we can build (array-repeat N x). *)
-          match (q.generics.const_generics, args_s) with
-          | [ CgValue n_lit ], [ x ] ->
-              sexp [ "array-repeat"; literal_to_acl2 span n_lit; x ]
-          | _ ->
-              [%craise] span
-                "ACL2: array-repeat needs a literal length and one element")
-      | Types.Index { is_range = false; mutability = Types.RShared; _ } ->
-          sexp ("array-index" :: args_s)
-      | Types.Index { is_range = false; mutability = Types.RMut; _ } ->
-          (* mutable single-element index: micro-passes usually turn the
-             write side into UpdateAtIndex; a surviving &mut index means a
-             backward function, which we reject *)
-          [%craise] span
-            "ACL2: &mut index survived to extraction (backward function)"
-      | Types.Index { is_range = true; mutability = Types.RShared; _ } -> (
-          (* a[r] shared: bounds-checked window read *)
-          match (args, args_s) with
-          | [ _; r ], [ a_s; r_s ] ->
-              let a_tmp = fresh_tmp ctx in
-              let r_tmp = fresh_tmp ctx in
-              let lo, hi = range_window_sexps span ctx r.ty a_tmp r_tmp in
-              "(b* ((" ^ a_tmp ^ " " ^ a_s ^ ") (" ^ r_tmp ^ " " ^ r_s
-              ^ ")) " ^ sexp [ "vec-index-range"; a_tmp; lo; hi ] ^ ")"
-          | _ -> [%craise] span "ACL2: ill-formed shared subslice index")
-      | Types.Index { is_range = true; _ } ->
-          [%craise] span
-            "ACL2: mutable subslice index outside a pair-destructuring let"
-      | Types.PtrFromParts _ ->
-          [%craise] span "ACL2: raw pointers not supported")
   | FunOrOp (Fun (FromLlbc (TraitMethod _, _))) ->
       [%craise] span "ACL2: trait method call; run charon with --monomorphize"
   | FunOrOp (Fun (Pure Return)) -> sexp ("ok" :: args_s)
@@ -758,6 +709,18 @@ and qualif_app_to_acl2 (span : Meta.span) (ctx : actx) (_env : venv)
   | FunOrOp (Fun (Pure FuelDecrease)) -> sexp ("1-" :: args_s)
   | FunOrOp (Fun (Pure FuelEqZero)) -> sexp ("zp" :: args_s)
   | FunOrOp (Fun (Pure (UpdateAtIndex _))) -> sexp ("array-update" :: args_s)
+  | FunOrOp (Fun (Pure (IndexAtIndex _))) ->
+      (* Shared single-element index.  Upstream no longer has LLBC builtin
+         function ids: charon desugars [a[i]] to a standard-library call and a
+         micro-pass turns that into this pure builtin.  Same primitive the
+         former builtin [Index] arm printed. *)
+      sexp ("array-index" :: args_s)
+  | FunOrOp (Fun (Pure (IndexMutAtIndex _))) ->
+      (* mutable single-element index: micro-passes usually turn the write
+         side into UpdateAtIndex; a surviving &mut index means a backward
+         function, which [mut_borrow_pair_let] intercepts at a let *)
+      [%craise] span
+        "ACL2: &mut index survived to extraction (backward function)"
   | FunOrOp (Fun (Pure _)) ->
       [%craise] span "ACL2: unsupported pure builtin function"
   | FunOrOp (Unop (Not None)) -> sexp ("not" :: args_s)
@@ -778,9 +741,14 @@ and qualif_app_to_acl2 (span : Meta.span) (ctx : actx) (_env : venv)
             "ACL2: only integer and bool->integer casts are supported")
   | FunOrOp (Unop (Cast (CastRawPtr _))) ->
       [%craise] span "ACL2: raw-pointer casts not supported"
+  | FunOrOp (Unop ArrayToSlice) -> (
+      (* shared array-to-slice unsizing: identity on the list model (was the
+         LLBC builtin [ArrayToSliceShared]) *)
+      match args_s with
+      | [ a ] -> a
+      | _ -> [%craise] span "ACL2: ill-formed array-to-slice")
   | FunOrOp (Unop _) ->
-      [%craise] span
-        "ACL2: unsupported unop (neg / bitwise-not / array-to-slice)"
+      [%craise] span "ACL2: unsupported unop (neg / bitwise-not)"
   | FunOrOp (Binop b) -> (
       match binop_to_acl2 span b with
       | "acl2::nequal" -> sexp [ "not"; sexp ("equal" :: args_s) ]
@@ -908,11 +876,11 @@ and mut_borrow_let (span : Meta.span) (ctx : actx) (env : venv)
       (if Option.is_some (Sys.getenv_opt "ACL2_DEBUG_BORROW") then
          let hs =
            match head.e with
-           | Qualif { id = FunOrOp (Fun (FromLlbc (FunId (FRegular id), _))); _ }
+           | Qualif { id = FunOrOp (Fun (FromLlbc (FunId id, _))); _ }
              -> (
                match FunDeclId.Map.find_opt id ctx.fun_names with
-               | Some n -> "FRegular:" ^ n
-               | None -> "FRegular:?")
+               | Some n -> "Fun:" ^ n
+               | None -> "Fun:?")
            | Qualif _ -> "Qualif:other"
            | _ -> "head:other"
          in
@@ -920,33 +888,18 @@ and mut_borrow_let (span : Meta.span) (ctx : actx) (env : venv)
            (List.length args));
       let shape =
         match (head.e, args) with
-        | ( Qualif { id = FunOrOp (Fun (FromLlbc (FunId (FRegular id), _))); _ },
+        | ( Qualif { id = FunOrOp (Fun (FromLlbc (FunId id, _))); _ },
             [ arr; r ] )
           when (match FunDeclId.Map.find_opt id ctx.fun_names with
                | Some n -> is_subslice_index_mut n
                | None -> false) -> Some (`Subslice (arr, r))
-        | ( Qualif
-              {
-                id =
-                  FunOrOp
-                    (Fun
-                       (FromLlbc
-                          ( FunId
-                              (FBuiltin
-                                 (Types.Index
-                                    { is_range = true; mutability = Types.RMut; _ })),
-                            _ )));
-                _;
-              },
-            [ arr; r ] ) -> Some (`Subslice (arr, r))
-        | ( Qualif
-              {
-                id =
-                  FunOrOp
-                    (Fun (FromLlbc (FunId (FBuiltin Types.ArrayToSliceMut), _)));
-                _;
-              },
-            [ arr ] ) -> Some (`ArrToSlice arr)
+        (* TODO(upstream merge): the LLBC builtins [Index {is_range; RMut}]
+           and [ArrayToSliceMut] no longer exist.  Mutable subslice indexing
+           arrives by name (first arm).  The mutable array-to-slice borrow now
+           arrives as a standard-library call whose shape has to be read off
+           real charon >= 0.1.315 output before it is recognized here; until
+           then the [`ArrToSlice] printer below is unreachable. *)
+        | _ when false -> Some (`ArrToSlice (List.hd args))
         | _ -> None
       in
       match shape with
@@ -1005,25 +958,15 @@ and mut_borrow_pair_let (span : Meta.span) (ctx : actx) (env : venv)
       let head = unmeta head in
       let kind =
         match head.e with
-        | Qualif { id = FunOrOp (Fun (FromLlbc (FunId (FRegular id), _))); _ }
+        | Qualif { id = FunOrOp (Fun (FromLlbc (FunId id, _))); _ }
           -> (
             match FunDeclId.Map.find_opt id ctx.fun_names with
             | Some n when is_subslice_index_mut n -> Some `Range
             | Some n when is_elem_index_mut n -> Some `Elem
             | _ -> None)
-        | Qualif
-            {
-              id =
-                FunOrOp
-                  (Fun
-                     (FromLlbc
-                        ( FunId
-                            (FBuiltin
-                               (Types.Index
-                                  { is_range; mutability = Types.RMut; _ })),
-                          _ )));
-              _;
-            } -> if is_range then Some `Range else Some `Elem
+        | Qualif { id = FunOrOp (Fun (Pure (IndexMutAtIndex _))); _ } ->
+            (* was the LLBC builtin [Index {is_range = false; RMut}] *)
+            Some `Elem
         | _ -> None
       in
       match (kind, args) with
@@ -1114,7 +1057,7 @@ and iter_pair_let (span : Meta.span) (ctx : actx) (env : venv) (monadic : bool)
       let head, args = destruct_apps (unmeta e1) in
       let hname =
         match (unmeta head).e with
-        | Qualif { id = FunOrOp (Fun (FromLlbc (FunId (FRegular id), _))); _ }
+        | Qualif { id = FunOrOp (Fun (FromLlbc (FunId id, _))); _ }
           -> FunDeclId.Map.find_opt id ctx.fun_names
         | _ -> None
       in
@@ -1188,7 +1131,7 @@ and next_triple_let (span : Meta.span) (ctx : actx) (env : venv)
       let head, _ = destruct_apps (unmeta e1) in
       let hname =
         match (unmeta head).e with
-        | Qualif { id = FunOrOp (Fun (FromLlbc (FunId (FRegular id), _))); _ }
+        | Qualif { id = FunOrOp (Fun (FromLlbc (FunId id, _))); _ }
           -> FunDeclId.Map.find_opt id ctx.fun_names
         | _ -> None
       in
@@ -1463,7 +1406,7 @@ let group_callees (keys : fkey list) (d : Pure.fun_decl) : fkey list =
 
       method! visit_qualif _ q =
         match q.id with
-        | FunOrOp (Fun (FromLlbc (FunId (FRegular id), lp)))
+        | FunOrOp (Fun (FromLlbc (FunId id, lp)))
           when List.mem (id, lp) keys ->
             if not (List.mem (id, lp) !found) then found := (id, lp) :: !found
         | _ -> ()
@@ -2071,37 +2014,41 @@ let extract_crate (out : out_channel) (rust_module_name : string)
   let trans_ctx = ctx.trans_ctx in
   (* Build the name maps *)
   let type_names =
-    TypeDeclId.Map.mapi
-      (fun _ (d : Pure.type_decl) -> mangle_name trans_ctx d.item_meta.name)
+    TypeDeclId.Map.map
+      (fun (d : Pure.type_decl) -> mangle_name trans_ctx d.item_meta.name)
       ctx.trans_types
   in
+  (* Upstream's declaration-id maps are now read-only hash maps (no [add] /
+     [empty]): collect the bindings as lists and convert once. *)
   let fun_names =
-    FunDeclId.Map.fold
-      (fun id (t : pure_fun_translation) m ->
-        let n = mangle_name trans_ctx t.f.item_meta.name in
-        let m = FunDeclId.Map.add id n m in
-        (* loops and bodies share the base name; suffixes are added at
-           print time from [loop_id] *)
-        List.fold_left
-          (fun m (d : Pure.fun_decl) -> FunDeclId.Map.add d.def_id n m)
-          m (t.loops @ t.bodies))
-      ctx.trans_funs FunDeclId.Map.empty
+    FunDeclId.Map.of_list
+      (FunDeclId.Map.fold
+         (fun id (t : pure_fun_translation) acc ->
+           let n = mangle_name trans_ctx t.f.item_meta.name in
+           (* loops and bodies share the base name; suffixes are added at
+              print time from [loop_id] *)
+           List.fold_left
+             (fun acc (d : Pure.fun_decl) -> (d.def_id, n) :: acc)
+             ((id, n) :: acc)
+             (t.loops @ t.bodies))
+         ctx.trans_funs [])
   in
   let opaque_funs =
-    FunDeclId.Map.fold
-      (fun id (t : pure_fun_translation) s ->
-        if t.f.body = None then FunDeclId.Set.add id s else s)
-      ctx.trans_funs FunDeclId.Set.empty
+    FunDeclId.Set.of_list
+      (FunDeclId.Map.fold
+         (fun id (t : pure_fun_translation) acc ->
+           if t.f.body = None then id :: acc else acc)
+         ctx.trans_funs [])
   in
 
   (* Globals: name each as a defconst symbol *<mangled>*, and remember its
      initializer function id so we can emit its value. *)
   let global_names =
-    GlobalDeclId.Map.fold
-      (fun id (g : LlbcAst.global_decl) m ->
-        let n = "*" ^ mangle_name trans_ctx g.item_meta.name ^ "*" in
-        GlobalDeclId.Map.add id n m)
-      ctx.trans_ctx.crate.global_decls GlobalDeclId.Map.empty
+    GlobalDeclId.Map.of_list
+      (GlobalDeclId.Map.fold
+         (fun id (g : LlbcAst.global_decl) acc ->
+           (id, "*" ^ mangle_name trans_ctx g.item_meta.name ^ "*") :: acc)
+         ctx.trans_ctx.crate.global_decls [])
   in
   let actx =
     {
@@ -2241,7 +2188,7 @@ let extract_crate (out : out_channel) (rust_module_name : string)
     List.partition
       (fun (dg : LlbcAst.declaration_group) ->
         match dg with LlbcAst.TypeGroup _ -> true | _ -> false)
-      ctx.crate.declarations
+      (Option.get ctx.crate.declarations)
   in
   List.iter emit_group type_groups;
   (* Iterator-model companions: the decrement-model write-back and the

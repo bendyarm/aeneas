@@ -1,4 +1,7 @@
-import Aeneas.Tactic.Step.Step
+module
+public import Aeneas.Tactic.Step.Step
+public meta import Aeneas.Std.Array.Array
+public section
 
 /-!
 # Step Array Spec
@@ -36,7 +39,7 @@ namespace Std
 
 open Result WP
 
-def Array.allIdx (f : Usize → α → Bool) (ls : List α) (i : Nat := 0) : Bool :=
+meta def Array.allIdx (f : Usize → α → Bool) (ls : List α) (i : Nat := 0) : Bool :=
   match ls with
   | [] => True
   | hd :: tl =>
@@ -102,12 +105,12 @@ syntax (name := stepArraySpec)
     " { " ident " => " term " } " " by " tacticSeq : command
 
 open Lean Lean.Elab Lean.Parser.Command Lean.Elab.Command in
-def parseStepArraySpec
+meta def parseStepArraySpec
 : TSyntax ``stepArraySpec -> CommandElabM Unit := fun stx => do
   match stx with
   | `($[$vis]? step_array_spec (name := $thm_name:ident) $array:ident [ $i:ident ]! { $x:ident => $pred:term } by $tac:tacticSeq) => do
     -- Compute the visibility of the `step` theorem
-    let vis : TSyntax `declModifiers ← do
+    let vis : TSyntax ``declModifiers ← do
       match vis with
       | none => `(declModifiers|@[step])
       | some vis =>
@@ -120,9 +123,13 @@ def parseStepArraySpec
     -- Elaborate the full theorem
     elabCommand
       (← `(command| $vis:declModifiers theorem $thm_name:ident $i (_ : Aeneas.Std.UScalar.val $i < Aeneas.Std.Array.length $array) :
-            Aeneas.Std.WP.spec (Aeneas.Std.Array.index_usize $array $i) (fun $x:ident => $pred) :=
-            Aeneas.Std.Array.index_usize_const_spec (fun $i:ident $x:ident => $pred) (fun $i:ident $x:ident => $pred)
-            $array (by simp) (by $tac) $i (by scalar_tac) (by scalar_tac)))
+            Aeneas.Std.WP.spec (Aeneas.Std.Array.index_usize $array $i) (fun $x:ident => $pred) := by
+            apply Aeneas.Std.Array.index_usize_const_spec
+              (fun $i:ident $x:ident => $pred) (fun $i:ident $x:ident => $pred) $array
+            · simp
+            · $tac
+            · scalar_tac
+            · scalar_tac))
   | _ => throwUnsupportedSyntax
 
 elab tk:stepArraySpec : command => do
@@ -130,7 +137,7 @@ elab tk:stepArraySpec : command => do
 
 namespace Tests
 
-open Std
+open Aeneas.Std
 
 def const_array : Array U32 8#usize := Array.make 8#usize [
   0#u32, 1#u32, 2#u32, 3#u32, 4#u32, 5#u32, 6#u32, 7#u32,

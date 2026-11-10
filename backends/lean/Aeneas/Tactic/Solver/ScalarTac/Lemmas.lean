@@ -1,7 +1,9 @@
-import Mathlib.Data.ZMod.Basic
-import Aeneas.Tactic.Solver.ScalarTac.ScalarTac
-import Aeneas.Std.Scalar.Core
-import Aeneas.Tactic.Simproc.ReduceZMod.ReduceZMod
+module
+public import Mathlib.Data.ZMod.Basic
+public import Aeneas.Tactic.Solver.ScalarTac.ScalarTac
+public import Aeneas.Std.Scalar.Core
+public import Aeneas.Tactic.Simproc.ReduceZMod.ReduceZMod
+public section
 
 namespace Aeneas
 
@@ -236,7 +238,7 @@ end Std
 
 namespace ScalarTac
 
-open Std
+open Aeneas.Std
 
 attribute [scalar_tac_simps] Prod.mk.injEq gt_iff_lt
 
@@ -371,16 +373,16 @@ attribute [scalar_tac_simps, simp_scalar_safe] ReduceZMod.reduceZMod
 attribute [scalar_tac_simps] Set.Mem
 
 @[scalar_tac_simps] theorem Set.mem_insert_nat s x y :
-  @insert ℕ (Set ℕ) Set.instInsert x s y ↔ y = x ∨ s y := by rfl
+  (@insert ℕ (Set ℕ) Set.instInsert x s).Mem y ↔ y = x ∨ s.Mem y := by rfl
 
 @[scalar_tac_simps] theorem Set.mem_singleton_nat x y :
-  @singleton ℕ (Set ℕ) Set.instSingletonSet x y ↔ y = x := by rfl
+  (@singleton ℕ (Set ℕ) Set.instSingletonSet x).Mem y ↔ y = x := by rfl
 
 @[scalar_tac_simps] theorem Set.mem_insert_int s x y :
-  @insert ℤ (Set ℤ) Set.instInsert x s y ↔ y = x ∨ s y := by rfl
+  (@insert ℤ (Set ℤ) Set.instInsert x s).Mem y ↔ y = x ∨ s.Mem y := by rfl
 
 @[scalar_tac_simps] theorem Set.mem_singleton_int x y :
-  @singleton ℤ (Set ℤ) Set.instSingletonSet x y ↔ y = x := by rfl
+  (@singleton ℤ (Set ℤ) Set.instSingletonSet x).Mem y ↔ y = x := by rfl
 
 /-!
 # Subtypes

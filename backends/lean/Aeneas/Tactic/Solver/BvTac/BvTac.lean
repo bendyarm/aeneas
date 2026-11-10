@@ -1,25 +1,30 @@
-import Aeneas.Tactic.Conv.Bvify
-import Aeneas.Std
-import Aeneas.Tactic.Solver.BvTac.Init
+module
+public import Aeneas.Tactic.Conv.Bvify
+public meta import Aeneas.Tactic.Conv.Bvify.Bvify
+public import Aeneas.Std
+public import Aeneas.Tactic.Solver.BvTac.Init
+public section
 
 namespace Aeneas.BvTac
 
 open Lean Lean.Meta Lean.Parser.Tactic Lean.Elab.Tactic
 open Bvify Utils
 
-structure Config extends Lean.Elab.Tactic.BVDecide.Frontend.BVDecideConfig, Bvify.Config where
+structure Config extends Lean.Elab.Tactic.BVDecide.BVDecideConfig, Bvify.Config where
 
+meta section
 declare_config_elab elabConfig Config
+end
 
-def disjConj : Std.HashSet Name := Std.HashSet.ofList [
+meta def disjConj : Std.HashSet Name := Std.HashSet.ofList [
   ``And, ``Or
 ]
 
-def arithConsts : Std.HashSet Name := Std.HashSet.ofList [
+meta def arithConsts : Std.HashSet Name := Std.HashSet.ofList [
   ``BEq.beq, ``LT.lt, ``LE.le, ``GT.gt, ``GE.ge
 ]
 
-partial def getn : TacticM Expr := do
+meta partial def getn : TacticM Expr := do
   let mgoal ← getMainGoal
   let goalTy ← instantiateMVars (← mgoal.getType)
   let raiseError : TacticM Expr :=
@@ -49,7 +54,7 @@ partial def getn : TacticM Expr := do
       raiseError
   aux goalTy
 
-partial def bvTacPreprocess (config : Config) (n : Option Expr): TacticM Unit := do
+meta partial def bvTacPreprocess (config : Config) (n : Option Expr): TacticM Unit := do
   Elab.Tactic.focus do
   trace[BvTac] "Original goal: {← getMainGoal}"
   /- First try simplifying the goal - if it is an (in-)equality between scalars, it may get
@@ -79,7 +84,7 @@ partial def bvTacPreprocess (config : Config) (n : Option Expr): TacticM Unit :=
 elab "bv_tac_preprocess" config:Parser.Tactic.optConfig n:(colGt term)? : tactic => do
   bvTacPreprocess (← elabConfig config) (← optElabTerm n)
 
-open Lean.Elab.Tactic.BVDecide.Frontend Lean.Elab in
+open Lean.Meta.Tactic.BVDecide Lean.Elab in
 /-- `bv_tac n` solves goals about bit-vectors.
 
 **Usage**: `bv_tac n` where `n` is the bitwidth to use for the bit-vectors.
@@ -118,14 +123,15 @@ elab "bv_tac" config:Parser.Tactic.optConfig n:(colGt term)? : tactic =>
   -- Call bv_decide
   IO.FS.withTempFile fun _ lratFile => do
     let config := config.toBVDecideConfig
-    let cfg ← BVDecide.Frontend.TacticContext.new lratFile config
+    let cfg ← Lean.Meta.Tactic.BVDecide.TacticContext.new lratFile config
     liftMetaFinishingTactic fun g => do
-      discard <| bvDecide g cfg
+      let params ← Grind.mkDefaultParams {}
+      discard <| Grind.GrindM.run (params := params) <| bvDecide (.mvarIdTarget g) cfg
 
 /-!
 # Tests
 -/
-open Std
+open Aeneas.Std
 
 example (x y : U8) (h : x.val ≤ y.val) : x.bv ≤ y.bv := by
   bv_tac

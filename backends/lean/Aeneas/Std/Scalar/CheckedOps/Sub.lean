@@ -1,5 +1,7 @@
-import Aeneas.Std.Scalar.Ops.Sub
-import Aeneas.Std.Scalar.Elab
+module
+public import Aeneas.Std.Scalar.Ops.Sub
+public import Aeneas.Std.Scalar.Elab
+public section
 
 namespace Aeneas.Std
 
@@ -35,7 +37,7 @@ theorem core.num.checked_sub_UScalar_bv_spec {ty} (x y : UScalar ty) :
   have h := UScalar.sub_equiv x y
   have hsub : x - y = UScalar.sub x y := by rfl
   rw [hsub] at h
-  cases hEq : UScalar.sub x y <;> simp_all [Option.ofResult, checked_sub_UScalar]
+  split at h <;> simp_all [Option.ofResult, checked_sub_UScalar]
 
 uscalar @[step_pure «%S».checked_sub x y]
 theorem «%S».checked_sub_bv_spec (x y : «%S») :
@@ -44,7 +46,7 @@ theorem «%S».checked_sub_bv_spec (x y : «%S») :
   | none => x.val < y.val := by
   have := core.num.checked_sub_UScalar_bv_spec x y
   simp_all [«%S».checked_sub, «%S».bv]
-  cases h: core.num.checked_sub_UScalar x y <;> (simp_all; try rfl)
+  cases h: core.num.checked_sub_UScalar x y <;> simp_all
 
 /-!
 Signed checked sub
@@ -56,7 +58,7 @@ theorem core.num.checked_sub_IScalar_bv_spec {ty} (x y : IScalar ty) :
   have h := IScalar.sub_equiv x y
   have hsub : x - y = IScalar.sub x y := by rfl
   rw [hsub] at h
-  cases hEq : IScalar.sub x y <;> simp_all [Option.ofResult, checked_sub_IScalar, IScalar.min, IScalar.max] <;>
+  split at h <;> simp_all [Option.ofResult, checked_sub_IScalar, IScalar.min, IScalar.max] <;>
   (have : 0 < 2^ty.numBits := by simp) <;>
   omega
 
@@ -67,6 +69,6 @@ theorem «%S».checked_sub_bv_spec (x y : «%S») :
   | none => ¬ («%S».min ≤ x.val - y.val ∧ x.val - y.val ≤ «%S».max) := by
   have := core.num.checked_sub_IScalar_bv_spec x y
   simp_all only [IScalar.min, IScalar.max, «%S».bv, «%S».min, «%S».max, «%S».numBits]
-  cases h: core.num.checked_sub_IScalar x y <;> (simp_all; try rfl)
+  cases h: core.num.checked_sub_IScalar x y <;> simp_all
 
 end Aeneas.Std

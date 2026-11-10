@@ -7,13 +7,13 @@ include Charon.Values
  * write "abstraction" (because those values are not abstract, they simply are
  * inside abstractions) *)
 
-module BorrowId = IdGen ()
-module SharedBorrowId = IdGen ()
-module SymbolicValueId = IdGen ()
-module AbsId = IdGen ()
-module FunCallId = IdGen ()
-module LoopId = IdGen ()
-module MetaId = IdGen ()
+module BorrowId = OrdIdGen ()
+module SharedBorrowId = OrdIdGen ()
+module SymbolicValueId = OrdIdGen ()
+module AbsId = OrdIdGen ()
+module FunCallId = OrdIdGen ()
+module LoopId = OrdIdGen ()
+module MetaId = OrdIdGen ()
 
 type symbolic_value_id = SymbolicValueId.id [@@deriving show, eq, ord]
 type symbolic_value_id_set = SymbolicValueId.Set.t [@@deriving show, eq, ord]
@@ -72,8 +72,18 @@ class ['self] map_tvalue_base =
       fun env ids -> BorrowId.Set.map (self#visit_loan_id env) ids
   end
 
+(** A primitive value. Charon represents those directly as constant expression
+    kinds, while the interpreter also needs them as runtime values. *)
+type literal =
+  | VScalar of integer_value
+  | VFloat of float_value
+  | VBool of bool
+  | VChar of char_value
+  | VByteStr of int list
+  | VStr of string
+
 (** A symbolic value *)
-type symbolic_value = {
+and symbolic_value = {
   sv_id : symbolic_value_id;
   sv_ty : ty;  (** This should be a type with regions *)
 }
@@ -286,10 +296,16 @@ type abs_kind =
   | Join
       (** The abstraction was introduced after joining contexts, typically after
           an [if then else] or a [match] *)
+  | Static
+      (** An abstraction owning the static region, introduced to hold the shared
+          loans of values which live as long as the static region (for instance,
+          when evaluating a reference to a global, or a string literal).
+          Similarly to [Identity], this abstraction doesn't have any
+          computational content. *)
 [@@deriving show, eq, ord]
 
-module AbsBVarId = IdGen ()
-module AbsFVarId = IdGen ()
+module AbsBVarId = OrdIdGen ()
+module AbsFVarId = OrdIdGen ()
 
 (** A DeBruijn index identifying a group of bound variables *)
 type abs_db_scope_id = int [@@deriving show, eq, ord]
@@ -309,7 +325,7 @@ let ( abs_fvar_id_counter,
     environment, because they contain borrows for instance, typically because
     they might be overwritten during an assignment. *)
 module DummyVarId =
-IdGen ()
+OrdIdGen ()
 
 type dummy_var_id = DummyVarId.id [@@deriving show, eq, ord]
 
@@ -345,6 +361,9 @@ class ['self] iter_env_base =
 
     method visit_region_id_set : 'env -> region_id_set -> unit =
       fun env ids -> RegionId.Set.iter (self#visit_region_id env) ids
+
+    method visit_region_set : 'env -> region_set -> unit =
+      fun env rs -> RegionSet.iter (self#visit_region env) rs
 
     method visit_abs_id : 'env -> abs_id -> unit = fun _ _ -> ()
 
@@ -403,6 +422,9 @@ class ['self] map_env_base =
 
     method visit_region_id_set : 'env -> region_id_set -> region_id_set =
       fun env ids -> RegionId.Set.map (self#visit_region_id env) ids
+
+    method visit_region_set : 'env -> region_set -> region_set =
+      fun env rs -> RegionSet.map (self#visit_region env) rs
 
     method visit_abs_id : 'env -> abs_id -> abs_id = fun _ x -> x
 
@@ -1115,7 +1137,7 @@ and abs_fun =
     When calling a function, we lose information about the borrow graph: part of
     it is thus "abstracted" away. *)
 and evalue =
-  | ELet of region_id_set * tepat * tevalue * tevalue
+  | ELet of region_set * tepat * tevalue * tevalue
       (** Because let-bindings are used to bind expressions refering to
           different sets of regions, we need to precise the regions projected in
           the bound expression.
@@ -1520,7 +1542,10 @@ and abs = {
 }
 
 and abs_regions = {
-  owned : region_id_set;  (** Regions owned by the abstraction *)
+  owned : region_set;
+      (** Regions owned by the abstraction.
+
+          Note that this set may contain the static region. *)
 }
 
 (** A binder used in an environment, to map a variable to a value *)

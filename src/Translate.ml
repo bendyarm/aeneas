@@ -3,7 +3,6 @@ open Types
 open Values
 open LlbcAst
 open Contexts
-open Builtin
 module SA = SymbolicAst
 module Micro = PureMicroPasses
 open TranslateCore
@@ -141,7 +140,7 @@ let translate_function_to_pure_aux (trans_ctx : trans_ctx)
 
   let calls = FunCallId.Map.empty in
   let recursive_type_decls =
-    TypeDeclId.Set.of_list
+    TypeDeclId.TreeSet.of_list
       (List.filter_map
          (fun (tid, g) ->
            match g with
@@ -306,7 +305,6 @@ let translate_function_to_pure (trans_ctx : trans_ctx) (marked_ids : marked_ids)
 
 type translated_crate = {
   type_decls : Pure.type_decl list;
-  builtin_fun_sigs : Pure.fun_sig BuiltinFunIdMap.t;
   fun_decls : pure_fun_translation list;
   global_decls : Pure.global_decl list;
   trait_decls : Pure.trait_decl list;
@@ -429,16 +427,6 @@ let translate_crate_to_pure (crate : crate) (marked_ids : marked_ids) :
 
     FunOrMethodId.Map.of_list
       (FunOrMethodId.Map.bindings method_sigs @ fun_decl_sigs)
-  in
-
-  (* Translate the signatures of the builtin functions *)
-  let builtin_fun_sigs =
-    BuiltinFunIdMap.map
-      (fun (info : builtin_fun_info) ->
-        SymbolicToPureTypes.translate_fun_sig trans_ctx
-          (Pure.FunId (FBuiltin info.fun_id)) info.fun_sig
-          (List.map (fun _ -> None) info.fun_sig.item_binder_value.inputs))
-      builtin_fun_infos
   in
 
   (* Translate all the functions.
@@ -605,15 +593,14 @@ let translate_crate_to_pure (crate : crate) (marked_ids : marked_ids) :
 
   (* Apply the micro-passes *)
   let pure_translations =
-    Micro.apply_passes_to_pure_fun_translations crate trans_ctx builtin_fun_sigs
-      type_decls trait_impls pure_translations
+    Micro.apply_passes_to_pure_fun_translations crate trans_ctx type_decls
+      trait_impls pure_translations
   in
 
   (* Return *)
   ( trans_ctx,
     {
       type_decls;
-      builtin_fun_sigs;
       fun_decls = pure_translations;
       global_decls;
       trait_decls;
@@ -682,7 +669,7 @@ let crate_has_opaque_non_builtin_decls (ctx : gen_ctx) (filter_builtin : bool) :
     [extract_extra_info] is [true], we extract this extra information (after the
     declaration, if both booleans are [true]). *)
 let export_type (fmt : Format.formatter) (config : gen_config) (ctx : gen_ctx)
-    (type_decl_group : Pure.TypeDeclId.Set.t) (kind : ExtractBase.decl_kind)
+    (type_decl_group : Pure.TypeDeclId.TreeSet.t) (kind : ExtractBase.decl_kind)
     (def : Pure.type_decl) (extract_decl : bool) (extract_extra_info : bool) :
     unit =
   (* Update the kind, if the type is opaque *)
@@ -719,7 +706,7 @@ let export_types_group (fmt : Format.formatter) (config : gen_config)
     (ctx : gen_ctx) (is_rec : bool) (ids : Pure.TypeDeclId.id list) : unit =
   assert (ids <> []);
   let export_type = export_type fmt config ctx in
-  let ids_set = Pure.TypeDeclId.Set.of_list ids in
+  let ids_set = Pure.TypeDeclId.TreeSet.of_list ids in
   let export_type_decl kind id = export_type ids_set kind id true false in
   let export_type_extra_info kind id = export_type ids_set kind id false true in
 
@@ -1029,12 +1016,18 @@ let export_global (fmt : Format.formatter) (config : gen_config) (ctx : gen_ctx)
     <> None
   in
 
+  (* We ignore the anonymous constants (i.e., the promoted constants): the
+     reads of those constants are replaced with calls to their initializers
+     (see [PrePasses.anon_consts_to_calls]), which are then inlined (see
+     [PureMicroPassesGeneral.inline_anon_const_initializers]) *)
+  let is_anon_const = LlbcAstUtils.global_decl_is_anon_const global in
+
   (* Check if we extract the global itself *)
   let extract =
     config.extract_globals
     && (((not is_opaque) && config.extract_transparent)
        || (is_opaque && config.extract_opaque))
-    && not is_builtin
+    && (not is_builtin) && not is_anon_const
   in
   if extract then (
     (* We don't wrap global declaration groups between calls to functions
@@ -1171,7 +1164,13 @@ let extract_definitions (fmt : Format.formatter) (config : gen_config)
           [%craise_opt_span] None "Mutually recursive globals are not supported"
         else (* Translate *)
           export_functions_group pure_funs
-    | GlobalGroup (NonRecGroup id) -> export_global id
+    | GlobalGroup (NonRecGroup id) ->
+        (* The globals without initializers are constants which we inline *)
+        let global =
+          GlobalDeclId.Map.find id ctx.trans_ctx.crate.global_decls
+        in
+        if Option.is_some (Charon.GAstUtils.init_fun_id_of_global global) then
+          export_global id
     | GlobalGroup (RecGroup _ids) ->
         [%craise_opt_span] None "Mutually recursive globals are not supported"
     | TraitDeclGroup (RecGroup ids) ->
@@ -1275,7 +1274,7 @@ let extract_definitions (fmt : Format.formatter) (config : gen_config)
       with CFailure _ ->
         (* An exception was raised: ignore it *)
         ())
-    ctx.crate.declarations
+    (Option.get ctx.crate.declarations)
 
 type extract_file_info = {
   filename : string;
@@ -1306,9 +1305,11 @@ let extract_file (config : gen_config) (ctx : gen_ctx) (fi : extract_file_info)
   end
   else begin
     let fmt = Format.formatter_of_out_channel out in
+    FormatCompat.use_byte_width fmt;
 
     (* Tell EmitJson file/namespace for the upcoming declarations. *)
-    EmitJson.begin_file_if_enabled ~filename:fi.filename ~namespace:fi.namespace;
+    EmitJson.begin_file_if_enabled ~filename:fi.filename ~namespace:fi.namespace
+      ~in_namespace:fi.in_namespace;
 
     (* Print the headers.
    * Note that we don't use the OCaml formatter for purpose: we want to control
@@ -1322,7 +1323,8 @@ let extract_file (config : gen_config) (ctx : gen_ctx) (fi : extract_file_info)
     | Lean ->
         Printf.fprintf out
           "-- THIS FILE WAS AUTOMATICALLY GENERATED BY AENEAS\n";
-        Printf.fprintf out "-- [%s]%s\n" fi.rust_module_name fi.custom_msg
+        Printf.fprintf out "-- [%s]%s\n" fi.rust_module_name fi.custom_msg;
+        if !Config.use_lean_modules then Printf.fprintf out "module\n"
     | Coq | FStar | HOL4 | Acl2 ->
         Printf.fprintf out
           "(** THIS FILE WAS AUTOMATICALLY GENERATED BY AENEAS *)\n";
@@ -1375,31 +1377,53 @@ let extract_file (config : gen_config) (ctx : gen_ctx) (fi : extract_file_info)
           fi.custom_includes;
         Printf.fprintf out "Module %s.\n" fi.module_name
     | Lean ->
-        Printf.fprintf out "import Aeneas\n";
+        let import_kw =
+          if !Config.use_lean_modules then "public import" else "import"
+        in
+        Printf.fprintf out "%s Aeneas\n" import_kw;
         (* Add the custom imports *)
         List.iter
-          (fun m -> Printf.fprintf out "import %s\n" m)
+          (fun m -> Printf.fprintf out "%s %s\n" import_kw m)
           fi.custom_imports;
         (* Add the custom includes *)
         List.iter
-          (fun m -> Printf.fprintf out "import %s\n" m)
+          (fun m -> Printf.fprintf out "%s %s\n" import_kw m)
           fi.custom_includes;
+        if !Config.use_lean_modules then
+          Printf.fprintf out "@[expose] public section\n";
         (* Always open the Primitives namespace *)
         Printf.fprintf out "open Aeneas Aeneas.Std Result ControlFlow Error\n";
-        (* It happens that we generate duplicated namespaces, like `betree.betree`.
-         We deactivate the linter for this, because otherwise it leads to too much
-         noise. *)
-        Printf.fprintf out "set_option linter.dupNamespace false\n";
-        (* The mathlib linter generates warnings when we use hash commands like `#assert`:
-         we deactivate this linter. *)
-        Printf.fprintf out "set_option linter.hashCommand false\n";
-        (* Definitions often contain unused variables: deactivate the corresponding linter *)
-        Printf.fprintf out "set_option linter.unusedVariables false\n";
+        (* Silence the linters which would fire on generated code. *)
+        List.iter
+          (fun option -> Printf.fprintf out "set_option %s false\n" option)
+          [
+            "linter.dupNamespace";
+            "linter.hashCommand";
+            "linter.unusedVariables";
+            "linter.style.whitespace";
+            "linter.style.setOption";
+            "linter.style.longLine";
+            "linter.internalConstructors";
+          ];
         (* Max heart beats *)
         Printf.fprintf out
           "\n\
            /- You can set the `maxHeartbeats` value with the `-max-heartbeats` \
            CLI option -/\n";
+        Printf.fprintf out "set_option maxHeartbeats %d\n"
+          !Config.max_heartbeats;
+        (* Max rec depth *)
+        Printf.fprintf out
+          "\n\
+           /- You can set the `maxRecDepth` value with the `-max-recdepth` CLI \
+           option -/\n";
+        Printf.fprintf out "set_option maxRecDepth %d\n" !Config.max_recdepth;
+        (* Declare the definitions as being noncomputable if needs be *)
+        if fi.noncomputable then
+          Printf.fprintf out
+            "\n\
+             /- You can set the `maxHeartbeats` value with the \
+             `-max-heartbeats` CLI option -/\n";
         Printf.fprintf out "set_option maxHeartbeats %d\n"
           !Config.max_heartbeats;
         (* Max rec depth *)
@@ -1474,7 +1498,6 @@ let extract_translated_crate (filename : string) (dest_dir : string)
     (trans_crate : translated_crate) (extracted_opaque : bool ref) : unit =
   let {
     type_decls = trans_types;
-    builtin_fun_sigs = builtin_sigs;
     fun_decls = trans_funs;
     global_decls = trans_globals;
     trait_decls = trans_trait_decls;
@@ -1552,14 +1575,13 @@ let extract_translated_crate (filename : string) (dest_dir : string)
       trans_trait_impls;
       trans_types;
       trans_funs;
-      builtin_sigs;
       trans_globals;
       functions_with_decreases_clause = rec_functions;
-      types_filter_type_args_map = Pure.TypeDeclId.Map.empty;
-      funs_filter_type_args_map = Pure.FunDeclId.Map.empty;
-      funs_filter_trait_clauses_map = Pure.FunDeclId.Map.empty;
-      trait_impls_filter_type_args_map = Pure.TraitImplId.Map.empty;
-      trait_impls_filter_trait_clauses_map = Pure.TraitImplId.Map.empty;
+      types_filter_type_args_map = Pure.TypeDeclId.TreeMap.empty;
+      funs_filter_type_args_map = Pure.FunDeclId.TreeMap.empty;
+      funs_filter_trait_clauses_map = Pure.FunDeclId.TreeMap.empty;
+      trait_impls_filter_type_args_map = Pure.TraitImplId.TreeMap.empty;
+      trait_impls_filter_trait_clauses_map = Pure.TraitImplId.TreeMap.empty;
       extracted_opaque;
     }
   in
@@ -1589,28 +1611,28 @@ let extract_translated_crate (filename : string) (dest_dir : string)
        machinery drops).  Skip registration entirely. *)
     if Config.backend () = Acl2 then ctx
     else
-    List.fold_left
-      (fun ctx def ->
-        try Extract.extract_type_decl_register_names ctx def
-        with CFailure error ->
-          (* An exception was raised: ignore it *)
-          let name = name_to_string trans_ctx def.item_meta.name in
-          let name_pattern =
-            try
-              name_to_pattern_string (Some def.item_meta.span) trans_ctx
-                def.item_meta.name
-            with CFailure _ ->
-              "(could not compute the name pattern due to a different error)"
-          in
-          [%warn_opt_span] error.span
-            ("Could not generate names for the type declaration '" ^ name
-           ^ " because of previous error\nName pattern: '" ^ name_pattern ^ "'"
-           ^ "\nDefinition span: "
-            ^ Errors.raw_span_to_string def.item_meta.span
-            ^ compute_local_uses_error_message trans_ctx (IdType def.def_id));
-          ctx)
-      ctx
-      (Pure.TypeDeclId.Map.values trans_types)
+      List.fold_left
+        (fun ctx def ->
+          try Extract.extract_type_decl_register_names ctx def
+          with CFailure error ->
+            (* An exception was raised: ignore it *)
+            let name = name_to_string trans_ctx def.item_meta.name in
+            let name_pattern =
+              try
+                name_to_pattern_string (Some def.item_meta.span) trans_ctx
+                  def.item_meta.name
+              with CFailure _ ->
+                "(could not compute the name pattern due to a different error)"
+            in
+            [%warn_opt_span] error.span
+              ("Could not generate names for the type declaration '" ^ name
+             ^ " because of previous error\nName pattern: '" ^ name_pattern
+             ^ "'" ^ "\nDefinition span: "
+              ^ Errors.raw_span_to_string def.item_meta.span
+              ^ compute_local_uses_error_message trans_ctx (IdType def.def_id));
+            ctx)
+        ctx
+        (Pure.TypeDeclId.Map.values trans_types)
   in
 
   let ctx =
@@ -1621,43 +1643,43 @@ let extract_translated_crate (filename : string) (dest_dir : string)
        machinery drops).  Skip registration entirely. *)
     if Config.backend () = Acl2 then ctx
     else
-    List.fold_left
-      (fun ctx (trans : pure_fun_translation) ->
-        try
-          (* If requested by the user, register termination measures and decreases
+      List.fold_left
+        (fun ctx (trans : pure_fun_translation) ->
+          try
+            (* If requested by the user, register termination measures and decreases
              proofs for all the recursive functions *)
-          let gen_decr_clause (def : Pure.fun_decl) =
-            !Config.extract_decreases_clauses
-            && PureUtils.FunLoopIdSet.mem
-                 (def.Pure.def_id, def.Pure.loop_id)
-                 rec_functions
-          in
-          (* Register the names. If [trans.f] is a global initializer body,
+            let gen_decr_clause (def : Pure.fun_decl) =
+              !Config.extract_decreases_clauses
+              && PureUtils.FunLoopIdSet.mem
+                   (def.Pure.def_id, def.Pure.loop_id)
+                   rec_functions
+            in
+            (* Register the names. If [trans.f] is a global initializer body,
              [extract_fun_decl_register_names] (via [ctx_add_fun_decl]) skips it
              - the global is registered separately below through
              [extract_global_decl_register_names] - but still registers the
              loops/bodies, which are ordinary auxiliary functions. *)
-          Extract.extract_fun_decl_register_names ctx gen_decr_clause trans
-        with CFailure error ->
-          (* An exception was raised: ignore it *)
-          let name = name_to_string trans_ctx trans.f.item_meta.name in
-          let name_pattern =
-            try
-              name_to_pattern_string (Some trans.f.item_meta.span) trans_ctx
-                trans.f.item_meta.name
-            with CFailure _ ->
-              "(could not compute the name pattern due to a different error)"
-          in
-          [%warn_opt_span] error.span
-            ("Could not generate names for the function declaration '" ^ name
-           ^ " because of previous error\nName pattern: '" ^ name_pattern ^ "'"
-           ^ "\nDefinition span: "
-            ^ Errors.raw_span_to_string trans.f.item_meta.span
-            ^ compute_local_uses_error_message trans_ctx (IdFun trans.f.def_id)
-            );
-          ctx)
-      ctx
-      (FunDeclId.Map.values trans_funs)
+            Extract.extract_fun_decl_register_names ctx gen_decr_clause trans
+          with CFailure error ->
+            (* An exception was raised: ignore it *)
+            let name = name_to_string trans_ctx trans.f.item_meta.name in
+            let name_pattern =
+              try
+                name_to_pattern_string (Some trans.f.item_meta.span) trans_ctx
+                  trans.f.item_meta.name
+              with CFailure _ ->
+                "(could not compute the name pattern due to a different error)"
+            in
+            [%warn_opt_span] error.span
+              ("Could not generate names for the function declaration '" ^ name
+             ^ " because of previous error\nName pattern: '" ^ name_pattern
+             ^ "'" ^ "\nDefinition span: "
+              ^ Errors.raw_span_to_string trans.f.item_meta.span
+              ^ compute_local_uses_error_message trans_ctx
+                  (IdFun trans.f.def_id));
+            ctx)
+        ctx
+        (FunDeclId.Map.values trans_funs)
   in
 
   let ctx =
@@ -1668,27 +1690,28 @@ let extract_translated_crate (filename : string) (dest_dir : string)
        machinery drops).  Skip registration entirely. *)
     if Config.backend () = Acl2 then ctx
     else
-    List.fold_left
-      (fun ctx def ->
-        try Extract.extract_global_decl_register_names ctx def
-        with CFailure error ->
-          (* An exception was raised: ignore it *)
-          let name = name_to_string trans_ctx def.item_meta.name in
-          let name_pattern =
-            try
-              name_to_pattern_string (Some def.item_meta.span) trans_ctx
-                def.item_meta.name
-            with CFailure _ ->
-              "(could not compute the name pattern due to a different error)"
-          in
-          [%warn_opt_span] error.span
-            ("Could not generate names for the global declaration '" ^ name
-           ^ " because of previous error\nName pattern: '" ^ name_pattern ^ "'"
-           ^ "\nDefinition span: "
-            ^ Errors.raw_span_to_string def.item_meta.span
-            ^ compute_local_uses_error_message trans_ctx (IdGlobal def.def_id));
-          ctx)
-      ctx trans_globals
+      List.fold_left
+        (fun ctx def ->
+          try Extract.extract_global_decl_register_names ctx def
+          with CFailure error ->
+            (* An exception was raised: ignore it *)
+            let name = name_to_string trans_ctx def.item_meta.name in
+            let name_pattern =
+              try
+                name_to_pattern_string (Some def.item_meta.span) trans_ctx
+                  def.item_meta.name
+              with CFailure _ ->
+                "(could not compute the name pattern due to a different error)"
+            in
+            [%warn_opt_span] error.span
+              ("Could not generate names for the global declaration '" ^ name
+             ^ " because of previous error\nName pattern: '" ^ name_pattern
+             ^ "'" ^ "\nDefinition span: "
+              ^ Errors.raw_span_to_string def.item_meta.span
+              ^ compute_local_uses_error_message trans_ctx (IdGlobal def.def_id)
+              );
+            ctx)
+        ctx trans_globals
   in
 
   let ctx =
@@ -1699,28 +1722,28 @@ let extract_translated_crate (filename : string) (dest_dir : string)
        machinery drops).  Skip registration entirely. *)
     if Config.backend () = Acl2 then ctx
     else
-    List.fold_left
-      (fun ctx def ->
-        try Extract.extract_trait_decl_register_names ctx def
-        with CFailure error ->
-          (* An exception was raised: ignore it *)
-          let name = name_to_string trans_ctx def.item_meta.name in
-          let name_pattern =
-            try
-              name_to_pattern_string (Some def.item_meta.span) trans_ctx
-                def.item_meta.name
-            with CFailure _ ->
-              "(could not compute the name pattern due to a different error)"
-          in
-          [%warn_opt_span] error.span
-            ("Could not generate names for the trait declaration '" ^ name
-           ^ " because of previous error\nName pattern: '" ^ name_pattern ^ "'"
-           ^ "\nDefinition span: "
-            ^ Errors.raw_span_to_string def.item_meta.span
-            ^ compute_local_uses_error_message trans_ctx
-                (IdTraitDecl def.def_id));
-          ctx)
-      ctx trans_trait_decls
+      List.fold_left
+        (fun ctx def ->
+          try Extract.extract_trait_decl_register_names ctx def
+          with CFailure error ->
+            (* An exception was raised: ignore it *)
+            let name = name_to_string trans_ctx def.item_meta.name in
+            let name_pattern =
+              try
+                name_to_pattern_string (Some def.item_meta.span) trans_ctx
+                  def.item_meta.name
+              with CFailure _ ->
+                "(could not compute the name pattern due to a different error)"
+            in
+            [%warn_opt_span] error.span
+              ("Could not generate names for the trait declaration '" ^ name
+             ^ " because of previous error\nName pattern: '" ^ name_pattern
+             ^ "'" ^ "\nDefinition span: "
+              ^ Errors.raw_span_to_string def.item_meta.span
+              ^ compute_local_uses_error_message trans_ctx
+                  (IdTraitDecl def.def_id));
+            ctx)
+        ctx trans_trait_decls
   in
 
   let ctx =
@@ -1731,28 +1754,28 @@ let extract_translated_crate (filename : string) (dest_dir : string)
        machinery drops).  Skip registration entirely. *)
     if Config.backend () = Acl2 then ctx
     else
-    List.fold_left
-      (fun ctx def ->
-        try Extract.extract_trait_impl_register_names ctx def
-        with CFailure error ->
-          (* An exception was raised: ignore it *)
-          let name = name_to_string trans_ctx def.item_meta.name in
-          let name_pattern =
-            try
-              name_to_pattern_string (Some def.item_meta.span) trans_ctx
-                def.item_meta.name
-            with CFailure _ ->
-              "(could not compute the name pattern due to a different error)"
-          in
-          [%warn_opt_span] error.span
-            ("Could not generate names for the trait implementation '" ^ name
-           ^ " because of previous error\nName pattern: '" ^ name_pattern ^ "'"
-           ^ "\nDefinition span: "
-            ^ Errors.raw_span_to_string def.item_meta.span
-            ^ compute_local_uses_error_message trans_ctx
-                (IdTraitImpl def.def_id));
-          ctx)
-      ctx trans_trait_impls
+      List.fold_left
+        (fun ctx def ->
+          try Extract.extract_trait_impl_register_names ctx def
+          with CFailure error ->
+            (* An exception was raised: ignore it *)
+            let name = name_to_string trans_ctx def.item_meta.name in
+            let name_pattern =
+              try
+                name_to_pattern_string (Some def.item_meta.span) trans_ctx
+                  def.item_meta.name
+              with CFailure _ ->
+                "(could not compute the name pattern due to a different error)"
+            in
+            [%warn_opt_span] error.span
+              ("Could not generate names for the trait implementation '" ^ name
+             ^ " because of previous error\nName pattern: '" ^ name_pattern
+             ^ "'" ^ "\nDefinition span: "
+              ^ Errors.raw_span_to_string def.item_meta.span
+              ^ compute_local_uses_error_message trans_ctx
+                  (IdTraitImpl def.def_id));
+            ctx)
+        ctx trans_trait_impls
   in
 
   let module_delimiter =
@@ -1825,11 +1848,16 @@ let extract_translated_crate (filename : string) (dest_dir : string)
     ^ "\n- full_dest_dir: " ^ full_dest_dir ^ "\n- extract_filebasename: "
     ^ extract_filebasename];
 
+  (* Create a directory and its missing parents, with *default* permissions *)
+  let rec mkdir_p dir =
+    if not (Sys.file_exists dir) then (
+      mkdir_p (Filename.dirname dir);
+      Sys.mkdir dir 0o777)
+  in
   let mkdir_if dest_dir =
     if not (Sys.file_exists dest_dir) then (
       log#linfo (lazy ("Creating missing directory: " ^ dest_dir));
-      (* Create a directory with *default* permissions *)
-      Core_unix.mkdir_p dest_dir)
+      mkdir_p dest_dir)
   in
 
   (* Create the directory, if necessary *)
@@ -2205,8 +2233,10 @@ let extract_translated_crate (filename : string) (dest_dir : string)
       if !Config.split_files && !Config.generate_lib_entry_point then (
         let filename = Filename.concat dest_dir (crate_name ^ ".lean") in
         let out = open_out filename in
-        (* Write *)
-        Printf.fprintf out "import %s.Funs\n" crate_name;
+        if !Config.use_lean_modules then (
+          Printf.fprintf out "module\n";
+          Printf.fprintf out "public import %s.Funs\n" crate_name)
+        else Printf.fprintf out "import %s.Funs\n" crate_name;
         (* Flush and close the file, log *)
         close_out out;
         log#linfo (lazy ("Generated: " ^ filename)));

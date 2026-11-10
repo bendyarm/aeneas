@@ -411,9 +411,10 @@ let rec compare_rtys ?(allow_erased = false) (span : Meta.span) (ctx : eval_ctx)
     (if allow_erased then true else ty_is_rty ty1 && ty_is_rty ty2);
   (* Normalize the associated types *)
   match (ty1, ty2) with
-  | TLiteral lit1, TLiteral lit2 ->
+  | TScalar lit1, TScalar lit2 ->
       [%sanity_check] span (lit1 = lit2);
       default
+  | TNever, TNever -> default
   | TAdt tref1, TAdt tref2 ->
       let generics1 = tref1.generics in
       let generics2 = tref2.generics in
@@ -436,8 +437,15 @@ let rec compare_rtys ?(allow_erased = false) (span : Meta.span) (ctx : eval_ctx)
        * If we didn't have the above property enforced by the rust compiler,
        * this check would still be a reasonable conservative approximation. *)
 
-      (* Check the region parameters *)
+      (* Check the region parameters. Note that the static region may be
+         hidden in the ADT (see {!TypesUtils.adt_has_hidden_static}): in this
+         case we treat it as an additional region parameter. *)
       let regions = List.combine generics1.regions generics2.regions in
+      let regions =
+        if adt_has_hidden_static ctx.type_ctx.type_infos tref1 then
+          (RStatic, RStatic) :: regions
+        else regions
+      in
       let params_b =
         List.fold_left
           (fun b (r1, r2) -> combine b (compare_regions r1 r2))
@@ -452,12 +460,12 @@ let rec compare_rtys ?(allow_erased = false) (span : Meta.span) (ctx : eval_ctx)
       in
       (* Combine *)
       combine params_b tys_b
-  | TArray (ty1, len1), TArray (ty2, len2) ->
+  | TArray (ty1, len1, _), TArray (ty2, len2, _) ->
       (* There are no regions in the const generics, so we ignore them,
          but we still check they are the same, for sanity *)
       [%sanity_check] span (len1 = len2);
       compare ty1 ty2
-  | TSlice ty1, TSlice ty2 -> compare ty1 ty2
+  | TSlice (ty1, _), TSlice (ty2, _) -> compare ty1 ty2
   | TRef (r1, ty1, kind1), TRef (r2, ty2, kind2) ->
       (* Sanity check *)
       [%sanity_check] span (kind1 = kind2);
@@ -467,6 +475,13 @@ let rec compare_rtys ?(allow_erased = false) (span : Meta.span) (ctx : eval_ctx)
       let regions_b = compare_regions r1 r2 in
       let tys_b = compare ty1 ty2 in
       combine regions_b tys_b
+  | TRawPtr (ty1, kind1), TRawPtr (ty2, kind2) ->
+      [%sanity_check] span (kind1 = kind2);
+      compare ty1 ty2
+  | TFnPtr _, TFnPtr _ | TFnDef _, TFnDef _ ->
+      (* Values of those types don't contain borrows (the regions which may
+         appear in the types are only used in the signatures) *)
+      default
   | TVar id1, TVar id2 ->
       [%sanity_check] span (id1 = id2);
       default
@@ -493,8 +508,8 @@ let rec compare_rtys ?(allow_erased = false) (span : Meta.span) (ctx : eval_ctx)
     that the two abstractions have different views (in terms of regions) of the
     symbolic value (hence the two region types). *)
 let projections_intersect (span : Meta.span) (ctx : eval_ctx)
-    ?(allow_erased = false) (rset1 : RegionId.Set.t) (ty1 : rty)
-    (rset2 : RegionId.Set.t) (ty2 : rty) : bool =
+    ?(allow_erased = false) (rset1 : region_set) (ty1 : rty)
+    (rset2 : region_set) (ty2 : rty) : bool =
   let default = false in
   let combine b1 b2 = b1 || b2 in
   let compare_regions r1 r2 =
@@ -508,8 +523,8 @@ let projections_intersect (span : Meta.span) (ctx : eval_ctx)
     The regions in the types shouldn't be erased (this function will raise an
     exception otherwise). *)
 let projection_contains ?(allow_erased = false) (span : Meta.span)
-    (ctx : eval_ctx) (rset1 : RegionId.Set.t) (ty1 : rty)
-    (rset2 : RegionId.Set.t) (ty2 : rty) : bool =
+    (ctx : eval_ctx) (rset1 : region_set) (ty1 : rty) (rset2 : region_set)
+    (ty2 : rty) : bool =
   let default = true in
   let combine b1 b2 = b1 && b2 in
   let compare_regions r1 r2 =
@@ -1105,8 +1120,8 @@ let get_first_outer_loan_or_borrow_in_value (with_borrows : bool) (v : tvalue) :
   | FoundBorrowContent bc -> Some (BorrowContent bc)
 
 let proj_borrows_intersects_proj_loans (span : Meta.span) (ctx : eval_ctx)
-    (proj_borrows : RegionId.Set.t * symbolic_value_id * rty)
-    (proj_loans : RegionId.Set.t * symbolic_value_id * rty) : bool =
+    (proj_borrows : region_set * symbolic_value_id * rty)
+    (proj_loans : region_set * symbolic_value_id * rty) : bool =
   let b_regions, b_sv_id, b_ty = proj_borrows in
   let l_regions, l_sv_id, l_ty = proj_loans in
   if b_sv_id = l_sv_id then
@@ -1130,7 +1145,7 @@ type looked_up_aproj_borrows = {
 
     This is a helper function. *)
 let lookup_intersecting_aproj_borrows_opt (span : Meta.span)
-    (lookup_shared : bool) (regions : RegionId.Set.t) (proj : symbolic_proj)
+    (lookup_shared : bool) (regions : region_set) (proj : symbolic_proj)
     (ctx : eval_ctx) : looked_up_aproj_borrows option =
   let shared_projs = ref [] in
   let non_shared_projs = ref [] in
@@ -1215,7 +1230,7 @@ let update_intersecting_aproj_borrows (span : Meta.span)
        option)
     ~(update_mut : owned:bool -> outlive:bool -> abs -> aproj_borrows -> aproj)
     ~(update_emut : owned:bool -> outlive:bool -> abs -> eproj_borrows -> eproj)
-    (proj_regions : RegionId.Set.t) (proj : symbolic_proj) (ctx : eval_ctx) :
+    (proj_regions : region_set) (proj : symbolic_proj) (ctx : eval_ctx) :
     eval_ctx =
   (* Small helpers for sanity checks *)
   let shared = ref None in
@@ -1243,7 +1258,7 @@ let update_intersecting_aproj_borrows (span : Meta.span)
         ^ "\n- proj.proj_ty: "
         ^ ty_to_string ctx proj.proj_ty
         ^ "\n- proj'_ty: " ^ ty_to_string ctx proj'_ty ^ "\n- owned regions: "
-        ^ RegionId.Set.to_string None abs.regions.owned];
+        ^ region_set_to_string abs.regions.owned];
 
       (* We used to check that if the projectors use the same symbolic id then:
          1. either the projections intersect
@@ -1353,11 +1368,11 @@ let update_intersecting_aproj_borrows (span : Meta.span)
 
     This is a helper function: it might break invariants. *)
 let remove_intersecting_aproj_borrows_shared (span : Meta.span)
-    ~(include_owned : bool) ~(include_outlive : bool) (regions : RegionId.Set.t)
+    ~(include_owned : bool) ~(include_outlive : bool) (regions : region_set)
     (proj : symbolic_proj) (ctx : eval_ctx) : eval_ctx =
   [%ltrace
     "- regions: "
-    ^ RegionId.Set.to_string None regions
+    ^ region_set_to_string regions
     ^ "\n- proj: "
     ^ symbolic_proj_to_string ctx proj
     ^ "\n- ctx:\n" ^ eval_ctx_to_string ctx];
@@ -1411,8 +1426,7 @@ let remove_intersecting_aproj_borrows_shared (span : Meta.span)
 *)
 let update_intersecting_aproj_loans (span : Meta.span)
     ~(fail_if_unchanged : bool) ~(include_owned : bool)
-    ~(include_outlive : bool) (proj_regions : RegionId.Set.t)
-    (proj : symbolic_proj)
+    ~(include_outlive : bool) (proj_regions : region_set) (proj : symbolic_proj)
     (subst : owned:bool -> outlive:bool -> abs -> aproj_loans -> aproj)
     (esubst : owned:bool -> outlive:bool -> abs -> eproj_loans -> eproj)
     (ctx : eval_ctx) : eval_ctx =
@@ -1513,25 +1527,24 @@ let lookup_aproj_loans_opt (span : Meta.span) (abs_id : AbsId.id)
         if abs.abs_id = abs_id then super#visit_abs (Some abs) abs else ()
 
       method! visit_aproj (abs : abs option) sproj =
-        (match sproj with
+        match sproj with
         | AProjBorrows _ | AEndedProjLoans _ | AEndedProjBorrows _ | AEmpty ->
             super#visit_aproj abs sproj
         | AProjLoans aproj_loan ->
             let abs = Option.get abs in
             [%sanity_check] span (abs.abs_id = abs_id);
-            if aproj_loan.proj.sv_id = sv_id then set_found aproj_loan else ());
-        super#visit_aproj abs sproj
+            if aproj_loan.proj.sv_id = sv_id then set_found aproj_loan
+            else super#visit_aproj (Some abs) sproj
 
       method! visit_eproj (abs : abs option) sproj =
-        (match sproj with
+        match sproj with
         | EProjBorrows _ | EEndedProjLoans _ | EEndedProjBorrows _ | EEmpty ->
             super#visit_eproj abs sproj
         | EProjLoans aproj_loan ->
             let abs = Option.get abs in
             [%sanity_check] span (abs.abs_id = abs_id);
             if aproj_loan.proj.sv_id = sv_id then set_found_eproj aproj_loan
-            else ());
-        super#visit_eproj abs sproj
+            else super#visit_eproj (Some abs) sproj
     end
   in
   (* Apply *)
@@ -1970,7 +1983,10 @@ let lookup_shared_value_opt (span : Meta.span) (env : env) (bid : BorrowId.id) :
 
 let lookup_shared_value (span : Meta.span) (env : env) (bid : BorrowId.id) :
     tvalue =
-  Option.get (lookup_shared_value_opt span env bid)
+  [%unwrap_with_span] span
+    (lookup_shared_value_opt span env bid)
+    ("Could not find the shared loan for borrow " ^ BorrowId.to_string bid
+   ^ " (dangling shared borrow)")
 
 let ctx_lookup_shared_value span ctx = lookup_shared_value span ctx.env
 
@@ -2224,18 +2240,27 @@ let marked_norm_symb_proj_to_unmarked (m : marked_norm_symb_proj) :
     the non-projected ones with ['_].
 
     For instance, when normalizing the projection type [S<'a, 'b>] for the
-    projection region ['a]. *)
-let normalize_proj_ty (regions : RegionId.Set.t) (ty : rty) : rty =
+    projection region ['a].
+
+    Remark: the static region may be hidden in an ADT (see
+    {!TypesUtils.adt_has_hidden_static}), in which case the normalized type
+    doesn't record whether the static region is projected or not.
+
+    TODO: this is a limitation. For instance, {!norm_proj_tys_intersect}
+    considers that two normalized projections over
+    [struct S { x : &'static mut u32 }] never intersect. *)
+let normalize_proj_ty (regions : region_set) (ty : rty) : rty =
   let visitor =
-    object
+    object (self)
       inherit [_] map_ty
 
       method! visit_region _ r =
         match r with
-        | RVar (Free r) ->
-            if RegionId.Set.mem r regions then RVar (Free (RegionId.of_int 0))
+        | RVar (Free _) | RStatic ->
+            if RegionSet.mem r regions then RVar (Free (RegionId.of_int 0))
             else RErased
-        | RVar (Bound _) | RStatic | RErased -> r
+        | RVar (Bound _) | RErased -> r
+        | RLub ty -> RLub (self#visit_ty () ty)
         | RBody _ -> [%craise_opt_span] None "unsupported: Body region"
     end
   in
@@ -2251,7 +2276,7 @@ let rec norm_proj_tys_union (span : Meta.span) ?(strict : bool = true)
       [%sanity_check] span (tref1.id = tref2.id);
       TAdt
         {
-          id = tref1.id;
+          tref1 with
           generics =
             norm_proj_generic_args_union span ~strict ctx tref1.generics
               tref2.generics;
@@ -2259,9 +2284,9 @@ let rec norm_proj_tys_union (span : Meta.span) ?(strict : bool = true)
   | TVar id1, TVar id2 ->
       [%sanity_check] span (id1 = id2);
       TVar id1
-  | TLiteral lit1, TLiteral lit2 ->
+  | TScalar lit1, TScalar lit2 ->
       [%sanity_check] span (lit1 = lit2);
-      TLiteral lit1
+      TScalar lit1
   | TNever, TNever -> TNever
   | TRef (r1, ty1, rk1), TRef (r2, ty2, rk2) ->
       [%sanity_check] span (rk1 = rk2);
@@ -2280,6 +2305,7 @@ let rec norm_proj_tys_union (span : Meta.span) ?(strict : bool = true)
   | ( TFnPtr
         {
           binder_regions = binder_regions1;
+          outlives = outlives1;
           binder_value =
             {
               is_unsafe = false;
@@ -2292,6 +2318,7 @@ let rec norm_proj_tys_union (span : Meta.span) ?(strict : bool = true)
       TFnPtr
         {
           binder_regions = binder_regions2;
+          outlives = outlives2;
           binder_value =
             {
               is_unsafe = false;
@@ -2305,6 +2332,7 @@ let rec norm_proj_tys_union (span : Meta.span) ?(strict : bool = true)
       (* TODO: general case *)
       [%sanity_check] span (binder_regions1 = []);
       [%sanity_check] span (binder_regions2 = []);
+      [%sanity_check] span (outlives1 = outlives2);
       let binder_value =
         {
           is_unsafe = false;
@@ -2315,12 +2343,12 @@ let rec norm_proj_tys_union (span : Meta.span) ?(strict : bool = true)
           is_variadic = is_variadic1;
         }
       in
-      TFnPtr { binder_regions = []; binder_value }
-  | TArray (ty0, len0), TArray (ty1, len1) ->
+      TFnPtr { binder_regions = []; outlives = outlives1; binder_value }
+  | TArray (ty0, len0, _), TArray (ty1, len1, _) ->
       [%sanity_check] span (len0 = len1);
-      TArray (norm_proj_tys_union span ~strict ctx ty0 ty1, len0)
-  | TSlice ty0, TSlice ty1 ->
-      TSlice (norm_proj_tys_union span ~strict ctx ty0 ty1)
+      TArray (norm_proj_tys_union span ~strict ctx ty0 ty1, len0, None)
+  | TSlice (ty0, _), TSlice (ty1, _) ->
+      TSlice (norm_proj_tys_union span ~strict ctx ty0 ty1, None)
   | _ ->
       [%ltrace
         "- ty1: " ^ ty_to_string ctx ty1 ^ "\n- ty2: " ^ ty_to_string ctx ty2];
@@ -2352,7 +2380,7 @@ and norm_proj_generic_args_union span ?(strict : bool = true) (ctx : eval_ctx)
         (norm_proj_const_generics_union span)
         const_generics1 const_generics2;
     trait_refs =
-      List.map2 (norm_proj_trait_refs_union span) trait_refs1 trait_refs2;
+      List.map2 (norm_proj_poly_trait_refs_union span) trait_refs1 trait_refs2;
   }
 
 and norm_proj_regions_union (span : Meta.span) ?(strict : bool = true)
@@ -2367,6 +2395,16 @@ and norm_proj_regions_union (span : Meta.span) ?(strict : bool = true)
       RVar (Free rid)
   | RErased, RErased -> RErased
   | _ -> [%internal_error] span
+
+and norm_proj_poly_trait_refs_union (span : Meta.span) (tr1 : poly_trait_ref)
+    (tr2 : poly_trait_ref) : poly_trait_ref =
+  [%sanity_check] span (tr1.binder_regions = tr2.binder_regions);
+  [%sanity_check] span (tr1.outlives = tr2.outlives);
+  {
+    tr1 with
+    binder_value =
+      norm_proj_trait_refs_union span tr1.binder_value tr2.binder_value;
+  }
 
 and norm_proj_trait_refs_union (span : Meta.span) (tr1 : trait_ref)
     (tr2 : trait_ref) : trait_ref =
@@ -2383,12 +2421,12 @@ and norm_proj_const_generics_union (span : Meta.span) (cg1 : constant_expr)
   cg1
 
 let norm_proj_ty_contains span ctx (ty1 : rty) (ty2 : rty) : bool =
-  let set = RegionId.Set.singleton RegionId.zero in
+  let set = RegionSet.singleton (RVar (Free RegionId.zero)) in
   projection_contains span ~allow_erased:true ctx set ty1 set ty2
 
 let norm_proj_tys_intersect span ctx (ty1 : norm_proj_ty) (ty2 : norm_proj_ty) :
     bool =
-  let rset = RegionId.Set.singleton RegionId.zero in
+  let rset = RegionSet.singleton (RVar (Free RegionId.zero)) in
   projections_intersect ~allow_erased:true span ctx rset ty1 rset ty2
 
 (** Refresh the live region ids appearing in a type, and return the new type
@@ -2434,7 +2472,7 @@ let update_endable (ctx : eval_ctx) (abs_ids : abs_id list) ~(can_end : bool) :
   in
   { ctx with env = List.map update ctx.env }
 
-let normalize_symbolic_proj (regions : RegionId.Set.t) (proj : symbolic_proj) :
+let normalize_symbolic_proj (regions : region_set) (proj : symbolic_proj) :
     norm_symb_proj =
   let { sv_id; proj_ty } : symbolic_proj = proj in
   let norm_proj_ty = normalize_proj_ty regions proj_ty in

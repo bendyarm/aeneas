@@ -15,6 +15,8 @@
 
 ;; TODO: change to qualified
 
+(vendored_dirs charon)
+
 (include_subdirs unqualified)
 
 ;; Scan all subdirectories for OCaml files
@@ -32,7 +34,7 @@
    aeneas.ppx))
  (libraries
   charon
-  core_unix
+  easy_logging
   ocamlgraph
   str
   progress
@@ -40,7 +42,6 @@
   ppx_deriving_yojson)
  (modules
   BorrowCheck
-  Builtin
   Collections
   Config
   ConstStrings
@@ -60,6 +61,7 @@
   ExtractErrors
   ExtractName
   ExtractTypes
+  FormatCompat
   FunsAnalysis
   GitVersion
   Identifiers
@@ -80,6 +82,7 @@
   InterpStatements
   InterpUtils
   Invariants
+  LeanKeywords
   LlbcAst
   LlbcAstUtils
   LlbcOfJson

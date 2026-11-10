@@ -47,16 +47,17 @@ let analyze_type_declarations (crate : crate)
           ("Encountered an error when analyzing the following type \
             declarations group:\n" ^ decls);
         infos)
-    TypeDeclId.Map.empty decls
+    TypeDeclId.TreeMap.empty decls
 
 let compute_contexts (crate : crate) : decls_ctx =
   let crate_graph = Deps.compute_graph_of_uses crate in
-  let type_decls_list, _, _, _, _, _ = split_declarations crate.declarations in
+  let declarations = Option.get crate.declarations in
+  let type_decls_list, _, _, _, _, _ = split_declarations declarations in
   let fmt_env : Print.fmt_env = Charon.Print.crate_to_fmt_env crate in
 
   (* Split the declaration groups between the declaration kinds (types, functions, etc.) *)
   let type_decls_groups, _, _, _, _, mixed_groups =
-    split_declarations_to_group_maps crate.declarations
+    split_declarations_to_group_maps declarations
   in
   (* Check if there are mixed groups: if there are, we report an error
      and ignore those. *)
@@ -112,38 +113,45 @@ let compute_contexts (crate : crate) : decls_ctx =
      pretty printing. The set of declarations to extract is given by the [declarations]
      field.
   *)
-  let type_decl_ids = ref TypeDeclId.Set.empty in
-  let fun_decl_ids = ref FunDeclId.Set.empty in
-  let global_decl_ids = ref GlobalDeclId.Set.empty in
-  let trait_decl_ids = ref TraitDeclId.Set.empty in
-  let trait_impl_ids = ref TraitImplId.Set.empty in
+  let type_decl_ids = ref TypeDeclId.TreeSet.empty in
+  let fun_decl_ids = ref FunDeclId.TreeSet.empty in
+  let global_decl_ids = ref GlobalDeclId.TreeSet.empty in
+  let trait_decl_ids = ref TraitDeclId.TreeSet.empty in
+  let trait_impl_ids = ref TraitImplId.TreeSet.empty in
 
   let visitor =
     object
       inherit [_] iter_crate
 
       method! visit_type_decl_id _ id =
-        TypeDeclId.Set.add_in_place id type_decl_ids
+        TypeDeclId.TreeSet.add_in_place id type_decl_ids
 
       method! visit_fun_decl_id _ id =
-        FunDeclId.Set.add_in_place id fun_decl_ids
+        FunDeclId.TreeSet.add_in_place id fun_decl_ids
 
       method! visit_global_decl_id _ id =
-        GlobalDeclId.Set.add_in_place id global_decl_ids
+        GlobalDeclId.TreeSet.add_in_place id global_decl_ids
 
       method! visit_trait_decl_id _ id =
-        TraitDeclId.Set.add_in_place id trait_decl_ids
+        TraitDeclId.TreeSet.add_in_place id trait_decl_ids
 
       method! visit_trait_impl_id _ id =
-        TraitImplId.Set.add_in_place id trait_impl_ids
+        TraitImplId.TreeSet.add_in_place id trait_impl_ids
     end
   in
-  List.iter (visitor#visit_declaration_group ()) crate.declarations;
+  List.iter (visitor#visit_declaration_group ()) declarations;
 
   let type_decls = crate.type_decls in
   let to_extract =
     TypeDeclId.Map.filter
-      (fun id _ -> TypeDeclId.Set.mem id !type_decl_ids)
+      (fun id (d : type_decl) ->
+        (* Charon introduces declarations for the builtin types (tuples, [Box],
+           [str]): we handle those separately, and don't extract them *)
+        TypeDeclId.TreeSet.mem id !type_decl_ids
+        &&
+        match d.src with
+        | BuiltinType _ -> false
+        | _ -> true)
       type_decls
   in
   let type_infos = analyze_type_declarations crate type_decls_list in
@@ -152,7 +160,7 @@ let compute_contexts (crate : crate) : decls_ctx =
   let fun_decls = crate.fun_decls in
   let to_extract =
     FunDeclId.Map.filter
-      (fun id _ -> FunDeclId.Set.mem id !fun_decl_ids)
+      (fun id _ -> FunDeclId.TreeSet.mem id !fun_decl_ids)
       fun_decls
   in
   let fun_infos = FunsAnalysis.analyze_module crate fun_decls in
@@ -160,27 +168,30 @@ let compute_contexts (crate : crate) : decls_ctx =
 
   let global_decls_to_extract =
     GlobalDeclId.Map.filter
-      (fun id _ -> GlobalDeclId.Set.mem id !global_decl_ids)
+      (fun id g ->
+        GlobalDeclId.TreeSet.mem id !global_decl_ids
+        (* The globals without initializers are constants which we inline *)
+        && Option.is_some (Charon.GAstUtils.init_fun_id_of_global g))
       crate.global_decls
   in
 
   let trait_decls_to_extract =
     TraitDeclId.Map.filter
-      (fun id _ -> TraitDeclId.Set.mem id !trait_decl_ids)
+      (fun id _ -> TraitDeclId.TreeSet.mem id !trait_decl_ids)
       crate.trait_decls
   in
 
   let trait_impls_to_extract =
     TraitImplId.Map.filter
-      (fun id _ -> TraitImplId.Set.mem id !trait_impl_ids)
+      (fun id _ -> TraitImplId.TreeSet.mem id !trait_impl_ids)
       crate.trait_impls
   in
 
   let trait_methods_to_extract =
-    let trait_method_ids = ref TraitDeclId.Map.empty in
+    let trait_method_ids = ref TraitDeclId.TreeMap.empty in
     let add_trait_method_id trait_decl_id method_id =
       trait_method_ids :=
-        TraitDeclId.Map.update trait_decl_id
+        TraitDeclId.TreeMap.update trait_decl_id
           (fun opt_set ->
             let set = Option.value opt_set ~default:TraitMethodId.Set.empty in
             Some (TraitMethodId.Set.add method_id set))
@@ -191,19 +202,19 @@ let compute_contexts (crate : crate) : decls_ctx =
         inherit [_] iter_crate as super
 
         (* Include a method if an implementation of it is in the extracted functions. *)
-        method! visit_item_source env (src : item_source) =
+        method! visit_fun_source env (src : fun_source) =
           (match src with
-          | TraitDeclItem (trait_ref, AssocIdMethod method_id)
-          | TraitImplItem (_, trait_ref, AssocIdMethod method_id, _) ->
+          | TraitDefaultFun (trait_ref, method_id)
+          | TraitImplFun (_, trait_ref, method_id, _) ->
               add_trait_method_id trait_ref.id method_id
           | _ -> ());
-          super#visit_item_source env src
+          super#visit_fun_source env src
 
         (* Include a method if it is mentioned in the extracted functions. *)
         method! visit_fn_ptr env fn_ptr =
           (match fn_ptr.kind with
           | TraitMethod (trait_ref, method_id) ->
-              let trait_decl_id = trait_ref.trait_decl_ref.binder_value.id in
+              let trait_decl_id = trait_ref.trait_decl_ref.id in
               add_trait_method_id trait_decl_id method_id
           | _ -> ());
           super#visit_fn_ptr env fn_ptr
@@ -223,14 +234,15 @@ let compute_contexts (crate : crate) : decls_ctx =
           trait_decl.methods)
       trait_decls_to_extract;
 
-    TraitDeclId.Map.mapi
+    TraitDeclId.Map.filter_map
       (fun trait_decl_id (trait_decl : trait_decl) ->
-        match TraitDeclId.Map.find_opt trait_decl_id !trait_method_ids with
-        | None -> TraitMethodId.Map.empty
+        match TraitDeclId.TreeMap.find_opt trait_decl_id !trait_method_ids with
+        | None -> Some TraitMethodId.Map.empty
         | Some method_ids ->
-            TraitMethodId.Map.filter
-              (fun method_id _ -> TraitMethodId.Set.mem method_id method_ids)
-              trait_decl.methods)
+            Some
+              (TraitMethodId.Map.filter
+                 (fun method_id _ -> TraitMethodId.Set.mem method_id method_ids)
+                 trait_decl.methods))
       crate.trait_decls
   in
 
@@ -250,7 +262,7 @@ let compute_contexts (crate : crate) : decls_ctx =
     We return a new context because we compute and add the type normalization
     map in the same step. *)
 let symbolic_instantiate_fun_sig (span : Meta.span) (ctx : eval_ctx)
-    (sg : bound_fun_sig) (_kind : item_source) : eval_ctx * inst_fun_sig =
+    (sg : bound_fun_sig) (_kind : fun_source) : eval_ctx * inst_fun_sig =
   let tr_self = UnknownTrait "symbolic_instantiate_fun_sig" in
   let generics =
     Substitute.generic_args_of_params_erase_regions (Some span)
@@ -258,7 +270,7 @@ let symbolic_instantiate_fun_sig (span : Meta.span) (ctx : eval_ctx)
   in
   let inst_sg = instantiate_fun_sig (Some span) ctx generics tr_self sg in
   let region_groups =
-    List.map (fun (g : region_var_group) -> g.id) inst_sg.regions_hierarchy
+    List.map (fun (g : region_group) -> g.id) inst_sg.regions_hierarchy
   in
   let ctx = { ctx with region_groups } in
   (* Return *)
@@ -317,7 +329,8 @@ let initialize_symbolic_context_for_fun (ctx : decls_ctx)
     let avalues =
       List.map
         (fun (sv : symbolic_value) ->
-          mk_aproj_loans_value_from_symbolic_value abs.regions.owned sv sv.sv_ty)
+          mk_aproj_loans_value_from_symbolic_value ctx.type_ctx.type_infos
+            abs.regions.owned sv sv.sv_ty)
         input_svs
     in
     (* The continuation expression *)
@@ -395,12 +408,14 @@ let evaluate_function_symbolic_synthesize_backward_from_return (config : config)
   in
   let ret_rty = ret_inst_sg.output in
 
-  (* We need to find the parents regions/abstractions of the region we
-     will end - this will allow us to, first, mark the other return
-     regions as non-endable, and, second, end those parent regions in
-     proper order. *)
+  (* We need to find the ancestor regions/abstractions of the region group we
+     will end - this will allow us to, first, mark the return regions which are
+     neither ancestors nor in the current group as non-endable (except when
+     synthesizing the backward function of the static region group: see below),
+     and, second, end the ancestor regions in proper order. *)
   let parent_rgs =
-    list_ancestor_region_groups inst_sg.regions_hierarchy back_id
+    RegionsHierarchy.list_ancestor_region_groups inst_sg.regions_hierarchy
+      back_id
   in
   let parent_input_abs_ids =
     RegionGroupId.mapi
@@ -410,6 +425,11 @@ let evaluate_function_symbolic_synthesize_backward_from_return (config : config)
   in
   let parent_input_abs_ids =
     List.filter_map (fun x -> x) parent_input_abs_ids
+  in
+  (* Are we synthesizing the backward function of the static region group? *)
+  let is_static_rg =
+    List.mem RStatic
+      (RegionGroupId.nth inst_sg.regions_hierarchy back_id).regions
   in
 
   (* Insert the return value in the return abstractions (by applying
@@ -440,9 +460,47 @@ let evaluate_function_symbolic_synthesize_backward_from_return (config : config)
        We take care of allowing to end only the regions which should end (note
        that this is important for soundness: this is part of the borrow checking).
        Also see the documentation of the [can_end] field of [abs] for more
-       information. *)
+       information.
+
+       Remark: we need to distinguish two notions:
+       - the regions which *may* end when we end the current region group:
+         those are the regions of the current group and the regions which are
+         shorter than them
+       - the ancestors of the current region group (its parents, transitively),
+         which *must* end first: ending an abstraction always starts by ending
+         its parents, hence, recursively, its ancestors.
+
+       For a region group which doesn't contain the static region, the two
+       notions coincide: the ancestors are given by the transitive closure of
+       the outlives relation given by the signature, which is exactly the
+       information which tells us which regions are shorter.
+
+       The static region, however, outlives all the other regions: all the
+       regions *may* end when we end the static region. But this doesn't mean
+       they *have to* end first: whether ending the static region requires
+       ending another region depends on how the borrows flow in the body of the
+       function, which we can't know by looking only at the signature. For
+       instance, with the signature
+       [fn f<'b>(x: &'static str, y: &'b str) -> (&'static str, &'b str)],
+       the regions ['static] and ['b] are independent if the body is
+       [{ (x, y) }], while if the body is [{ (x, x) }], ending ['static]
+       requires ending ['b] (because the static borrow was coerced to a borrow
+       of region ['b], ending the static loan requires ending this borrow -
+       note that ['b] doesn't need to end *as an ancestor*, i.e., before we
+       start ending the static region).
+
+       This is why the static region group doesn't always have all the other
+       region groups as parents: it only has them when the signature may
+       require them to end first (this is a conservative check), or when some
+       region variables outlive ['static] and are thus merged into the static
+       region group (see {!RegionsHierarchy.compute_regions_hierarchy_for_sig}).
+       In the other cases, we don't make the other regions end first, but we
+       allow them to end, so that the symbolic execution can end them if the
+       body of the function requires it. *)
     let parent_and_current_rgs = RegionGroupId.Set.add back_id parent_rgs in
-    let region_can_end rid = RegionGroupId.Set.mem rid parent_and_current_rgs in
+    let region_can_end rid =
+      is_static_rg || RegionGroupId.Set.mem rid parent_and_current_rgs
+    in
     [%sanity_check] span (region_can_end back_id);
     let ctx =
       create_push_abstractions_from_abs_region_groups
@@ -472,8 +530,26 @@ let evaluate_function_symbolic_synthesize_backward_from_return (config : config)
 
   let target_abs_ids = List.append parent_input_abs_ids [ current_abs_id ] in
 
-  (* Set the abstrations as endable *)
-  let ctx = InterpBorrowsCore.update_endable ctx target_abs_ids ~can_end:true in
+  (* Set the abstractions as endable. If we are synthesizing the backward
+     function for the static region, we allow ending all the input
+     abstractions, even if we only end the ancestor abstractions (and the
+     current abstraction) explicitly below: see the remark above about the
+     regions which *may* end and the ancestors which *must* end first. *)
+  let endable_abs_ids =
+    if is_static_rg then
+      List.map
+        (fun (rg : abs_region_group) -> rg.id)
+        inst_sg.abs_regions_hierarchy
+    else target_abs_ids
+  in
+  let ctx =
+    InterpBorrowsCore.update_endable ctx endable_abs_ids ~can_end:true
+  in
+
+  (* If we are synthesizing the backward function for the static region, we
+     need to allow ending the region abstractions which own the static region
+     (see [abs_is_endable]) *)
+  let ctx = if is_static_rg then { ctx with can_end_static = true } else ctx in
 
   (* Actually end them *)
   let ctx, cc =
@@ -516,6 +592,7 @@ let evaluate_function_symbolic (synthesize : bool) (decls_ctx : decls_ctx)
 
   let regions_hierarchy =
     RegionsHierarchy.compute_regions_hierarchy_for_sig (Some span) ctx.crate
+      ctx.type_ctx.type_infos
       (bound_fun_sig_of_decl fdef)
   in
 
@@ -547,7 +624,7 @@ let evaluate_function_symbolic (synthesize : bool) (decls_ctx : decls_ctx)
            is false *)
           let pop_locals =
             if !Config.borrow_check_globals then true
-            else not (Option.is_some fdef.is_global_initializer)
+            else not (fun_decl_is_global_initializer fdef)
           in
           pop_frame config span ~pop_locals ~pop_return_value:true ctx
         in

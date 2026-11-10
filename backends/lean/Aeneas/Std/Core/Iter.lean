@@ -1,18 +1,28 @@
-import Aeneas.Std.Core.Cmp
-import Aeneas.Std.Primitives
-import Aeneas.Std.Range
-import Aeneas.Std.Scalar.Core
-import Aeneas.Std.Scalar.Notations
-import Aeneas.Std.Scalar.CloneCopy
-import Aeneas.Std.Scalar.EqOrd
-import Aeneas.Std.Scalar.CheckedOps
-import Aeneas.Std.Core.Core
+module
+public import Aeneas.Std.Core.Cmp
+public import Aeneas.Std.Primitives
+public import Aeneas.Std.Range
+public import Aeneas.Std.Scalar.Core
+public import Aeneas.Std.Scalar.Notations
+public import Aeneas.Std.Scalar.CloneCopy
+public import Aeneas.Std.Scalar.EqOrd
+public import Aeneas.Std.Scalar.CheckedOps
+public import Aeneas.Std.Core.Core
+public import Aeneas.Std.Core.Ops
+-- Generic models below bind values of different universes: they need the
+-- universe-heterogeneous `do` elaborator. Note that this changes the `do` of every module
+-- importing this one: their `do` blocks elaborate to `Std.bind` (simp with `bind_ok`, ...)
+-- rather than `Bind.bind` (`bind_tc_ok`, ...), like extracted code.
+public import Aeneas.Do.Elab
+public section
+
+@[expose] section
 
 namespace Aeneas.Std
 
 @[rust_trait "core::iter::range::Step"
   (parentClauses := ["cloneInst", "partialOrdInst"])]
-structure core.iter.range.Step (Self : Type) where
+structure core.iter.range.Step (Self : Type _) where
   cloneInst : core.clone.Clone Self
   partialOrdInst : core.cmp.PartialOrd Self Self
   steps_between : Self → Self → Result (Usize × (Option Usize))
@@ -47,34 +57,40 @@ structure core.iter.adapters.take.Take (I : Type u) where
 structure core.iter.adapters.rev.Rev (T : Type u) where
   iter : T
 
+@[rust_type "core::iter::adapters::take_while::TakeWhile"]
+structure core.iter.adapters.take_while.TakeWhile (I : Type u) (P : Type v) where
+  iter : I
+  flag : Bool
+  predicate : P
+
 /-- `core::iter::adapters::zip::Zip` — the `a.zip(b)` adapter.
 
     The real Rust struct also carries `index`/`len` fields used for instance
     by the `TrustedRandomAccess` specialisation; for now we omit them. -/
 @[rust_type "core::iter::adapters::zip::Zip"]
-structure core.iter.adapters.zip.Zip (A : Type u) (B : Type u) where
+structure core.iter.adapters.zip.Zip (A : Type u) (B : Type v) where
   mk ::
   fst : A
   snd : B
 
 def core.iter.traits.iterator.Iterator.step_by.default
-  {Self : Type} (self: Self) (step_by : Std.Usize) :
+  {Self : Type _} (self: Self) (step_by : Std.Usize) :
   Result (core.iter.adapters.step_by.StepBy Self) :=
   if step_by.val = 0 then .fail .panic
   else .ok ⟨ self, step_by ⟩
 
 def core.iter.traits.iterator.Iterator.enumerate.default
-  {Self : Type} (self: Self) :
+  {Self : Type _} (self: Self) :
   Result (core.iter.adapters.enumerate.Enumerate Self) :=
   .ok { iter := self, count := 0#usize }
 
 def core.iter.traits.iterator.Iterator.take.default
-  {Self : Type} (self: Self) (n : Std.Usize) :
+  {Self : Type _} (self: Self) (n : Std.Usize) :
   Result (core.iter.adapters.take.Take Self) :=
   .ok ⟨ self, n ⟩
 
 @[rust_trait "core::iter::traits::iterator::Iterator"]
-structure core.iter.traits.iterator.Iterator (Self : Type) (Self_Item : Type)
+structure core.iter.traits.iterator.Iterator (Self : Type _) (Self_Item : Type _)
   where
   next : Self → Result ((Option Self_Item) × Self)
   step_by : Self → Usize → Result (core.iter.adapters.step_by.StepBy Self) := core.iter.traits.iterator.Iterator.step_by.default
@@ -90,7 +106,7 @@ structure core.iter.traits.iterator.Iterator (Self : Type) (Self_Item : Type)
 
 @[trait_default, rust_fun "core::iter::traits::iterator::Iterator::step_by"]
 def core.iter.traits.iterator.Iterator.step_by.trait_default
-  {Self Item : Type}
+  {Self Item : Type _}
   (_IteratorInst : core.iter.traits.iterator.Iterator Self Item)
   (self: Self) (step_by : Std.Usize) :
   Result (core.iter.adapters.step_by.StepBy Self) :=
@@ -98,7 +114,7 @@ def core.iter.traits.iterator.Iterator.step_by.trait_default
 
 @[trait_default, rust_fun "core::iter::traits::iterator::Iterator::enumerate"]
 def core.iter.traits.iterator.Iterator.enumerate.trait_default
-  {Self Item : Type}
+  {Self Item : Type _}
   (_IteratorInst : core.iter.traits.iterator.Iterator Self Item)
   (self: Self) :
   Result (core.iter.adapters.enumerate.Enumerate Self) :=
@@ -106,7 +122,7 @@ def core.iter.traits.iterator.Iterator.enumerate.trait_default
 
 @[trait_default, rust_fun "core::iter::traits::iterator::Iterator::take"]
 def core.iter.traits.iterator.Iterator.take.trait_default
-  {Self Item : Type}
+  {Self Item : Type _}
   (_IteratorInst : core.iter.traits.iterator.Iterator Self Item)
   (self: Self) (n : Std.Usize) :
   Result (core.iter.adapters.take.Take Self) :=
@@ -114,7 +130,7 @@ def core.iter.traits.iterator.Iterator.take.trait_default
 
 /-- Skip up to `n` elements from an iterator -/
 def core.iter.adapters.step_by.skipN
-    {I : Type} {Item : Type}
+    {I : Type _} {Item : Type _}
     (iterInst : core.iter.traits.iterator.Iterator I Item)
     (iter : I) : (n : Nat) → Result I
   | 0 => .ok iter
@@ -127,7 +143,7 @@ def core.iter.adapters.step_by.skipN
 @[rust_fun
   "core::iter::adapters::step_by::{core::iter::traits::iterator::Iterator<core::iter::adapters::step_by::StepBy<@I>, @Clause0_Item>}::next"]
 def core.iter.adapters.step_by.IteratorStepBy.next
-  {I : Type} {Item : Type}
+  {I : Type _} {Item : Type _}
   (IteratorInst : core.iter.traits.iterator.Iterator I Item) :
   core.iter.adapters.step_by.StepBy I →
   Result ((Option Item) × (core.iter.adapters.step_by.StepBy I)) :=
@@ -141,7 +157,7 @@ def core.iter.adapters.step_by.IteratorStepBy.next
 
 @[reducible, rust_trait_impl
   "core::iter::traits::iterator::Iterator<core::iter::adapters::step_by::StepBy<@I>, @Clause0_Item>"]
-impl_def core.iter.traits.iterator.IteratorStepBy {I : Type} {Item : Type}
+impl_def core.iter.traits.iterator.IteratorStepBy {I : Type _} {Item : Type _}
   (IteratorInst : core.iter.traits.iterator.Iterator I Item) :
   core.iter.traits.iterator.Iterator (core.iter.adapters.step_by.StepBy I) Item := {
   next := core.iter.adapters.step_by.IteratorStepBy.next IteratorInst
@@ -154,22 +170,22 @@ impl_def core.iter.traits.iterator.IteratorStepBy {I : Type} {Item : Type}
 }
 
 @[rust_trait "core::iter::traits::accum::Sum"]
-structure core.iter.traits.accum.Sum (Self : Type) (A : Type) where
+structure core.iter.traits.accum.Sum (Self : Type _) (A : Type _) where
   sum : forall {I : Type} (_ : core.iter.traits.iterator.Iterator I A), I → Result Self
 
 @[rust_trait "core::iter::traits::accum::Product"]
-structure core.iter.traits.accum.Product (Self : Type) (A : Type) where
+structure core.iter.traits.accum.Product (Self : Type _) (A : Type _) where
   product : forall {I : Type} (_ : core.iter.traits.iterator.Iterator I A), I → Result Self
 
 @[rust_trait "core::iter::traits::collect::IntoIterator"
   (parentClauses := ["iteratorInst"])]
-structure core.iter.traits.collect.IntoIterator (Self : Type) (Item :
-  Type) (IntoIter : Type) where
+structure core.iter.traits.collect.IntoIterator (Self : Type _) (Item :
+  Type _) (IntoIter : Type _) where
   iteratorInst : core.iter.traits.iterator.Iterator IntoIter Item
   into_iter : Self → Result IntoIter
 
 @[rust_trait "core::iter::traits::collect::FromIterator"]
-structure core.iter.traits.collect.FromIterator (Self : Type) (A : Type) where
+structure core.iter.traits.collect.FromIterator (Self : Type _) (A : Type _) where
   from_iter : forall {T : Type} {IntoIter : Type}
     (_ : core.iter.traits.collect.IntoIterator T A IntoIter),
     T → Result Self
@@ -178,13 +194,13 @@ structure core.iter.traits.collect.FromIterator (Self : Type) (A : Type) where
   "core::iter::traits::collect::{core::iter::traits::collect::IntoIterator<@I, @Item, @I>}::into_iter",
   simp]
 def core.iter.traits.collect.IntoIterator.Blanket.into_iter
-  {I : Type} {Item : Type} (_ : core.iter.traits.iterator.Iterator I Item) :
+  {I : Type _} {Item : Type _} (_ : core.iter.traits.iterator.Iterator I Item) :
   I → Result I :=
     λ x => ok x
 
 @[reducible, rust_trait_impl
   "core::iter::traits::collect::IntoIterator<@I, @Item, @I>"]
-def core.iter.traits.collect.IntoIterator.Blanket {I : Type} {Item : Type}
+def core.iter.traits.collect.IntoIterator.Blanket {I : Type _} {Item : Type _}
   (IteratorInst : core.iter.traits.iterator.Iterator I Item) :
     core.iter.traits.collect.IntoIterator I Item I := {
   iteratorInst := IteratorInst
@@ -193,7 +209,7 @@ def core.iter.traits.collect.IntoIterator.Blanket {I : Type} {Item : Type}
 
 @[rust_fun "core::iter::traits::iterator::Iterator::collect"]
 def core.iter.traits.iterator.Iterator.collect.default
-  {Self : Type} {B : Type} {Item : Type} (IteratorInst :
+  {Self : Type} {B : Type _} {Item : Type _} (IteratorInst :
   core.iter.traits.iterator.Iterator Self Item)
   (collectFromIteratorInst : core.iter.traits.collect.FromIterator B Item) :
   Self → Result B :=
@@ -201,19 +217,19 @@ def core.iter.traits.iterator.Iterator.collect.default
     (core.iter.traits.collect.IntoIterator.Blanket IteratorInst) self
 
 @[rust_trait "core::iter::traits::collect::Extend"]
-structure core.iter.traits.collect.Extend (Self : Type) (A : Type) where
+structure core.iter.traits.collect.Extend (Self : Type _) (A : Type _) where
   extend : forall {T : Type} {IntoIter : Type}
     (_ : core.iter.traits.collect.IntoIterator T A IntoIter), Self → T → Result Self
 
 @[rust_trait "core::iter::traits::double_ended::DoubleEndedIterator"
   (parentClauses := ["iteratorInst"])]
-structure core.iter.traits.double_ended.DoubleEndedIterator (Self : Type) (Item : Type) where
+structure core.iter.traits.double_ended.DoubleEndedIterator (Self : Type _) (Item : Type _) where
   iteratorInst : core.iter.traits.iterator.Iterator Self Item
   next_back : Self → Result ((Option Item) × Self)
 
 @[rust_trait "core::iter::traits::exact_size::ExactSizeIterator"
   (parentClauses := ["iteratorInst"])]
-structure core.iter.traits.exact_size.ExactSizeIterator (Self : Type) (Item : Type) where
+structure core.iter.traits.exact_size.ExactSizeIterator (Self : Type _) (Item : Type _) where
   iteratorInst : core.iter.traits.iterator.Iterator Self Item
 
 -- ============================================================================
@@ -280,6 +296,55 @@ def core.iter.range.IScalarStep.backward_checked {ty : IScalarTy}
       (by have := start.hBounds; omega)))
   else ok none
 
+/-! ### `forward_overflowing` / `backward_overflowing` for scalars
+
+The standard library defines one implementation per scalar type, with two different
+cases. For the types narrower than (or equal to) `usize`:
+```rust
+fn forward_overflowing(start: Self, n: usize) -> (Self, bool) {
+    match Self::try_from(n) {
+        Ok(n) => start.overflowing_add(n),
+        // if n is out of range, `start + n` must overflow
+        Err(_) => (start.wrapping_add(n as Self), true),
+    }
+}
+```
+and for the wider ones:  `start.overflowing_add(n as Self)` (the cast is
+exact there). The signed impls are the same modulo
+`overflowing_add_unsigned` / `wrapping_add_unsigned`.
+
+All of those agree with the uniform model below:
+
+* the value is always `start.wrapping_add(n)`
+* the flag is exactly "the mathematical result does not fit in `Self`"
+
+This does *not* model `Step for NonZero<_>`, which saturates instead of
+wrapping and is a separate impl. -/
+
+/-- Generic `forward_overflowing` for all unsigned scalar types. -/
+def core.iter.range.UScalarStep.forward_overflowing {ty : UScalarTy}
+    (start : UScalar ty) (n : Usize) : Result (UScalar ty × Bool) :=
+  ok (⟨ start.bv + BitVec.ofNat ty.numBits n.val ⟩,
+      decide (UScalar.max ty < start.val + n.val))
+
+/-- Generic `backward_overflowing` for all unsigned scalar types. -/
+def core.iter.range.UScalarStep.backward_overflowing {ty : UScalarTy}
+    (start : UScalar ty) (n : Usize) : Result (UScalar ty × Bool) :=
+  ok (⟨ start.bv - BitVec.ofNat ty.numBits n.val ⟩,
+      decide (start.val < n.val))
+
+/-- Generic `forward_overflowing` for all signed scalar types. -/
+def core.iter.range.IScalarStep.forward_overflowing {ty : IScalarTy}
+    (start : IScalar ty) (n : Usize) : Result (IScalar ty × Bool) :=
+  ok (⟨ start.bv + BitVec.ofNat ty.numBits n.val ⟩,
+      decide (IScalar.max ty < start.val + (n.val : Int)))
+
+/-- Generic `backward_overflowing` for all signed scalar types. -/
+def core.iter.range.IScalarStep.backward_overflowing {ty : IScalarTy}
+    (start : IScalar ty) (n : Usize) : Result (IScalar ty × Bool) :=
+  ok (⟨ start.bv - BitVec.ofNat ty.numBits n.val ⟩,
+      decide (start.val - (n.val : Int) < IScalar.min ty))
+
 -- ============================================================================
 -- Specialized Step instances
 -- ============================================================================
@@ -318,6 +383,10 @@ abbrev core.iter.range.StepUsize.steps_between := @UScalarStep.steps_between .Us
 abbrev core.iter.range.StepUsize.forward_checked := @UScalarStep.forward_checked .Usize
 @[rust_fun "core::iter::range::{core::iter::range::Step<usize>}::backward_checked"]
 abbrev core.iter.range.StepUsize.backward_checked := @UScalarStep.backward_checked .Usize
+@[rust_fun "core::iter::range::{core::iter::range::Step<usize>}::forward_overflowing"]
+abbrev core.iter.range.StepUsize.forward_overflowing := @UScalarStep.forward_overflowing .Usize
+@[rust_fun "core::iter::range::{core::iter::range::Step<usize>}::backward_overflowing"]
+abbrev core.iter.range.StepUsize.backward_overflowing := @UScalarStep.backward_overflowing .Usize
 @[rust_trait_impl "core::iter::range::Step<usize>"]
 abbrev core.iter.range.StepUsize := UScalarStep .Usize core.clone.CloneUsize core.cmp.PartialOrdUsize
 
@@ -327,6 +396,10 @@ abbrev core.iter.range.StepU8.steps_between := @UScalarStep.steps_between .U8
 abbrev core.iter.range.StepU8.forward_checked := @UScalarStep.forward_checked .U8
 @[rust_fun "core::iter::range::{core::iter::range::Step<u8>}::backward_checked"]
 abbrev core.iter.range.StepU8.backward_checked := @UScalarStep.backward_checked .U8
+@[rust_fun "core::iter::range::{core::iter::range::Step<u8>}::forward_overflowing"]
+abbrev core.iter.range.StepU8.forward_overflowing := @UScalarStep.forward_overflowing .U8
+@[rust_fun "core::iter::range::{core::iter::range::Step<u8>}::backward_overflowing"]
+abbrev core.iter.range.StepU8.backward_overflowing := @UScalarStep.backward_overflowing .U8
 @[rust_trait_impl "core::iter::range::Step<u8>"]
 abbrev core.iter.range.StepU8 := UScalarStep .U8 core.clone.CloneU8 core.cmp.PartialOrdU8
 
@@ -336,6 +409,10 @@ abbrev core.iter.range.StepU16.steps_between := @UScalarStep.steps_between .U16
 abbrev core.iter.range.StepU16.forward_checked := @UScalarStep.forward_checked .U16
 @[rust_fun "core::iter::range::{core::iter::range::Step<u16>}::backward_checked"]
 abbrev core.iter.range.StepU16.backward_checked := @UScalarStep.backward_checked .U16
+@[rust_fun "core::iter::range::{core::iter::range::Step<u16>}::forward_overflowing"]
+abbrev core.iter.range.StepU16.forward_overflowing := @UScalarStep.forward_overflowing .U16
+@[rust_fun "core::iter::range::{core::iter::range::Step<u16>}::backward_overflowing"]
+abbrev core.iter.range.StepU16.backward_overflowing := @UScalarStep.backward_overflowing .U16
 @[rust_trait_impl "core::iter::range::Step<u16>"]
 abbrev core.iter.range.StepU16 := UScalarStep .U16 core.clone.CloneU16 core.cmp.PartialOrdU16
 
@@ -345,6 +422,10 @@ abbrev core.iter.range.StepU32.steps_between := @UScalarStep.steps_between .U32
 abbrev core.iter.range.StepU32.forward_checked := @UScalarStep.forward_checked .U32
 @[rust_fun "core::iter::range::{core::iter::range::Step<u32>}::backward_checked"]
 abbrev core.iter.range.StepU32.backward_checked := @UScalarStep.backward_checked .U32
+@[rust_fun "core::iter::range::{core::iter::range::Step<u32>}::forward_overflowing"]
+abbrev core.iter.range.StepU32.forward_overflowing := @UScalarStep.forward_overflowing .U32
+@[rust_fun "core::iter::range::{core::iter::range::Step<u32>}::backward_overflowing"]
+abbrev core.iter.range.StepU32.backward_overflowing := @UScalarStep.backward_overflowing .U32
 @[rust_trait_impl "core::iter::range::Step<u32>"]
 abbrev core.iter.range.StepU32 := UScalarStep .U32 core.clone.CloneU32 core.cmp.PartialOrdU32
 
@@ -354,6 +435,10 @@ abbrev core.iter.range.StepU64.steps_between := @UScalarStep.steps_between .U64
 abbrev core.iter.range.StepU64.forward_checked := @UScalarStep.forward_checked .U64
 @[rust_fun "core::iter::range::{core::iter::range::Step<u64>}::backward_checked"]
 abbrev core.iter.range.StepU64.backward_checked := @UScalarStep.backward_checked .U64
+@[rust_fun "core::iter::range::{core::iter::range::Step<u64>}::forward_overflowing"]
+abbrev core.iter.range.StepU64.forward_overflowing := @UScalarStep.forward_overflowing .U64
+@[rust_fun "core::iter::range::{core::iter::range::Step<u64>}::backward_overflowing"]
+abbrev core.iter.range.StepU64.backward_overflowing := @UScalarStep.backward_overflowing .U64
 @[rust_trait_impl "core::iter::range::Step<u64>"]
 abbrev core.iter.range.StepU64 := UScalarStep .U64 core.clone.CloneU64 core.cmp.PartialOrdU64
 
@@ -363,6 +448,10 @@ abbrev core.iter.range.StepU128.steps_between := @UScalarStep.steps_between .U12
 abbrev core.iter.range.StepU128.forward_checked := @UScalarStep.forward_checked .U128
 @[rust_fun "core::iter::range::{core::iter::range::Step<u128>}::backward_checked"]
 abbrev core.iter.range.StepU128.backward_checked := @UScalarStep.backward_checked .U128
+@[rust_fun "core::iter::range::{core::iter::range::Step<u128>}::forward_overflowing"]
+abbrev core.iter.range.StepU128.forward_overflowing := @UScalarStep.forward_overflowing .U128
+@[rust_fun "core::iter::range::{core::iter::range::Step<u128>}::backward_overflowing"]
+abbrev core.iter.range.StepU128.backward_overflowing := @UScalarStep.backward_overflowing .U128
 @[rust_trait_impl "core::iter::range::Step<u128>"]
 abbrev core.iter.range.StepU128 := UScalarStep .U128 core.clone.CloneU128 core.cmp.PartialOrdU128
 
@@ -372,6 +461,10 @@ abbrev core.iter.range.StepIsize.steps_between := @IScalarStep.steps_between .Is
 abbrev core.iter.range.StepIsize.forward_checked := @IScalarStep.forward_checked .Isize
 @[rust_fun "core::iter::range::{core::iter::range::Step<isize>}::backward_checked"]
 abbrev core.iter.range.StepIsize.backward_checked := @IScalarStep.backward_checked .Isize
+@[rust_fun "core::iter::range::{core::iter::range::Step<isize>}::forward_overflowing"]
+abbrev core.iter.range.StepIsize.forward_overflowing := @IScalarStep.forward_overflowing .Isize
+@[rust_fun "core::iter::range::{core::iter::range::Step<isize>}::backward_overflowing"]
+abbrev core.iter.range.StepIsize.backward_overflowing := @IScalarStep.backward_overflowing .Isize
 @[rust_trait_impl "core::iter::range::Step<isize>"]
 abbrev core.iter.range.StepIsize := IScalarStep .Isize core.clone.CloneIsize core.cmp.PartialOrdIsize
 
@@ -381,6 +474,10 @@ abbrev core.iter.range.StepI8.steps_between := @IScalarStep.steps_between .I8
 abbrev core.iter.range.StepI8.forward_checked := @IScalarStep.forward_checked .I8
 @[rust_fun "core::iter::range::{core::iter::range::Step<i8>}::backward_checked"]
 abbrev core.iter.range.StepI8.backward_checked := @IScalarStep.backward_checked .I8
+@[rust_fun "core::iter::range::{core::iter::range::Step<i8>}::forward_overflowing"]
+abbrev core.iter.range.StepI8.forward_overflowing := @IScalarStep.forward_overflowing .I8
+@[rust_fun "core::iter::range::{core::iter::range::Step<i8>}::backward_overflowing"]
+abbrev core.iter.range.StepI8.backward_overflowing := @IScalarStep.backward_overflowing .I8
 @[rust_trait_impl "core::iter::range::Step<i8>"]
 abbrev core.iter.range.StepI8 := IScalarStep .I8 core.clone.CloneI8 core.cmp.PartialOrdI8
 
@@ -390,6 +487,10 @@ abbrev core.iter.range.StepI16.steps_between := @IScalarStep.steps_between .I16
 abbrev core.iter.range.StepI16.forward_checked := @IScalarStep.forward_checked .I16
 @[rust_fun "core::iter::range::{core::iter::range::Step<i16>}::backward_checked"]
 abbrev core.iter.range.StepI16.backward_checked := @IScalarStep.backward_checked .I16
+@[rust_fun "core::iter::range::{core::iter::range::Step<i16>}::forward_overflowing"]
+abbrev core.iter.range.StepI16.forward_overflowing := @IScalarStep.forward_overflowing .I16
+@[rust_fun "core::iter::range::{core::iter::range::Step<i16>}::backward_overflowing"]
+abbrev core.iter.range.StepI16.backward_overflowing := @IScalarStep.backward_overflowing .I16
 @[rust_trait_impl "core::iter::range::Step<i16>"]
 abbrev core.iter.range.StepI16 := IScalarStep .I16 core.clone.CloneI16 core.cmp.PartialOrdI16
 
@@ -399,6 +500,10 @@ abbrev core.iter.range.StepI32.steps_between := @IScalarStep.steps_between .I32
 abbrev core.iter.range.StepI32.forward_checked := @IScalarStep.forward_checked .I32
 @[rust_fun "core::iter::range::{core::iter::range::Step<i32>}::backward_checked"]
 abbrev core.iter.range.StepI32.backward_checked := @IScalarStep.backward_checked .I32
+@[rust_fun "core::iter::range::{core::iter::range::Step<i32>}::forward_overflowing"]
+abbrev core.iter.range.StepI32.forward_overflowing := @IScalarStep.forward_overflowing .I32
+@[rust_fun "core::iter::range::{core::iter::range::Step<i32>}::backward_overflowing"]
+abbrev core.iter.range.StepI32.backward_overflowing := @IScalarStep.backward_overflowing .I32
 @[rust_trait_impl "core::iter::range::Step<i32>"]
 abbrev core.iter.range.StepI32 := IScalarStep .I32 core.clone.CloneI32 core.cmp.PartialOrdI32
 
@@ -408,6 +513,10 @@ abbrev core.iter.range.StepI64.steps_between := @IScalarStep.steps_between .I64
 abbrev core.iter.range.StepI64.forward_checked := @IScalarStep.forward_checked .I64
 @[rust_fun "core::iter::range::{core::iter::range::Step<i64>}::backward_checked"]
 abbrev core.iter.range.StepI64.backward_checked := @IScalarStep.backward_checked .I64
+@[rust_fun "core::iter::range::{core::iter::range::Step<i64>}::forward_overflowing"]
+abbrev core.iter.range.StepI64.forward_overflowing := @IScalarStep.forward_overflowing .I64
+@[rust_fun "core::iter::range::{core::iter::range::Step<i64>}::backward_overflowing"]
+abbrev core.iter.range.StepI64.backward_overflowing := @IScalarStep.backward_overflowing .I64
 @[rust_trait_impl "core::iter::range::Step<i64>"]
 abbrev core.iter.range.StepI64 := IScalarStep .I64 core.clone.CloneI64 core.cmp.PartialOrdI64
 
@@ -417,6 +526,10 @@ abbrev core.iter.range.StepI128.steps_between := @IScalarStep.steps_between .I12
 abbrev core.iter.range.StepI128.forward_checked := @IScalarStep.forward_checked .I128
 @[rust_fun "core::iter::range::{core::iter::range::Step<i128>}::backward_checked"]
 abbrev core.iter.range.StepI128.backward_checked := @IScalarStep.backward_checked .I128
+@[rust_fun "core::iter::range::{core::iter::range::Step<i128>}::forward_overflowing"]
+abbrev core.iter.range.StepI128.forward_overflowing := @IScalarStep.forward_overflowing .I128
+@[rust_fun "core::iter::range::{core::iter::range::Step<i128>}::backward_overflowing"]
+abbrev core.iter.range.StepI128.backward_overflowing := @IScalarStep.backward_overflowing .I128
 @[rust_trait_impl "core::iter::range::Step<i128>"]
 abbrev core.iter.range.StepI128 := IScalarStep .I128 core.clone.CloneI128 core.cmp.PartialOrdI128
 
@@ -428,7 +541,7 @@ abbrev core.iter.range.StepI128 := IScalarStep .I128 core.clone.CloneI128 core.c
 @[rust_fun
   "core::iter::adapters::enumerate::{core::iter::traits::iterator::Iterator<core::iter::adapters::enumerate::Enumerate<@I>, (usize, @Clause0_Item)>}::next"]
 def core.iter.adapters.enumerate.IteratorEnumerate.next
-    {I : Type} {Item : Type}
+    {I : Type _} {Item : Type _}
     (IteratorInst : core.iter.traits.iterator.Iterator I Item)
     (self : core.iter.adapters.enumerate.Enumerate I) :
     Result ((Option (Usize × Item)) × (core.iter.adapters.enumerate.Enumerate I)) := do
@@ -441,7 +554,7 @@ def core.iter.adapters.enumerate.IteratorEnumerate.next
 
 @[reducible, rust_trait_impl
   "core::iter::traits::iterator::Iterator<core::iter::adapters::enumerate::Enumerate<@I>, (usize, @Clause0_Item)>"]
-impl_def core.iter.traits.iterator.IteratorEnumerate {I : Type} {Item : Type}
+impl_def core.iter.traits.iterator.IteratorEnumerate {I : Type _} {Item : Type _}
     (IteratorInst : core.iter.traits.iterator.Iterator I Item) :
     core.iter.traits.iterator.Iterator (core.iter.adapters.enumerate.Enumerate I) (Usize × Item) := {
   next := core.iter.adapters.enumerate.IteratorEnumerate.next IteratorInst
@@ -461,7 +574,7 @@ impl_def core.iter.traits.iterator.IteratorEnumerate {I : Type} {Item : Type}
 @[rust_fun
   "core::iter::adapters::take::{core::iter::traits::iterator::Iterator<core::iter::adapters::take::Take<@I>, @Clause0_Item>}::next"]
 def core.iter.adapters.take.IteratorTake.next
-    {I : Type} {Item : Type}
+    {I : Type _} {Item : Type _}
     (IteratorInst : core.iter.traits.iterator.Iterator I Item)
     (self : core.iter.adapters.take.Take I) :
     Result ((Option Item) × (core.iter.adapters.take.Take I)) :=
@@ -474,7 +587,7 @@ def core.iter.adapters.take.IteratorTake.next
 
 @[reducible, rust_trait_impl
   "core::iter::traits::iterator::Iterator<core::iter::adapters::take::Take<@I>, @Clause0_Item>"]
-impl_def core.iter.traits.iterator.IteratorTake {I : Type} {Item : Type}
+impl_def core.iter.traits.iterator.IteratorTake {I : Type _} {Item : Type _}
     (IteratorInst : core.iter.traits.iterator.Iterator I Item) :
     core.iter.traits.iterator.Iterator (core.iter.adapters.take.Take I) Item := {
   next := core.iter.adapters.take.IteratorTake.next IteratorInst
@@ -489,7 +602,7 @@ impl_def core.iter.traits.iterator.IteratorTake {I : Type} {Item : Type}
 @[rust_fun
   "core::iter::range::{core::iter::traits::iterator::Iterator<core::ops::range::Range<@A>, @A>}::next"]
 def core.iter.range.IteratorRange.next
-   {A : Type} (StepInst : core.iter.range.Step A) :
+   {A : Type _} (StepInst : core.iter.range.Step A) :
   core.ops.range.Range A → Result ((Option A) × (core.ops.range.Range A)) :=
   λ range => do
     let cmp ← StepInst.partialOrdInst.lt range.start range.end;
@@ -503,7 +616,7 @@ def core.iter.range.IteratorRange.next
 
 @[reducible, rust_trait_impl
   "core::iter::traits::iterator::Iterator<core::ops::range::Range<@A>, @A>"]
-impl_def core.iter.traits.iterator.IteratorRange {A : Type}
+impl_def core.iter.traits.iterator.IteratorRange {A : Type _}
   (StepInst : core.iter.range.Step A) : core.iter.traits.iterator.Iterator
   (core.ops.range.Range A) A := {
   next := core.iter.range.IteratorRange.next StepInst
@@ -525,7 +638,7 @@ impl_def core.iter.traits.iterator.IteratorRange {A : Type}
 @[rust_fun
   "core::iter::adapters::zip::{core::iter::traits::iterator::Iterator<core::iter::adapters::zip::Zip<@A, @B>, (@Clause0_Item, @Clause1_Item)>}::next"]
 def core.iter.adapters.zip.Zip.Insts.CoreIterTraitsIteratorIteratorPair.next
-  {A B Item_A Item_B : Type}
+  {A B Item_A Item_B : Type _}
   (IA : core.iter.traits.iterator.Iterator A Item_A)
   (IB : core.iter.traits.iterator.Iterator B Item_B)
   (z : core.iter.adapters.zip.Zip A B) :
@@ -540,12 +653,12 @@ def core.iter.adapters.zip.Zip.Insts.CoreIterTraitsIteratorIteratorPair.next
       | some b => ok (some (a, b), ⟨a', b'⟩)
 
 @[rust_fun "core::ops::range::{core::ops::range::RangeInclusive<@Idx>}::new"]
-def core.ops.range.RangeInclusive.new {Idx : Type}
+def core.ops.range.RangeInclusive.new {Idx : Type _}
     (start «end» : Idx) : Result (core.ops.range.RangeInclusive Idx) :=
   ok ⟨start, «end», false⟩
 
 @[rust_fun "core::ops::range::{core::ops::range::RangeInclusive<@Idx>}::is_empty"]
-def core.ops.range.RangeInclusive.is_empty {Idx : Type} (inst : core.cmp.PartialOrd Idx Idx)
+def core.ops.range.RangeInclusive.is_empty {Idx : Type _} (inst : core.cmp.PartialOrd Idx Idx)
   (self : core.ops.range.RangeInclusive Idx) : Result Bool := do
   if self.exhausted then ok true
   else
@@ -572,10 +685,11 @@ def core.ops.range.RangeInclusive.is_empty {Idx : Type} (inst : core.cmp.Partial
 @[rust_fun
   "core::iter::range::{core::iter::traits::iterator::Iterator<core::ops::range::RangeInclusive<@A>, @A>}::next"]
 def core.ops.range.RangeInclusive.Insts.CoreIterTraitsIteratorIterator.next
-  {A : Type} (StepInst : core.iter.range.Step A)
+  {A : Type _} (StepInst : core.iter.range.Step A)
   (self : core.ops.range.RangeInclusive A) :
   Result ((Option A) × core.ops.range.RangeInclusive A) := do
-  if ← self.is_empty StepInst.partialOrdInst then .ok (none, self)
+  let empty ← self.is_empty StepInst.partialOrdInst
+  if empty then .ok (none, self)
   else
     let is_iterating ← StepInst.partialOrdInst.lt self.start self.«end»
     if is_iterating then
@@ -593,7 +707,7 @@ def core.ops.range.RangeInclusive.Insts.CoreIterTraitsIteratorIterator.next
 
 /-- `Iterator::zip` default body: `Zip::new(self, other.into_iter())`. -/
 def core.iter.traits.iterator.Iterator.zip.default
-  {Self U IntoIter : Type}
+  {Self U IntoIter : Type _}
   (into_iter : U → Result IntoIter) :
   Self → U → Result (core.iter.adapters.zip.Zip Self IntoIter) :=
   fun self other => do
@@ -602,7 +716,7 @@ def core.iter.traits.iterator.Iterator.zip.default
 
 @[trait_default, rust_fun "core::iter::traits::iterator::Iterator::zip"]
 def core.iter.traits.iterator.Iterator.zip.trait_default
-  {Self U Item0 Item1 IntoIter : Type}
+  {Self U Item0 Item1 IntoIter : Type _}
   (_IteratorInst : core.iter.traits.iterator.Iterator Self Item0)
   (IntoIterInst : core.iter.traits.collect.IntoIterator U Item1 IntoIter) :
   Self → U → Result (core.iter.adapters.zip.Zip Self IntoIter) :=
@@ -610,23 +724,37 @@ def core.iter.traits.iterator.Iterator.zip.trait_default
 
 /-- `Iterator::rev` default body: `Rev { iter: self }`. -/
 def core.iter.traits.iterator.Iterator.rev.default
-  {Self : Type} :
+  {Self : Type _} :
   Self → Result (core.iter.adapters.rev.Rev Self) :=
   fun self => ok ⟨self⟩
 
 @[trait_default, rust_fun "core::iter::traits::iterator::Iterator::rev"]
 def core.iter.traits.iterator.Iterator.rev.trait_default
-  {Self Item0 Item1 : Type}
+  {Self Item0 Item1 : Type _}
   (_IteratorInst : core.iter.traits.iterator.Iterator Self Item0)
   (_DEInst : core.iter.traits.double_ended.DoubleEndedIterator Self Item1) :
   Self → Result (core.iter.adapters.rev.Rev Self) :=
   core.iter.traits.iterator.Iterator.rev.default
 
+/-- `Iterator::take_while` default body: `TakeWhile { iter: self, flag: false, predicate }`. -/
+def core.iter.traits.iterator.Iterator.take_while.default
+  {Self P : Type _} :
+  Self → P → Result (core.iter.adapters.take_while.TakeWhile Self P) :=
+  fun self predicate => ok ⟨self, false, predicate⟩
+
+@[trait_default, rust_fun "core::iter::traits::iterator::Iterator::take_while"]
+def core.iter.traits.iterator.Iterator.take_while.trait_default
+  {Self P Item : Type _}
+  (_IteratorInst : core.iter.traits.iterator.Iterator Self Item)
+  (_PredInst : core.ops.function.FnMut P Item Bool) :
+  Self → P → Result (core.iter.adapters.take_while.TakeWhile Self P) :=
+  core.iter.traits.iterator.Iterator.take_while.default
+
 /-! ## `@[step]` specs for the default-method constructors -/
 
 @[step]
 theorem core.iter.traits.iterator.Iterator.step_by.default.spec
-    {Self : Type} (self : Self) (step : Std.Usize) (hstep : 0 < step.val) :
+    {Self : Type _} (self : Self) (step : Std.Usize) (hstep : 0 < step.val) :
     core.iter.traits.iterator.Iterator.step_by.default self step
     ⦃ sb => sb.iter = self ∧ sb.step_by = step ⦄ := by
   unfold core.iter.traits.iterator.Iterator.step_by.default
@@ -634,7 +762,7 @@ theorem core.iter.traits.iterator.Iterator.step_by.default.spec
 
 @[step]
 theorem core.iter.traits.iterator.Iterator.step_by.trait_default.spec
-    {Self Item : Type} (inst : core.iter.traits.iterator.Iterator Self Item)
+    {Self Item : Type _} (inst : core.iter.traits.iterator.Iterator Self Item)
     (self : Self) (step : Std.Usize) (hstep : 0 < step.val) :
     core.iter.traits.iterator.Iterator.step_by.trait_default inst self step
     ⦃ sb => sb.iter = self ∧ sb.step_by = step ⦄ := by
@@ -643,7 +771,7 @@ theorem core.iter.traits.iterator.Iterator.step_by.trait_default.spec
 
 @[step]
 theorem core.iter.traits.iterator.Iterator.enumerate.default.spec
-    {Self : Type} (self : Self) :
+    {Self : Type _} (self : Self) :
     core.iter.traits.iterator.Iterator.enumerate.default self
     ⦃ e => e.iter = self ∧ e.count = 0#usize ⦄ := by
   unfold core.iter.traits.iterator.Iterator.enumerate.default
@@ -651,7 +779,7 @@ theorem core.iter.traits.iterator.Iterator.enumerate.default.spec
 
 @[step]
 theorem core.iter.traits.iterator.Iterator.enumerate.trait_default.spec
-    {Self Item : Type} (inst : core.iter.traits.iterator.Iterator Self Item)
+    {Self Item : Type _} (inst : core.iter.traits.iterator.Iterator Self Item)
     (self : Self) :
     core.iter.traits.iterator.Iterator.enumerate.trait_default inst self
     ⦃ e => e.iter = self ∧ e.count = 0#usize ⦄ := by
@@ -660,7 +788,7 @@ theorem core.iter.traits.iterator.Iterator.enumerate.trait_default.spec
 
 @[step]
 theorem core.iter.traits.iterator.Iterator.take.default.spec
-    {Self : Type} (self : Self) (n : Std.Usize) :
+    {Self : Type _} (self : Self) (n : Std.Usize) :
     core.iter.traits.iterator.Iterator.take.default self n
     ⦃ t => t.iter = self ∧ t.n = n ⦄ := by
   unfold core.iter.traits.iterator.Iterator.take.default
@@ -668,7 +796,7 @@ theorem core.iter.traits.iterator.Iterator.take.default.spec
 
 @[step]
 theorem core.iter.traits.iterator.Iterator.take.trait_default.spec
-    {Self Item : Type} (inst : core.iter.traits.iterator.Iterator Self Item)
+    {Self Item : Type _} (inst : core.iter.traits.iterator.Iterator Self Item)
     (self : Self) (n : Std.Usize) :
     core.iter.traits.iterator.Iterator.take.trait_default inst self n
     ⦃ t => t.iter = self ∧ t.n = n ⦄ := by
@@ -677,15 +805,34 @@ theorem core.iter.traits.iterator.Iterator.take.trait_default.spec
 
 @[step]
 theorem core.iter.traits.iterator.Iterator.rev.default.spec
-    {Self : Type} (self : Self) :
+    {Self : Type _} (self : Self) :
     core.iter.traits.iterator.Iterator.rev.default self
     ⦃ r => r.iter = self ⦄ := by
   unfold core.iter.traits.iterator.Iterator.rev.default
   simp [WP.spec_ok]
 
 @[step]
+theorem core.iter.traits.iterator.Iterator.take_while.default.spec
+    {Self P : Type _} (self : Self) (predicate : P) :
+    core.iter.traits.iterator.Iterator.take_while.default self predicate
+    ⦃ t => t.iter = self ∧ t.flag = false ∧ t.predicate = predicate ⦄ := by
+  unfold core.iter.traits.iterator.Iterator.take_while.default
+  simp [WP.spec_ok]
+
+@[step]
+theorem core.iter.traits.iterator.Iterator.take_while.trait_default.spec
+    {Self P Item : Type _}
+    (inst : core.iter.traits.iterator.Iterator Self Item)
+    (predInst : core.ops.function.FnMut P Item Bool)
+    (self : Self) (predicate : P) :
+    core.iter.traits.iterator.Iterator.take_while.trait_default inst predInst self predicate
+    ⦃ t => t.iter = self ∧ t.flag = false ∧ t.predicate = predicate ⦄ := by
+  unfold core.iter.traits.iterator.Iterator.take_while.trait_default
+  exact core.iter.traits.iterator.Iterator.take_while.default.spec self predicate
+
+@[step]
 theorem core.iter.traits.iterator.Iterator.rev.trait_default.spec
-    {Self Item0 Item1 : Type}
+    {Self Item0 Item1 : Type _}
     (inst : core.iter.traits.iterator.Iterator Self Item0)
     (de : core.iter.traits.double_ended.DoubleEndedIterator Self Item1)
     (self : Self) :
@@ -696,7 +843,7 @@ theorem core.iter.traits.iterator.Iterator.rev.trait_default.spec
 
 @[step]
 theorem core.iter.traits.iterator.Iterator.zip.default.spec
-    {Self U IntoIter : Type}
+    {Self U IntoIter : Type _}
     (into_iter : U → Result IntoIter)
     (self : Self) (other : U)
     (h_into : ∃ other', into_iter other = ok other') :
@@ -708,7 +855,7 @@ theorem core.iter.traits.iterator.Iterator.zip.default.spec
 
 @[step]
 theorem core.iter.traits.iterator.Iterator.zip.trait_default.spec
-    {Self U Item0 Item1 IntoIter : Type}
+    {Self U Item0 Item1 IntoIter : Type _}
     (inst : core.iter.traits.iterator.Iterator Self Item0)
     (IntoIterInst : core.iter.traits.collect.IntoIterator U Item1 IntoIter)
     (self : Self) (other : U)
@@ -719,11 +866,75 @@ theorem core.iter.traits.iterator.Iterator.zip.trait_default.spec
   exact core.iter.traits.iterator.Iterator.zip.default.spec
     IntoIterInst.into_iter self other h_into
 
+/-- `Iterator::next` on `TakeWhile<I, P>`: yields until the predicate first fails,
+    then latches `flag` and yields nothing further. -/
+@[rust_fun
+  "core::iter::adapters::take_while::{core::iter::traits::iterator::Iterator<core::iter::adapters::take_while::TakeWhile<@I, @P>, @Clause0_Item>}::next"]
+def core.iter.adapters.take_while.TakeWhile.Insts.CoreIterTraitsIteratorIterator.next
+  {I P Item : Type _}
+  (IterInst : core.iter.traits.iterator.Iterator I Item)
+  (PredInst : core.ops.function.FnMut P Item Bool) :
+  core.iter.adapters.take_while.TakeWhile I P →
+    Result ((Option Item) × core.iter.adapters.take_while.TakeWhile I P) :=
+  fun self =>
+    if self.flag then ok (none, self)
+    else do
+      let (o, it) ← IterInst.next self.iter
+      match o with
+      | none => ok (none, ⟨it, self.flag, self.predicate⟩)
+      | some x => do
+        let (b, p) ← PredInst.call_mut self.predicate x
+        if b then ok (some x, ⟨it, false, p⟩)
+        else ok (none, ⟨it, true, p⟩)
+
+/-- A `TakeWhile` step over any iterator. The predicate postcondition describes its
+    returned boolean and updated state. It is required only for items allowed by
+    `nextPost`; the inner iterator may be a slice iterator, a reversed iterator, or
+    another `Iterator` implementation. -/
+@[step]
+theorem core.iter.adapters.take_while.TakeWhile.Insts.CoreIterTraitsIteratorIterator.next.spec
+    {I P Item : Type _}
+    (IterInst : core.iter.traits.iterator.Iterator I Item)
+    (PredInst : core.ops.function.FnMut P Item Bool)
+    (tw : core.iter.adapters.take_while.TakeWhile I P)
+    (nextPost : Option Item × I → Prop)
+    (predPost : Item → Bool × P → Prop)
+    (hnext : ¬tw.flag → IterInst.next tw.iter ⦃ nextPost ⦄)
+    (hpred : ¬tw.flag → ∀ x it, nextPost (some x, it) →
+      PredInst.call_mut tw.predicate x ⦃ predPost x ⦄) :
+    core.iter.adapters.take_while.TakeWhile.Insts.CoreIterTraitsIteratorIterator.next
+      IterInst PredInst tw
+    ⦃ r => if tw.flag then r = (none, tw)
+           else ∃ o it, nextPost (o, it) ∧
+             match o with
+             | none => r = (none, ⟨it, false, tw.predicate⟩)
+             | some x => ∃ b p, predPost x (b, p) ∧
+                 r = (if b then some x else none, ⟨it, !b, p⟩) ⦄ := by
+  by_cases hf : tw.flag
+  · simp [core.iter.adapters.take_while.TakeWhile.Insts.CoreIterTraitsIteratorIterator.next,
+      hf, WP.spec_ok]
+  · simp only [core.iter.adapters.take_while.TakeWhile.Insts.CoreIterTraitsIteratorIterator.next,
+      hf, Bool.false_eq_true, ↓reduceIte]
+    apply WP.spec_bind (hnext hf)
+    intro ⟨o, it⟩ ho
+    cases o with
+    | none =>
+      simp [uncurry, WP.spec_ok]
+      exact ⟨none, it, ho, rfl⟩
+    | some x =>
+      apply WP.spec_bind (hpred hf x it ho)
+      intro ⟨b, p⟩ hbp
+      cases b
+      · simp [uncurry, WP.spec_ok]
+        exact ⟨some x, it, ho, hbp, rfl⟩
+      · simp [uncurry, WP.spec_ok]
+        exact ⟨some x, it, ho, hbp, rfl, rfl⟩
+
 /-- `Iterator::next` on `Rev<I>`: delegates to the inner `next_back`. -/
 @[rust_fun
   "core::iter::adapters::rev::{core::iter::traits::iterator::Iterator<core::iter::adapters::rev::Rev<@I>, @Clause0_Clause0_Item>}::next"]
 def core.iter.adapters.rev.Rev.Insts.CoreIterTraitsIteratorIterator.next
-  {I Item : Type}
+  {I Item : Type _}
   (DEInst : core.iter.traits.double_ended.DoubleEndedIterator I Item) :
   core.iter.adapters.rev.Rev I →
     Result ((Option Item) × core.iter.adapters.rev.Rev I) :=
@@ -736,7 +947,7 @@ def core.iter.adapters.rev.Rev.Insts.CoreIterTraitsIteratorIterator.next
 @[rust_fun
   "core::iter::range::{core::iter::traits::double_ended::DoubleEndedIterator<core::ops::range::Range<@A>, @A>}::next_back"]
 def core.ops.range.Range.Insts.CoreIterTraitsDoubleEndedIterator.next_back
-  {A : Type} (StepInst : core.iter.range.Step A) :
+  {A : Type _} (StepInst : core.iter.range.Step A) :
   core.ops.range.Range A → Result ((Option A) × core.ops.range.Range A) :=
   fun r => do
     let lt ← StepInst.partialOrdInst.lt r.start r.«end»
@@ -770,10 +981,11 @@ fn spec_next_back(&mut self) -> Option<A> {
 @[rust_fun
   "core::iter::range::{core::iter::traits::double_ended::DoubleEndedIterator<core::ops::range::RangeInclusive<@A>, @A>}::next_back"]
 def core.ops.range.RangeInclusive.Insts.CoreIterTraitsDoubleEndedIterator.next_back
-  {A : Type} (StepInst : core.iter.range.Step A)
+  {A : Type _} (StepInst : core.iter.range.Step A)
   (self : core.ops.range.RangeInclusive A) :
   Result ((Option A) × core.ops.range.RangeInclusive A) := do
-  if ← self.is_empty StepInst.partialOrdInst then .ok (none, self)
+  let empty ← self.is_empty StepInst.partialOrdInst
+  if empty then .ok (none, self)
   else
     let is_iterating ← StepInst.partialOrdInst.lt self.start self.«end»
     if is_iterating then

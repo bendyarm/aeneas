@@ -2,6 +2,30 @@ open Types
 open Utils
 include Charon.TypesUtils
 
+let constant_expr_as_literal (c : constant_expr) : Values.literal =
+  match c.kind with
+  | CBool v -> VBool v
+  | CInteger v -> VScalar v
+  | CChar v -> VChar v
+  | CFloat v -> VFloat v
+  | CStr v -> VStr v
+  | CByteStr v -> VByteStr v
+  | _ -> raise (Failure "Expected a primitive constant")
+
+let constant_expr_as_integer (c : constant_expr) : integer_value =
+  match c.kind with
+  | CInteger v -> v
+  | _ -> raise (Failure "Expected an integer constant")
+
+(** Create a tuple type. *)
+let mk_tuple_ty (tys : ty list) : ty =
+  TAdt
+    {
+      id = unit_type_decl_id;
+      generics = mk_generic_args_from_types tys;
+      builtin = Some TTuple;
+    }
+
 let concat_generic_args (generics1 : generic_args) (generics2 : generic_args) :
     generic_args =
   {
@@ -11,7 +35,56 @@ let concat_generic_args (generics1 : generic_args) (generics2 : generic_args) :
     trait_refs = generics1.trait_refs @ generics2.trait_refs;
   }
 
-(** Return the set of regions in an type - TODO: add static?
+(** Check if a region belongs to a set of regions.
+
+    This shadows {!Charon.TypesUtils.region_in_set}: we use sets of regions
+    (which may contain the static region) rather than sets of region ids.
+
+    This function should be used on non-bound regions; it raises an exception if
+    this is not the case, or if the region is erased and [allow_erased] is
+    [false]. *)
+let region_in_set ?(allow_erased = false) (r : region) (rset : region_set) :
+    bool =
+  match r with
+  | RStatic | RVar (Free _) -> RegionSet.mem r rset
+  | RErased ->
+      if allow_erased then false
+      else
+        [%craise_opt_span] None
+          "region_in_set shouldn't be called on erased regions"
+  | RBody _ ->
+      [%craise_opt_span] None
+        "region_in_set shouldn't be called on body regions"
+  | RLub _ -> [%craise_opt_span] None "Unexpected Lub region"
+  | RVar (Bound _) ->
+      [%craise_opt_span] None
+        "region_in_set shouldn't be called on bound regions"
+
+(** Convert a set of region ids to a set of (free) regions *)
+let region_set_of_region_id_set (rids : RegionId.Set.t) : region_set =
+  RegionSet.of_list
+    (List.map (fun rid -> RVar (Free rid)) (RegionId.Set.elements rids))
+
+(** Return the set of region ids appearing in a set of regions (we ignore the
+    static region) *)
+let region_set_get_region_ids (rset : region_set) : RegionId.Set.t =
+  RegionId.Set.of_list
+    (List.filter_map
+       (fun r ->
+         match r with
+         | RVar (Free rid) -> Some rid
+         | _ -> None)
+       (RegionSet.elements rset))
+
+(** Return [true] if a set of regions contains the static region *)
+let region_set_has_static (rset : region_set) : bool =
+  RegionSet.mem RStatic rset
+
+(** Return the set of region variables in an type.
+
+    We ignore the static region: this function is used to check whether a type
+    contains ended regions, and the static region never ends (several region
+    abstractions may own it at the same time - see [Contexts.eval_ctx]).
 
     This function should be used on non-erased and non-bound regions. For
     sanity, we raise exceptions if this is not the case. *)
@@ -19,7 +92,8 @@ let ty_regions (ty : ty) : RegionId.Set.t =
   let s = ref RegionId.Set.empty in
   let add_region (r : region) =
     match r with
-    | RStatic -> () (* TODO: static? *)
+    | RStatic -> ()
+    | RLub _ -> [%craise_opt_span] None "Unexpected Lub region"
     | RErased | RBody _ ->
         raise
           (Failure "ty_regions shouldn't be called on erased or body regions")
@@ -48,12 +122,65 @@ let ty_regions_intersect (ty : ty) (regions : RegionId.Set.t) : bool =
   let ty_regions = ty_regions ty in
   not (RegionId.Set.disjoint ty_regions regions)
 
-(** Check if a {!type:Charon.Types.ty} contains regions from a given set *)
-let ty_has_regions_in_pred (pred : region -> bool) (ty : ty) : bool =
+(** Lookup the information about an ADT ([None] if it is a builtin type) *)
+let lookup_adt_info (infos : TypesAnalysis.type_infos) (tref : type_decl_ref) :
+    TypesAnalysis.type_decl_info option =
+  match tref.builtin with
+  | Some (TTuple | TBox | TStr) -> None
+  | None ->
+      Some
+        ([%unwrap_opt_span] None
+           (TypeDeclId.TreeMap.find_opt tref.id infos)
+           "Missing type information")
+
+(** Check whether the definition of an ADT contains static borrows.
+
+    Note that in this case the static region doesn't appear in the generics of
+    the ADT: the static region is "hidden" (for instance, consider:
+    [struct S { x : &'static u32 }]). As a consequence, functions which check
+    whether a type contains some regions by simply exploring it must take this
+    information into account. *)
+let adt_has_hidden_static (infos : TypesAnalysis.type_infos)
+    (tref : type_decl_ref) : bool =
+  match lookup_adt_info infos tref with
+  | None -> false
+  | Some info -> info.borrows_info.contains_static
+
+(** Check whether a type contains an ADT in which the static region is hidden
+    (see {!adt_has_hidden_static}). *)
+let ty_has_hidden_static (infos : TypesAnalysis.type_infos) (ty : ty) : bool =
+  let obj =
+    object
+      inherit [_] iter_ty as super
+
+      method! visit_TAdt env tref =
+        if adt_has_hidden_static infos tref then raise Found;
+        super#visit_TAdt env tref
+    end
+  in
+  try
+    obj#visit_ty () ty;
+    false
+  with Found -> true
+
+(** Check if a {!type:Charon.Types.ty} contains regions which satisfy a
+    predicate.
+
+    If [infos] is provided, we take into account the static regions which are
+    hidden in ADTs (see {!adt_has_hidden_static}). *)
+let ty_has_regions_in_pred_aux (infos : TypesAnalysis.type_infos option)
+    (pred : region -> bool) (ty : ty) : bool =
   let obj =
     object
       inherit [_] iter_ty as super
       method! visit_region _ r = if pred r then raise Found
+
+      method! visit_TAdt env tref =
+        (match infos with
+        | Some infos ->
+            if adt_has_hidden_static infos tref && pred RStatic then raise Found
+        | None -> ());
+        super#visit_TAdt env tref
 
       method! visit_TDynTrait env tr =
         (* Ignore the dyn traits by default *)
@@ -66,9 +193,19 @@ let ty_has_regions_in_pred (pred : region -> bool) (ty : ty) : bool =
     false
   with Found -> true
 
-(** Check if a {!type:Charon.Types.ty} contains regions from a given set *)
-let ty_has_regions_in_set (rset : RegionId.Set.t) (ty : ty) : bool =
-  ty_has_regions_in_pred (fun r -> region_in_set r rset) ty
+(** Check if a {!type:Charon.Types.ty} contains regions which satisfy a
+    predicate (we take into account the static regions hidden in ADTs, see
+    {!adt_has_hidden_static}). *)
+let ty_has_regions_in_pred (infos : TypesAnalysis.type_infos)
+    (pred : region -> bool) (ty : ty) : bool =
+  ty_has_regions_in_pred_aux (Some infos) pred ty
+
+(** Check if a {!type:Charon.Types.ty} contains regions from a given set (we
+    take into account the static regions hidden in ADTs, see
+    {!adt_has_hidden_static}). *)
+let ty_has_regions_in_set (infos : TypesAnalysis.type_infos) (rset : region_set)
+    (ty : ty) : bool =
+  ty_has_regions_in_pred infos (fun r -> region_in_set r rset) ty
 
 (** Check if a type has free (i.e., non erased) regions.
 
@@ -80,10 +217,10 @@ let ty_has_regions_in_set (rset : RegionId.Set.t) (ty : ty) : bool =
     some free regions (or in other words, if not all the regions appearing in
     the type are erased). *)
 let ty_has_free_regions (ty : ty) : bool =
-  ty_has_regions_in_pred region_is_free ty
+  ty_has_regions_in_pred_aux None region_is_free ty
 
 let ty_has_erased_regions (ty : ty) : bool =
-  ty_has_regions_in_pred region_is_erased ty
+  ty_has_regions_in_pred_aux None region_is_erased ty
 
 let expect_free_var = Substitute.expect_free_var
 
@@ -111,7 +248,7 @@ let ty_has_adt_with_borrows span (infos : TypesAnalysis.type_infos) (ty : ty) :
 
       method! visit_ty env ty =
         match ty with
-        | TAdt { id; _ } when id <> TTuple ->
+        | TAdt { builtin; _ } when builtin <> Some TTuple ->
             let info = TypesAnalysis.analyze_ty span infos ty in
             if info.TypesAnalysis.contains_borrow then raise Found
             else super#visit_ty env ty
@@ -220,7 +357,7 @@ let type_decl_has_nested_borrows (span : Meta.span option)
   let generics =
     Substitute.generic_args_of_params_erase_regions span type_decl.generics
   in
-  let ty = TAdt { id = TAdtId type_decl.def_id; generics } in
+  let ty = TAdt { id = type_decl.def_id; generics; builtin = None } in
   ty_has_nested_borrows span infos ty
 
 let type_decl_has_nested_mut_borrows (span : Meta.span option)
@@ -228,7 +365,7 @@ let type_decl_has_nested_mut_borrows (span : Meta.span option)
   let generics =
     Substitute.generic_args_of_params_erase_regions span type_decl.generics
   in
-  let ty = TAdt { id = TAdtId type_decl.def_id; generics } in
+  let ty = TAdt { id = type_decl.def_id; generics; builtin = None } in
   ty_has_nested_mut_borrows span infos ty
 
 (** Retuns true if the type contains a borrow under a mutable borrow *)
@@ -238,7 +375,10 @@ let ty_has_borrow_under_mut span (infos : TypesAnalysis.type_infos) (ty : ty) :
   info.TypesAnalysis.contains_borrow_under_mut
 
 (** Check if a {!type:Charon.Types.ty} contains a mutable borrow which uses a
-    region from a given set. *)
+    region from a given set.
+
+    We take into account the static mutable borrows hidden in ADTs (see
+    {!adt_has_hidden_static}). *)
 let ty_has_mut_borrow_for_region_in_pred (infos : TypesAnalysis.type_infos)
     (pred : region -> bool) (ty : ty) : bool =
   let obj =
@@ -256,10 +396,12 @@ let ty_has_mut_borrow_for_region_in_pred (infos : TypesAnalysis.type_infos)
       method! visit_TAdt env tref =
         (* Lookup the information for this ADT *)
         begin
-          match tref.id with
-          | TTuple | TBuiltin (TBox | TStr) -> ()
-          | TAdtId adt_id ->
-              let info = TypeDeclId.Map.find adt_id infos in
+          match tref.builtin with
+          | Some (TTuple | TBox | TStr) -> ()
+          | None ->
+              let info = TypeDeclId.TreeMap.find tref.id infos in
+              if info.borrows_info.contains_static_mut && pred RStatic then
+                raise Found;
               RegionId.iteri
                 (fun adt_rid r ->
                   if RegionId.Set.mem adt_rid info.mut_regions && pred r then
@@ -277,15 +419,17 @@ let ty_has_mut_borrow_for_region_in_pred (infos : TypesAnalysis.type_infos)
 
 (** Compute which regions from a set are effectively used as mutable borrows in
     a type. Note that a mutable borrow below a shared borrow is effectively
-    shared. *)
+    shared.
+
+    We take into account the static mutable borrows hidden in ADTs (see
+    {!adt_has_hidden_static}). *)
 let ty_get_mutable_regions (infos : TypesAnalysis.type_infos)
-    (owned_regions : RegionId.Set.t) (ty : rty) : RegionId.Set.t =
-  let result = ref RegionId.Set.empty in
+    (owned_regions : region_set) (ty : rty) : region_set =
+  let result = ref RegionSet.empty in
   let add_region (r : region) =
     match r with
-    | RVar (Free rid) ->
-        if RegionId.Set.mem rid owned_regions then
-          result := RegionId.Set.add rid !result
+    | RVar (Free _) | RStatic ->
+        if RegionSet.mem r owned_regions then result := RegionSet.add r !result
     | _ -> ()
   in
 
@@ -305,11 +449,12 @@ let ty_get_mutable_regions (infos : TypesAnalysis.type_infos)
       method! visit_TAdt env tref =
         (* Lookup the information for this ADT *)
         begin
-          match tref.id with
-          | TTuple | TBuiltin (TBox | TStr) -> ()
-          | TAdtId adt_id ->
+          match tref.builtin with
+          | Some (TTuple | TBox | TStr) -> ()
+          | None ->
               (* Check which region parameters are mutable *)
-              let info = TypeDeclId.Map.find adt_id infos in
+              let info = TypeDeclId.TreeMap.find tref.id infos in
+              if info.borrows_info.contains_static_mut then add_region RStatic;
               RegionId.iteri
                 (fun adt_rid r ->
                   if RegionId.Set.mem adt_rid info.mut_regions then add_region r)
@@ -322,10 +467,10 @@ let ty_get_mutable_regions (infos : TypesAnalysis.type_infos)
   !result
 
 let ty_has_mut_borrow_for_region_in_set (infos : TypesAnalysis.type_infos)
-    (regions : RegionId.Set.t) (ty : ty) : bool =
+    (regions : region_set) (ty : ty) : bool =
   ty_has_mut_borrow_for_region_in_pred infos
     (function
-      | RVar (Free rid) -> RegionId.Set.mem rid regions
+      | (RVar (Free _) | RStatic) as r -> RegionSet.mem r regions
       | _ -> false)
     ty
 
@@ -334,13 +479,14 @@ let ty_has_mut_borrows (infos : TypesAnalysis.type_infos) (ty : ty) : bool =
 
 (** Small helper *)
 let raise_if_not_rty_visitor =
-  object
+  object (self)
     inherit [_] iter_ty as super
 
     method! visit_region _ r =
       match r with
       | RVar (Bound _) | RErased -> raise Found
       | RStatic | RVar (Free _) -> ()
+      | RLub ty -> self#visit_ty () ty
       | RBody _ -> [%craise_opt_span] None "unsupported: Body region"
 
     method! visit_TDynTrait env tr =
@@ -359,13 +505,14 @@ let ty_is_rty (ty : ty) : bool =
 
 (** Small helper *)
 let raise_if_not_erased_ty_visitor =
-  object
+  object (self)
     inherit [_] iter_ty
 
     method! visit_region _ r =
       match r with
       | RStatic | RVar _ -> raise Found
       | RErased -> ()
+      | RLub ty -> self#visit_ty () ty
       | RBody _ -> [%craise_opt_span] None "unsupported: Body region"
   end
 
@@ -381,11 +528,7 @@ let ty_erase_body_regions ty =
   let visitor =
     object
       inherit [_] map_ty
-
-      method! visit_region _ r =
-        match r with
-        | RStatic | RVar _ | RErased -> r
-        | RBody _ -> RErased
+      method! visit_RBody _ _ = RErased
     end
   in
   visitor#visit_ty () ty
@@ -394,7 +537,12 @@ let ty_erase_regions ty =
   let visitor =
     object
       inherit [_] map_ty
-      method! visit_region _ _ = RErased
+
+      (* Preserve [RLub] wrappers in outlives predicates, erasing the regions
+         of their types as well. *)
+      method! visit_RStatic _ = RErased
+      method! visit_RVar _ _ = RErased
+      method! visit_RBody _ _ = RErased
     end
   in
   visitor#visit_ty () ty
@@ -471,26 +619,15 @@ let trait_type_constraint_no_regions (x : trait_type_constraint) : bool =
     is a non-recursive structure with unnamed fields. *)
 let type_decl_from_decl_id_is_tuple_struct (ctx : TypesAnalysis.type_infos)
     (id : TypeDeclId.id) : bool =
-  let info = TypeDeclId.Map.find id ctx in
+  let info = TypeDeclId.TreeMap.find id ctx in
   info.is_tuple_struct
-
-(** Return true if a type declaration should be extracted as a tuple, because it
-    is a non-recursive structure with unnamed fields. *)
-let type_decl_from_type_id_is_tuple_struct (ctx : TypesAnalysis.type_infos)
-    (id : type_id) : bool =
-  match id with
-  | TTuple -> true
-  | TAdtId id ->
-      let info = TypeDeclId.Map.find id ctx in
-      info.is_tuple_struct
-  | TBuiltin _ -> false
 
 (** A trait instance id refers to a local clause if it only uses the variants:
     [Self], [Clause], [ParentClause] *)
 let rec trait_ref_kind_is_local_clause (id : trait_ref_kind) : bool =
   match id with
   | Self | Clause _ -> true
-  | ParentClause (tref, _) | ItemClause (tref, _, _) ->
+  | ParentClause (tref, _, _) | ItemClause (tref, _, _, _, _) ->
       trait_ref_kind_is_local_clause tref.kind
   | TraitImpl _ | BuiltinOrAuto _ | UnknownTrait _ | Dyn -> false
 

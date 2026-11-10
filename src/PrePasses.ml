@@ -54,7 +54,6 @@ let erase_body_regions (crate : crate) (f : fun_decl) : fun_decl =
 
       method! visit_RBody _ _ = RErased
       method! visit_RVar _ _ = RErased
-      method! visit_RStatic _ = RErased
     end
   in
 
@@ -88,28 +87,21 @@ let erase_body_regions (crate : crate) (f : fun_decl) : fun_decl =
   f
 
 (** Replace the occurrences of [core::intrinsics::unreachable] with
-    [Abort UndefinedBehavior]. This helps with the analyzes and the symbolic
+    [UndefinedBehavior]. This helps with the analyzes and the symbolic
     evaluation (in particular, we stop the evaluation when encountering an
-    [Abort] - this can help us avoid merging control-flow after a match for
-    instance *)
+    [UndefinedBehavior] - this can help us avoid merging control-flow after a
+    match for instance *)
 let remove_unreachable (crate : crate) (f : fun_decl) : fun_decl =
   let impl_pat = NameMatcher.parse_pattern "core::intrinsics::unreachable" in
-  let mctx = NameMatcher.ctx_from_crate crate in
-  let match_name =
-    NameMatcher.match_name mctx
-      {
-        map_vars_to_vars = true;
-        match_with_trait_decl_refs = Config.match_patterns_with_trait_decl_refs;
-      }
-  in
+  let match_name = ExtractName.match_name crate in
 
   let is_unreachable (st : statement) : bool =
     match st.kind with
-    | Call (call, _) -> (
+    | Call (call, _, _) -> (
         match call.func with
         | FnOpRegular { kind; _ } -> (
             match kind with
-            | FunId (FRegular fid) ->
+            | Fun fid ->
                 let fun_decl =
                   [%silent_unwrap_opt_span] (Some st.span)
                     (FunDeclId.Map.find_opt fid crate.fun_decls)
@@ -123,7 +115,7 @@ let remove_unreachable (crate : crate) (f : fun_decl) : fun_decl =
     match stl with
     | [] -> []
     | st :: stl ->
-        if is_unreachable st then [ { st with kind = Abort UndefinedBehavior } ]
+        if is_unreachable st then [ { st with kind = UndefinedBehavior } ]
         else st :: update stl
   in
   let visitor =
@@ -162,14 +154,7 @@ let remove_unreachable (crate : crate) (f : fun_decl) : fun_decl =
 let update_array_default (crate : crate) : crate =
   let pctx = Print.crate_to_fmt_env crate in
   let impl_pat = NameMatcher.parse_pattern "core::default::Default" in
-  let mctx = NameMatcher.ctx_from_crate crate in
-  let match_name =
-    NameMatcher.match_name mctx
-      {
-        map_vars_to_vars = true;
-        match_with_trait_decl_refs = Config.match_patterns_with_trait_decl_refs;
-      }
-  in
+  let match_name = ExtractName.match_name crate in
 
   (* Helper: check whether a trait impl matches the [Default<[T; N]>] pattern,
      and if so return its array length [N]. We ignore the case where the length
@@ -190,8 +175,8 @@ let update_array_default (crate : crate) : crate =
          [
            TArray
              ( TVar (Free _),
-               ({ kind = CLiteral (VScalar (UnsignedScalar (Usize, nv))); _ } as
-                n) );
+               ({ kind = CInteger (UnsignedInteger (Usize, nv)); _ } as n),
+               _ );
          ];
        const_generics = [];
        trait_refs = _;
@@ -202,8 +187,8 @@ let update_array_default (crate : crate) : crate =
 
   (* First pass: collect all the trait impls matching [Default<[T; N]>] and
      their default methods, together with the array length [N]. *)
-  let impls = ref TraitImplId.Map.empty in
-  let methods = ref FunDeclId.Map.empty in
+  let impls = ref TraitImplId.TreeMap.empty in
+  let methods = ref FunDeclId.TreeMap.empty in
   TraitImplId.Map.iter
     (fun _ (impl : trait_impl) ->
       match matches_default_array impl with
@@ -212,20 +197,20 @@ let update_array_default (crate : crate) : crate =
           [%ldebug
             "found a matching impl.\n - decl_generics: "
             ^ Print.generic_args_to_string pctx impl.impl_trait.generics];
-          impls := TraitImplId.Map.add impl.def_id n !impls;
+          impls := TraitImplId.TreeMap.add impl.def_id n !impls;
           [%sanity_check_opt_span] None
             (TraitMethodId.Map.cardinal impl.methods = 1);
           let meth = List.hd (TraitMethodId.Map.values impl.methods) in
           [%sanity_check_opt_span] None
             (meth.binder_params = empty_generic_params);
           let method_id = meth.binder_value.id in
-          methods := FunDeclId.Map.add method_id n !methods)
+          methods := FunDeclId.TreeMap.add method_id n !methods)
     crate.trait_impls;
   let impls = !impls in
   let methods = !methods in
 
   (* If we didn't find any matching impl, there is nothing to do. *)
-  if TraitImplId.Map.is_empty impls then crate
+  if TraitImplId.TreeMap.is_empty impls then crate
   else
     (* Pick the impl into which we will merge all the others.  Prefer the smallest id
        among the impls whose def_id appears in the declarations to extract, so that the
@@ -233,25 +218,27 @@ let update_array_default (crate : crate) : crate =
        declarations, fall back to the smallest id: the merging is still useful so that
        builtin name mappings (which match the generic pattern [@T; @N]) can resolve
        references at use sites. *)
-    let decl_ids = ref TraitImplId.Set.empty in
+    let decl_ids = ref TraitImplId.TreeSet.empty in
     let collect_visitor =
       object
         inherit [_] iter_crate
 
         method! visit_trait_impl_id _ id =
-          TraitImplId.Set.add_in_place id decl_ids
+          TraitImplId.TreeSet.add_in_place id decl_ids
       end
     in
-    List.iter (collect_visitor#visit_declaration_group ()) crate.declarations;
+    List.iter
+      (collect_visitor#visit_declaration_group ())
+      (Option.get crate.declarations);
     let impls_in_decls =
-      TraitImplId.Map.filter
-        (fun id _ -> TraitImplId.Set.mem id !decl_ids)
+      TraitImplId.TreeMap.filter
+        (fun id _ -> TraitImplId.TreeSet.mem id !decl_ids)
         impls
     in
     let merged_impl_id, _ =
-      if TraitImplId.Map.is_empty impls_in_decls then
-        TraitImplId.Map.min_binding impls
-      else TraitImplId.Map.min_binding impls_in_decls
+      if TraitImplId.TreeMap.is_empty impls_in_decls then
+        TraitImplId.TreeMap.min_binding impls
+      else TraitImplId.TreeMap.min_binding impls_in_decls
     in
     let merged_impl =
       [%silent_unwrap_opt_span] None
@@ -271,13 +258,13 @@ let update_array_default (crate : crate) : crate =
       in
       let elem_ty =
         match merged_impl.impl_trait.generics.types with
-        | [ TArray ((TVar (Free _) as elem_ty), _) ] -> elem_ty
+        | [ TArray ((TVar (Free _) as elem_ty), _, _) ] -> elem_ty
         | _ -> [%internal_error] merged_impl.item_meta.span
       in
       let generics =
         {
           merged_impl.impl_trait.generics with
-          types = [ TArray (elem_ty, cg) ];
+          types = [ TArray (elem_ty, cg, None) ];
         }
       in
       let impl_trait = { merged_impl.impl_trait with generics } in
@@ -300,7 +287,7 @@ let update_array_default (crate : crate) : crate =
           TraitImplId.Map.filter_map
             (fun id impl ->
               if id = merged_impl.def_id then Some merged_impl
-              else if TraitImplId.Map.mem id impls then None
+              else if TraitImplId.TreeMap.mem id impls then None
               else Some impl)
             crate.trait_impls;
       }
@@ -308,7 +295,7 @@ let update_array_default (crate : crate) : crate =
 
     (* Filter the functions *)
     let visit_fun id (fdecl : fun_decl) =
-      match FunDeclId.Map.find_opt id methods with
+      match FunDeclId.TreeMap.find_opt id methods with
       | None -> Some fdecl
       | Some _ ->
           if id = merged_method then (
@@ -320,7 +307,7 @@ let update_array_default (crate : crate) : crate =
             let sg = fdecl.signature in
             [%sanity_check_opt_span] None (sg.inputs = []);
             match sg.output with
-            | TArray ((TVar (Free _) as elem_ty), _) ->
+            | TArray ((TVar (Free _) as elem_ty), _, _) ->
                 let generics =
                   {
                     fdecl.generics with
@@ -334,7 +321,7 @@ let update_array_default (crate : crate) : crate =
                       ];
                   }
                 in
-                let sg = { sg with output = TArray (elem_ty, cg) } in
+                let sg = { sg with output = TArray (elem_ty, cg, None) } in
                 let fdecl = { fdecl with signature = sg; generics } in
                 Some fdecl
             | _ -> [%internal_error] fdecl.item_meta.span)
@@ -346,12 +333,12 @@ let update_array_default (crate : crate) : crate =
         inherit [_] filter_decl_id
 
         method! visit_trait_impl_id _ id =
-          match TraitImplId.Map.find_opt id impls with
+          match TraitImplId.TreeMap.find_opt id impls with
           | None -> Some id
           | Some _ -> if id = merged_impl.def_id then Some id else None
 
         method! visit_fun_decl_id _ id =
-          match FunDeclId.Map.find_opt id methods with
+          match FunDeclId.TreeMap.find_opt id methods with
           | None -> Some id
           | Some _ -> if id = merged_method then Some id else None
       end
@@ -361,7 +348,9 @@ let update_array_default (crate : crate) : crate =
         crate with
         fun_decls = FunDeclId.Map.filter_map visit_fun crate.fun_decls;
         declarations =
-          filter_ids_visitor#visit_declaration_groups () crate.declarations;
+          Some
+            (filter_ids_visitor#visit_declaration_groups ()
+               (Option.get crate.declarations));
       }
     in
 
@@ -371,7 +360,7 @@ let update_array_default (crate : crate) : crate =
         inherit [_] map_crate_with_span as super
 
         method! visit_TraitImpl env impl_ref =
-          match TraitImplId.Map.find_opt impl_ref.id impls with
+          match TraitImplId.TreeMap.find_opt impl_ref.id impls with
           | None -> super#visit_TraitImpl env impl_ref
           | Some n ->
               super#visit_TraitImpl env
@@ -382,13 +371,13 @@ let update_array_default (crate : crate) : crate =
 
         method! visit_fn_ptr env fn_ptr =
           match fn_ptr.kind with
-          | FunId (FRegular fid) -> begin
-              match FunDeclId.Map.find_opt fid methods with
+          | Fun fid -> begin
+              match FunDeclId.TreeMap.find_opt fid methods with
               | None -> super#visit_fn_ptr env fn_ptr
               | Some n ->
                   let fn_ptr =
                     {
-                      kind = FunId (FRegular merged_method);
+                      kind = Fun merged_method;
                       generics = { fn_ptr.generics with const_generics = [ n ] };
                     }
                   in
@@ -588,7 +577,7 @@ let update_loops (crate : crate) (f : fun_decl) : fun_decl =
                   | st :: after -> (
                       match st.kind with
                       | Return -> [ { st with kind = Break 0 } ]
-                      | Abort _ -> [ st ]
+                      | Panic _ | UnwindTerminate | UndefinedBehavior -> [ st ]
                       | _ -> st :: decompose_after after)
                 in
                 let after = decompose_after after in
@@ -712,30 +701,20 @@ let remove_useless_joins (crate : crate) (f : fun_decl) : fun_decl =
         match st.kind with
         | Nop | StorageLive _ | StorageDead _ | PlaceMention _ | Borrowck _
         | Drop (_, _, _, _) -> (can_inline, st :: ls)
-        | Abort _ | Return | UnwindResume | Break _ | Continue _ ->
-            (true, [ st ])
-        | Switch switch ->
+        | Panic _
+        | UnwindTerminate
+        | UndefinedBehavior
+        | Return
+        | UnwindResume
+        | Break _
+        | Continue _ -> (true, [ st ])
+        | Switch (data, branches) ->
             [%ldebug "Switch: can_inline: " ^ Print.bool_to_string can_inline];
             (* Attempt to inline inside the body *)
             let to_inline, ls = if can_inline then (ls, []) else ([], ls) in
             let update b = snd (update_block to_inline b) in
-            let switch =
-              match switch with
-              | If (scrut, st0, st1) -> If (scrut, update st0, update st1)
-              | SwitchInt (op, ty, branches, otherwise) ->
-                  let branches =
-                    List.map (fun (pats, br) -> (pats, update br)) branches
-                  in
-                  let otherwise = update otherwise in
-                  SwitchInt (op, ty, branches, otherwise)
-              | Match (scrut, branches, otherwise) ->
-                  let branches =
-                    List.map (fun (id, br) -> (id, update br)) branches
-                  in
-                  let otherwise = Option.map update otherwise in
-                  Match (scrut, branches, otherwise)
-            in
-            let ls = { st with kind = Switch switch } :: ls in
+            let branches = List.map update branches in
+            let ls = { st with kind = Switch (data, branches) } :: ls in
             [%ldebug
               "after updating the switch:\n"
               ^ Print.list_to_string ~sep:"\n" (statement_to_string crate) ls];
@@ -748,9 +727,9 @@ let remove_useless_joins (crate : crate) (f : fun_decl) : fun_decl =
             match rv with
             | Use _ | RvRef _ | RawPtr _ | NullaryOp _ | Aggregate _ ->
                 (can_inline, st :: ls)
-            | BinaryOp _ | UnaryOp _ | Discriminant _ | Len _ | Repeat _ ->
+            | BinaryOp _ | UnaryOp _ | Discriminant _ | Repeat _ ->
                 (false, st :: ls))
-        | SetDiscriminant _ | Assert (_, _, _) | Call (_, _) | Error _ ->
+        | SetDiscriminant _ | Assert (_, _, _) | Call (_, _, _) ->
             (false, st :: ls)
         | _ ->
             [%craise] st.span
@@ -881,7 +860,7 @@ let remove_shallow_borrows_storage_live_dead (crate : crate) (f : fun_decl) :
     disambiguate items that exist for multiple targets.
 
     For functions: if the function is not behind a target dispatch (its [src] is
-    NOT [TargetDependentItem]), there is no ambiguity (the function is not used
+    NOT [TargetDependentFun]), there is no ambiguity (the function is not used
     for several targets), so we remove the suffix.
 
     For types there is no notion of dispatch, meaning we can't use the item
@@ -927,7 +906,7 @@ let strip_unnecessary_target_suffixes (crate : crate) : crate =
     FunDeclId.Map.fold
       (fun _ (f : fun_decl) acc ->
         match f.src with
-        | TargetDependentItem _ -> acc
+        | TargetDependentFun _ -> acc
         | _ -> add_name acc f.item_meta.name)
       crate.fun_decls NameMap.empty
   in
@@ -935,7 +914,7 @@ let strip_unnecessary_target_suffixes (crate : crate) : crate =
     FunDeclId.Map.map
       (fun (f : fun_decl) ->
         match f.src with
-        | TargetDependentItem _ -> f
+        | TargetDependentFun _ -> f
         | _ ->
             let name = get_name fun_base_counts f.item_meta.name in
             { f with item_meta = { f.item_meta with name } })
@@ -976,7 +955,6 @@ let strip_unnecessary_target_suffixes (crate : crate) : crate =
     and all references (trait refs, clauses, type constraints, parent clauses).
 *)
 let filter_marker_traits (crate : crate) : crate =
-  let mctx = NameMatcher.ctx_from_crate crate in
   let pats =
     List.map NameMatcher.parse_pattern
       [
@@ -994,39 +972,31 @@ let filter_marker_traits (crate : crate) : crate =
         "core::alloc::Allocator";
       ]
   in
-  let match_config =
-    {
-      NameMatcher.map_vars_to_vars = true;
-      match_with_trait_decl_refs = Config.match_patterns_with_trait_decl_refs;
-    }
-  in
   (* Collect the trait decl ids to filter *)
   let filtered_ids =
     TraitDeclId.Map.fold
       (fun id (decl : trait_decl) acc ->
         if
           List.exists
-            (fun pat ->
-              NameMatcher.match_name mctx match_config pat decl.item_meta.name)
+            (fun pat -> ExtractName.match_name crate pat decl.item_meta.name)
             pats
-        then TraitDeclId.Set.add id acc
+        then TraitDeclId.TreeSet.add id acc
         else acc)
-      crate.trait_decls TraitDeclId.Set.empty
+      crate.trait_decls TraitDeclId.TreeSet.empty
   in
-  if TraitDeclId.Set.is_empty filtered_ids then crate
+  if TraitDeclId.TreeSet.is_empty filtered_ids then crate
   else
-    let is_filtered_id id = TraitDeclId.Set.mem id filtered_ids in
-    let is_filtered_ref (tr : trait_ref) : bool =
-      is_filtered_id tr.trait_decl_ref.binder_value.id
+    let is_filtered_id id = TraitDeclId.TreeSet.mem id filtered_ids in
+    let is_filtered_ref (tr : poly_trait_ref) : bool =
+      is_filtered_id tr.binder_value.trait_decl_ref.id
     in
     let is_filtered_clause (clause : trait_param) : bool =
       is_filtered_id clause.trait.binder_value.id
     in
     let check_not_filtered_type_constraint
         (c : trait_type_constraint region_binder) : unit =
-      if is_filtered_id c.binder_value.trait_ref.trait_decl_ref.binder_value.id
-      then
-        let span = c.binder_value.trait_ref.trait_decl_ref.binder_value in
+      if is_filtered_id c.binder_value.trait_ref.trait_decl_ref.id then
+        let span = c.binder_value.trait_ref.trait_decl_ref in
         [%craise_opt_span] None
           ("Unexpected trait type constraint referencing a filtered marker \
             trait (id: "
@@ -1037,37 +1007,48 @@ let filter_marker_traits (crate : crate) : crate =
     let filtered_impl_ids =
       TraitImplId.Map.fold
         (fun id (impl : trait_impl) acc ->
-          if is_filtered_id impl.impl_trait.id then TraitImplId.Set.add id acc
+          if is_filtered_id impl.impl_trait.id then
+            TraitImplId.TreeSet.add id acc
           else acc)
-        crate.trait_impls TraitImplId.Set.empty
+        crate.trait_impls TraitImplId.TreeSet.empty
     in
-    let item_source_is_filtered (src : item_source) : bool =
+    let fun_source_is_filtered (src : fun_source) : bool =
       match src with
-      | TraitDeclItem (trait_ref, _) -> is_filtered_id trait_ref.id
-      | TraitImplItem (impl_ref, trait_ref, _, _) ->
-          TraitImplId.Set.mem impl_ref.id filtered_impl_ids
+      | TraitDefaultFun (trait_ref, _) -> is_filtered_id trait_ref.id
+      | TraitImplFun (impl_ref, trait_ref, _, _) ->
+          TraitImplId.TreeSet.mem impl_ref.id filtered_impl_ids
+          || is_filtered_id trait_ref.id
+      | _ -> false
+    in
+    let global_source_is_filtered (src : global_source) : bool =
+      match src with
+      | TraitDefaultGlobal (trait_ref, _) -> is_filtered_id trait_ref.id
+      | TraitImplGlobal (impl_ref, trait_ref, _, _) ->
+          TraitImplId.TreeSet.mem impl_ref.id filtered_impl_ids
           || is_filtered_id trait_ref.id
       | _ -> false
     in
     let filtered_global_ids =
       GlobalDeclId.Map.fold
         (fun id (decl : global_decl) acc ->
-          if item_source_is_filtered decl.src then GlobalDeclId.Set.add id acc
+          if global_source_is_filtered decl.src then
+            GlobalDeclId.TreeSet.add id acc
           else acc)
-        crate.global_decls GlobalDeclId.Set.empty
+        crate.global_decls GlobalDeclId.TreeSet.empty
     in
     let filtered_fun_ids =
       FunDeclId.Map.fold
         (fun id (decl : fun_decl) acc ->
-          let init_is_filtered =
-            match decl.is_global_initializer with
+          let initializer_is_filtered =
+            match fun_decl_global_initializer decl with
             | None -> false
-            | Some id -> GlobalDeclId.Set.mem id filtered_global_ids
+            | Some global ->
+                GlobalDeclId.TreeSet.mem global.id filtered_global_ids
           in
-          if item_source_is_filtered decl.src || init_is_filtered then
-            FunDeclId.Set.add id acc
+          if fun_source_is_filtered decl.src || initializer_is_filtered then
+            FunDeclId.TreeSet.add id acc
           else acc)
-        crate.fun_decls FunDeclId.Set.empty
+        crate.fun_decls FunDeclId.TreeSet.empty
     in
     let declarations =
       List.filter_map
@@ -1079,40 +1060,42 @@ let filter_marker_traits (crate : crate) : crate =
               let ids = List.filter (fun id -> not (is_filtered_id id)) ids in
               if ids <> [] then Some (TraitDeclGroup (RecGroup ids)) else None
           | TraitImplGroup (NonRecGroup id) ->
-              if TraitImplId.Set.mem id filtered_impl_ids then None else Some g
+              if TraitImplId.TreeSet.mem id filtered_impl_ids then None
+              else Some g
           | TraitImplGroup (RecGroup ids) ->
               let ids =
                 List.filter
-                  (fun id -> not (TraitImplId.Set.mem id filtered_impl_ids))
+                  (fun id -> not (TraitImplId.TreeSet.mem id filtered_impl_ids))
                   ids
               in
               if ids <> [] then Some (TraitImplGroup (RecGroup ids)) else None
           | FunGroup (NonRecGroup id) ->
-              if FunDeclId.Set.mem id filtered_fun_ids then None else Some g
+              if FunDeclId.TreeSet.mem id filtered_fun_ids then None else Some g
           | FunGroup (RecGroup ids) ->
               let ids =
                 List.filter
-                  (fun id -> not (FunDeclId.Set.mem id filtered_fun_ids))
+                  (fun id -> not (FunDeclId.TreeSet.mem id filtered_fun_ids))
                   ids
               in
               if ids <> [] then Some (FunGroup (RecGroup ids)) else None
           | GlobalGroup (NonRecGroup id) ->
-              if GlobalDeclId.Set.mem id filtered_global_ids then None
+              if GlobalDeclId.TreeSet.mem id filtered_global_ids then None
               else Some g
           | GlobalGroup (RecGroup ids) ->
               let ids =
                 List.filter
-                  (fun id -> not (GlobalDeclId.Set.mem id filtered_global_ids))
+                  (fun id ->
+                    not (GlobalDeclId.TreeSet.mem id filtered_global_ids))
                   ids
               in
               if ids <> [] then Some (GlobalGroup (RecGroup ids)) else None
           | MixedGroup g -> (
               let is_filtered_item (id : item_id) =
                 match id with
-                | IdFun id -> FunDeclId.Set.mem id filtered_fun_ids
-                | IdGlobal id -> GlobalDeclId.Set.mem id filtered_global_ids
+                | IdFun id -> FunDeclId.TreeSet.mem id filtered_fun_ids
+                | IdGlobal id -> GlobalDeclId.TreeSet.mem id filtered_global_ids
                 | IdTraitDecl id -> is_filtered_id id
-                | IdTraitImpl id -> TraitImplId.Set.mem id filtered_impl_ids
+                | IdTraitImpl id -> TraitImplId.TreeSet.mem id filtered_impl_ids
                 | _ -> false
               in
               match g with
@@ -1124,7 +1107,7 @@ let filter_marker_traits (crate : crate) : crate =
                   in
                   if ids <> [] then Some (MixedGroup (RecGroup ids)) else None)
           | _ -> Some g)
-        crate.declarations
+        (Option.get crate.declarations)
     in
     let trait_decls =
       TraitDeclId.Map.filter
@@ -1133,23 +1116,23 @@ let filter_marker_traits (crate : crate) : crate =
     in
     let trait_impls =
       TraitImplId.Map.filter
-        (fun id _ -> not (TraitImplId.Set.mem id filtered_impl_ids))
+        (fun id _ -> not (TraitImplId.TreeSet.mem id filtered_impl_ids))
         crate.trait_impls
     in
     let global_decls =
       GlobalDeclId.Map.filter
-        (fun id _ -> not (GlobalDeclId.Set.mem id filtered_global_ids))
+        (fun id _ -> not (GlobalDeclId.TreeSet.mem id filtered_global_ids))
         crate.global_decls
     in
     let fun_decls =
       FunDeclId.Map.filter
-        (fun id _ -> not (FunDeclId.Set.mem id filtered_fun_ids))
+        (fun id _ -> not (FunDeclId.TreeSet.mem id filtered_fun_ids))
         crate.fun_decls
     in
     let crate =
       {
         crate with
-        declarations;
+        declarations = Some declarations;
         trait_decls;
         trait_impls;
         global_decls;
@@ -1182,19 +1165,22 @@ let filter_marker_traits (crate : crate) : crate =
 
         method! visit_trait_ref_kind env (kind : trait_ref_kind) =
           match kind with
-          | BuiltinOrAuto (data, parent_refs, types) ->
+          | BuiltinOrAuto (data, parent_refs, types, vtable) ->
               let parent_refs =
                 List.filter (fun tr -> not (is_filtered_ref tr)) parent_refs
               in
               let parent_refs =
-                List.map (self#visit_trait_ref env) parent_refs
+                List.map
+                  (self#visit_region_binder self#visit_trait_ref env)
+                  parent_refs
               in
               let types =
                 AssocTypeId.Map.map
                   (fun t -> self#visit_trait_assoc_ty_impl env t)
                   types
               in
-              BuiltinOrAuto (data, parent_refs, types)
+              let vtable = Option.map (self#visit_global_decl_ref env) vtable in
+              BuiltinOrAuto (data, parent_refs, types, vtable)
           | _ -> super#visit_trait_ref_kind env kind
 
         method! visit_trait_decl env (decl : trait_decl) =
@@ -1252,164 +1238,11 @@ let filter_type_aliases (crate : crate) : crate =
         (fun _id ty -> not (type_decl_is_alias ty))
         crate.type_decls;
     declarations =
-      List.filter
-        (fun decl -> not (decl_group_is_single_alias decl))
-        crate.declarations;
+      Some
+        (List.filter
+           (fun decl -> not (decl_group_is_single_alias decl))
+           (Option.get crate.declarations));
   }
-
-(** Whenever we write a string literal in Rust, rustc actually introduces a
-    constant of type [&str]. Generally speaking, because [str] is unsized, it
-    doesn't make sense to manipulate values of type [str] directly. But in the
-    context of Aeneas, it is reasonable to decompose those literals into: a
-    string stored in a local variable, then a borrow of this variable.
-
-    Remark: the new statements all have the id 0: this pass requires to refresh
-    the ids later. *)
-let decompose_str_borrows (_ : crate) (f : fun_decl) : fun_decl =
-  (* Map  *)
-  let body =
-    match f.body with
-    | StructuredBody body ->
-        let new_locals = ref [] in
-        let _, gen =
-          LocalId.mk_stateful_generator_starting_at_id
-            (LocalId.of_int (List.length body.locals.locals))
-        in
-        let fresh_local ty =
-          let local =
-            {
-              index = gen ();
-              local_ty = ty;
-              name = None;
-              span = f.item_meta.span;
-            }
-          in
-          new_locals := local :: !new_locals;
-          local.index
-        in
-
-        (* Function to decompose a constant literal *)
-        let decompose_rvalue (span : Meta.span) (lv : place) (rv : rvalue) :
-            statement list =
-          let new_statements = ref [] in
-
-          (* Visit the rvalue *)
-          let visitor =
-            object
-              inherit [_] map_statement as super
-
-              (* We have to visit all the constant operands.
-                 As we might need to replace them with borrows, while borrows
-                 are rvalues (i.e., not operands) we have to introduce two
-                 intermediate statements: the string initialization, then
-                 the borrow, that we can finally move.
-              *)
-              method! visit_Constant env (cv : constant_expr) =
-                match (cv.kind, cv.ty) with
-                | ( CLiteral (VStr str),
-                    TRef
-                      (_, (TAdt { id = TBuiltin TStr; _ } as str_ty), ref_kind)
-                  ) ->
-                    (* We need to introduce intermediate assignments *)
-                    (* First the string initialization *)
-                    let local_id =
-                      let local_id = fresh_local str_ty in
-                      let new_cv : constant_expr =
-                        { kind = CLiteral (VStr str); ty = str_ty }
-                      in
-                      let st =
-                        {
-                          span;
-                          statement_id = StatementId.zero;
-                          kind =
-                            Assign
-                              ( { kind = PlaceLocal local_id; ty = str_ty },
-                                Use (Constant new_cv, NoRetag) );
-                          comments_before = [];
-                        }
-                      in
-                      new_statements := st :: !new_statements;
-                      local_id
-                    in
-                    let str_len =
-                      Constant
-                        {
-                          kind =
-                            CLiteral
-                              (VScalar
-                                 (UnsignedScalar
-                                    (Usize, Z.of_int (String.length str))));
-                          ty = TLiteral (TUInt Usize);
-                        }
-                    in
-                    (* Then the borrow *)
-                    let local_id =
-                      let nlocal_id = fresh_local cv.ty in
-                      let bkind =
-                        match ref_kind with
-                        | RMut -> BMut
-                        | RShared -> BShared
-                      in
-                      let rv =
-                        RvRef
-                          ( { kind = PlaceLocal local_id; ty = str_ty },
-                            bkind,
-                            str_len )
-                      in
-                      let lv = { kind = PlaceLocal nlocal_id; ty = cv.ty } in
-                      let st =
-                        {
-                          span;
-                          statement_id = StatementId.zero;
-                          kind = Assign (lv, rv);
-                          comments_before = [];
-                        }
-                      in
-                      new_statements := st :: !new_statements;
-                      nlocal_id
-                    in
-                    (* Finally we can move the value *)
-                    Move { kind = PlaceLocal local_id; ty = cv.ty }
-                | _ -> super#visit_Constant env cv
-            end
-          in
-
-          let rv = visitor#visit_rvalue () rv in
-
-          (* Construct the sequence *)
-          let assign =
-            {
-              span;
-              statement_id = StatementId.zero;
-              kind = Assign (lv, rv);
-              comments_before = [];
-            }
-          in
-          (* Note that the new statements are in reverse order *)
-          let statements = assign :: !new_statements in
-          List.rev statements
-        in
-
-        (* Visit all the statements and decompose the literals *)
-        let decompose_in_statement (st : statement) : statement list =
-          match st.kind with
-          | Assign (lv, rv) -> decompose_rvalue st.span lv rv
-          | _ -> [ st ]
-        in
-        let body_body = map_statement decompose_in_statement body.body in
-        StructuredBody
-          {
-            body with
-            body = body_body;
-            locals =
-              {
-                body.locals with
-                locals = body.locals.locals @ List.rev !new_locals;
-              };
-          }
-    | other -> other
-  in
-  { f with body }
 
 (** Refresh the statement ids to make sure they are unique *)
 let refresh_statement_ids (_ : crate) (f : fun_decl) : fun_decl =
@@ -1443,6 +1276,18 @@ let refresh_statement_ids (_ : crate) (f : fun_decl) : fun_decl =
       panic(core::panicking::panic_fmt)
     ]}
 
+    as well as:
+    {[
+      s := &promoted_const;
+      x := from_str<'_>(move s);
+      StorageDead ...;
+      panic(core::panicking::panic_fmt)
+
+        ~>
+
+      panic(core::panicking::panic_fmt)
+    ]}
+
     TODO: remove *)
 let simplify_panics (crate : crate) (f : fun_decl) : fun_decl =
   let pats =
@@ -1467,9 +1312,7 @@ let simplify_panics (crate : crate) (f : fun_decl) : fun_decl =
       method! visit_block env (block : block) =
         let is_from_str_call (st : statement) : bool =
           match st.kind with
-          | Call
-              ({ func = FnOpRegular { kind = FunId (FRegular fid); _ }; _ }, _)
-            -> (
+          | Call ({ func = FnOpRegular { kind = Fun fid; _ }; _ }, _, _) -> (
               match FunDeclId.Map.find_opt fid crate.fun_decls with
               | Some decl -> is_from_str decl
               | None -> false)
@@ -1485,15 +1328,34 @@ let simplify_panics (crate : crate) (f : fun_decl) : fun_decl =
           | [] -> []
         in
 
+        let is_str_global_ref (st : statement) : bool =
+          match st.kind with
+          | Assign
+              ( _,
+                RvRef
+                  ( {
+                      kind = PlaceGlobal _;
+                      ty = TAdt { builtin = Some TStr; _ };
+                    },
+                    _,
+                    _ ) ) -> true
+          | _ -> false
+        in
+
         let rec update (stl : statement list) : statement list =
           match stl with
           | [] -> []
+          | st_str :: st0 :: stl
+            when is_str_global_ref st_str && is_from_str_call st0 -> (
+              match skip_storage_dead stl with
+              | ({ kind = Panic _; _ } as st1) :: stl1 ->
+                  self#visit_statement env st1 :: update stl1
+              | _ -> self#visit_statement env st_str :: update (st0 :: stl))
           | st0 :: stl when is_from_str_call st0 -> (
               match skip_storage_dead stl with
               | st1 :: stl1 -> (
                   match st1.kind with
-                  | Abort (Panic _) ->
-                      self#visit_statement env st1 :: update stl1
+                  | Panic _ -> self#visit_statement env st1 :: update stl1
                   | _ -> self#visit_statement env st0 :: update stl)
               | [] -> self#visit_statement env st0 :: update stl)
           | st0 :: stl -> self#visit_statement env st0 :: update stl
@@ -1542,9 +1404,14 @@ let decompose_global_accesses (crate : crate) (f : fun_decl) : fun_decl =
           let local =
             {
               index = gen ();
-              local_ty = ty;
+              (* The types of the locals must have erased regions (this
+                 includes the static region) *)
+              local_ty = TypesUtils.ty_erase_regions ty;
               name = None;
               span = f.item_meta.span;
+              is_mutable = true;
+              borrowck_constraints = [];
+              drop_flag_for = None;
             }
           in
           new_locals := local :: !new_locals;
@@ -1600,21 +1467,22 @@ let decompose_global_accesses (crate : crate) (f : fun_decl) : fun_decl =
             | Assert ({ cond; expected; check_kind }, on_failure, on_unwind) ->
                 let cond = visitor#visit_operand mk_unit_ty cond in
                 Assert ({ cond; expected; check_kind }, on_failure, on_unwind)
-            | Call ({ func; args; dest }, on_unwind) ->
+            | Call (({ func; args; _ } as call), dest, on_unwind) ->
                 let func = visitor#visit_fn_operand mk_unit_ty func in
                 let args = List.map (visitor#visit_operand mk_unit_ty) args in
-                Call ({ func; args; dest }, on_unwind)
+                Call ({ call with func; args }, dest, on_unwind)
             | SetDiscriminant _ | StorageLive _ | StorageDead _ | PlaceMention _
             | Drop (_, _, _, _)
-            | Abort _
+            | Panic _
+            | UnwindTerminate
+            | UndefinedBehavior
             | Return
             | UnwindResume
             | Break _
             | Continue _
             | Nop
             | Switch _
-            | Loop _
-            | Error _ -> st.kind
+            | Loop _ -> st.kind
             | _ ->
                 [%craise] st.span
                   ("unsupported statement: " ^ show_statement_kind st.kind)
@@ -1665,120 +1533,28 @@ let decompose_global_accesses (crate : crate) (f : fun_decl) : fun_decl =
   in
   { f with body }
 
-(** We do not support static regions yet.
-
-    In order to support some printing functions, for now we update their
-    signature to replace ['static] with a region variable. This should be fine
-    as a temporary measure as we can pretend these functions copy the input
-    string they receive (the static references are references to strings).
-
-    TODO: remove once https://github.com/AeneasVerif/aeneas/issues/727 is fixed
-*)
-let replace_static (crate : crate) : crate =
-  (* We update the uses of: [core::fmt::{core::fmt::Arguments<'a>}::from_str] *)
-  let pat =
-    NameMatcher.parse_pattern "core::fmt::{core::fmt::Arguments<'a>}::from_str"
-  in
-
-  (* Find the function [core::fmt::{core::fmt::Arguments<'a>}::from_str]:
-     - we want to update its signature to replace 'static with a lifetime variable
-     - we want to update its uses
-  *)
-  let names_set = NameMatcher.NameMatcherMap.of_list [ (pat, ()) ] in
-  let match_ctx = Charon.NameMatcher.ctx_from_crate crate in
-  let in_set (d : fun_decl) : bool =
-    let config = ExtractName.default_match_config in
-    NameMatcher.NameMatcherMap.mem match_ctx config d.item_meta.name names_set
-  in
-  let decl_opt = ref None in
-  let in_set (_ : FunDeclId.id) (d : fun_decl) =
-    if in_set d then (
-      decl_opt := Some d;
-      true)
-    else false
-  in
-
-  if not (FunDeclId.Map.exists in_set crate.fun_decls) then crate
-  else (* The function [from_str] is used in the crate *)
-    let d = Option.get !decl_opt in
-
-    (* Update the signature *)
-    let generics =
-      {
-        d.generics with
-        regions =
-          d.generics.regions
-          @ [
-              {
-                index = RegionId.of_int 1;
-                name = Some "'b";
-                variance = VaUnknown;
-                mutability = LtUnknown;
-              };
-            ];
-      }
-    in
-    let signature =
-      let visitor =
-        object
-          inherit [_] map_ty
-          method! visit_RStatic _ = RVar (Free (RegionId.of_int 1))
-        end
-      in
-      visitor#visit_fun_sig () d.signature
-    in
-
-    let d = { d with generics; signature } in
-    [%ltrace
-      let env = Print.crate_to_fmt_env crate in
-      "Updated declaration:\n" ^ Print.fun_decl_to_string env "" " " d];
-    let crate =
-      { crate with fun_decls = FunDeclId.Map.add d.def_id d crate.fun_decls }
-    in
-
-    (* Update the uses of this definition *)
-    let update (f : fun_decl) : fun_decl =
-      match f.body with
-      | StructuredBody body ->
-          let visitor =
-            object
-              inherit [_] map_statement
-
-              method! visit_Call _ call on_unwind =
-                match call.func with
-                | FnOpRegular { kind = FunId (FRegular id) as kind; generics }
-                  when id = d.def_id ->
-                    let func =
-                      FnOpRegular
-                        {
-                          kind;
-                          generics =
-                            {
-                              generics with
-                              regions = generics.regions @ [ RErased ];
-                            };
-                        }
-                    in
-                    Call ({ call with func }, on_unwind)
-                | _ -> Call (call, on_unwind)
-            end
-          in
-
-          let body = { body with body = visitor#visit_block () body.body } in
-          { f with body = StructuredBody body }
-      | _ -> f
-    in
-    let fun_decls = FunDeclId.Map.map update crate.fun_decls in
-    { crate with fun_decls }
-
 (** Charon introduces vtables for the traits which support dyn. We do not want
     to translate the corresponding type and global declarations. Moreover, the
     presence of those declarations leads to mutually recursive groups of traits
     and types. This micro-pass filters these definitions. *)
 let remove_vtables (crate : crate) : crate =
-  let src_is_vtable (src : item_source) : bool =
+  let global_src_is_vtable (src : global_source) : bool =
     match src with
-    | VTableInstanceItem _ | VTableTyItem _ | VTableMethodShimItem -> true
+    | VTableInstanceGlobal _ -> true
+    | _ -> false
+  in
+  let fun_src_is_vtable (src : fun_source) : bool =
+    match src with
+    | VTableShimFun -> true
+    | GlobalInitializerFun global -> (
+        match GlobalDeclId.Map.find_opt global.id crate.global_decls with
+        | Some global -> global_src_is_vtable global.src
+        | None -> false)
+    | _ -> false
+  in
+  let type_src_is_vtable (src : type_source) : bool =
+    match src with
+    | VTableType _ -> true
     | _ -> false
   in
 
@@ -1798,7 +1574,7 @@ let remove_vtables (crate : crate) : crate =
             let keep (id : global_decl_id) : bool =
               match GlobalDeclId.Map.find_opt id crate.global_decls with
               | None -> true
-              | Some d -> not (src_is_vtable d.src)
+              | Some d -> not (global_src_is_vtable d.src)
             in
             match g with
             | RecGroup ids ->
@@ -1811,7 +1587,7 @@ let remove_vtables (crate : crate) : crate =
             let keep (id : fun_decl_id) : bool =
               match FunDeclId.Map.find_opt id crate.fun_decls with
               | None -> true
-              | Some d -> not (src_is_vtable d.src)
+              | Some d -> not (fun_src_is_vtable d.src)
             in
             match g with
             | RecGroup ids ->
@@ -1824,7 +1600,7 @@ let remove_vtables (crate : crate) : crate =
             let keep (id : type_decl_id) : bool =
               match TypeDeclId.Map.find_opt id crate.type_decls with
               | None -> true
-              | Some d -> not (src_is_vtable d.src)
+              | Some d -> not (type_src_is_vtable d.src)
             in
             match g with
             | RecGroup ids ->
@@ -1843,7 +1619,7 @@ let remove_vtables (crate : crate) : crate =
                 let keep (id : type_decl_id) : bool =
                   match TypeDeclId.Map.find_opt id crate.type_decls with
                   | None -> true
-                  | Some d -> not (src_is_vtable d.src)
+                  | Some d -> not (type_src_is_vtable d.src)
                 in
                 let ids =
                   List.filter
@@ -1911,25 +1687,25 @@ let remove_vtables (crate : crate) : crate =
                 else Some (MixedGroup (RecGroup ids))
             | _ -> Some (MixedGroup g))
         | _ -> Some g)
-      crate.declarations
+      (Option.get crate.declarations)
   in
 
   (* *)
   let type_decls =
     TypeDeclId.Map.filter
-      (fun _ (d : type_decl) -> not (src_is_vtable d.src))
+      (fun _ (d : type_decl) -> not (type_src_is_vtable d.src))
       crate.type_decls
   in
 
   let global_decls =
     GlobalDeclId.Map.filter
-      (fun _ (d : global_decl) -> not (src_is_vtable d.src))
+      (fun _ (d : global_decl) -> not (global_src_is_vtable d.src))
       crate.global_decls
   in
 
   let fun_decls =
     FunDeclId.Map.filter
-      (fun _ (d : fun_decl) -> not (src_is_vtable d.src))
+      (fun _ (d : fun_decl) -> not (fun_src_is_vtable d.src))
       crate.fun_decls
   in
 
@@ -1941,7 +1717,14 @@ let remove_vtables (crate : crate) : crate =
       crate.trait_decls
   in
 
-  { crate with declarations; type_decls; global_decls; fun_decls; trait_decls }
+  {
+    crate with
+    declarations = Some declarations;
+    type_decls;
+    global_decls;
+    fun_decls;
+    trait_decls;
+  }
 
 let name_is_valid (n : string) : bool =
   let is_valid_char c =
@@ -2010,21 +1793,14 @@ let simplify_trait_calls (crate : crate) : crate =
     NameMatcher.parse_pattern
       "core::convert::{core::convert::TryInto<@T, @U, @Error>}::try_into"
   in
-  let mctx = NameMatcher.ctx_from_crate crate in
-  let match_pattern =
-    NameMatcher.match_name mctx
-      {
-        map_vars_to_vars = true;
-        match_with_trait_decl_refs = Config.match_patterns_with_trait_decl_refs;
-      }
-  in
+  let match_pattern = ExtractName.match_name crate in
   let is_blanket_into_iter = match_pattern into_iter_pat in
   let is_blanket_try_into = match_pattern try_into_pat in
 
   let try_replace_call (super_visit : unit -> statement_kind) (span : Meta.span)
-      (call : call) (on_unwind : block) : statement_kind =
+      (call : call) (dest : place) (on_unwind : block) : statement_kind =
     match call.func with
-    | FnOpRegular { kind = FunId (FRegular fid); generics } -> (
+    | FnOpRegular { kind = Fun fid; generics } -> (
         match FunDeclId.Map.find_opt fid crate.fun_decls with
         | Some d
           when List.length generics.trait_refs > 0 && List.length call.args > 0
@@ -2033,7 +1809,7 @@ let simplify_trait_calls (crate : crate) : crate =
               (* Replace the call by an assignment *)
               [%sanity_check] span (List.length call.args = 1);
               let arg = Use (List.hd call.args, NoRetag) in
-              Assign (call.dest, arg))
+              Assign (dest, arg))
             else if is_blanket_try_into d.item_meta.name then (
               [%ldebug
                 "- call: " ^ call_to_string crate call ^ "\n- generics: "
@@ -2041,8 +1817,9 @@ let simplify_trait_calls (crate : crate) : crate =
               (* There should be a single trait ref implementing [TryFrom] *)
               match generics.trait_refs with
               | [ trait_ref ] -> (
+                  [%sanity_check] span (trait_ref.binder_regions = []);
                   (* There are two cases depending on whether this is an impl or not *)
-                  match trait_ref.kind with
+                  match trait_ref.binder_value.kind with
                   | TraitImpl { id = impl_id; generics = impl_generics } ->
                       (* Lookup the impl to retrieve the method id *)
                       let impl =
@@ -2089,9 +1866,9 @@ let simplify_trait_calls (crate : crate) : crate =
                       in
 
                       (* *)
-                      let kind = FunId (FRegular method_ref.binder_value.id) in
+                      let kind = Fun method_ref.binder_value.id in
                       let func = FnOpRegular { kind; generics } in
-                      Call ({ call with func }, on_unwind)
+                      Call ({ call with func }, dest, on_unwind)
                   | _ ->
                       (* TODO: *)
                       super_visit ())
@@ -2109,10 +1886,10 @@ let simplify_trait_calls (crate : crate) : crate =
       (* Keep track of the last span *)
       method! visit_statement _ st = super#visit_statement (Some st.span) st
 
-      method! visit_Call span call on_unwind =
+      method! visit_Call span call dest on_unwind =
         try_replace_call
-          (fun _ -> super#visit_Call span call on_unwind)
-          (Option.get span) call on_unwind
+          (fun _ -> super#visit_Call span call dest on_unwind)
+          (Option.get span) call dest on_unwind
     end
   in
   let crate = visitor#visit_crate None crate in
@@ -2123,9 +1900,9 @@ let simplify_trait_calls (crate : crate) : crate =
      Remark: the way we explore the crate is slightly approximative below.
      We should improve it.
   *)
-  let used_impls = ref TraitImplId.Set.empty in
+  let used_impls = ref TraitImplId.TreeSet.empty in
   let impls_to_explore = ref [] in
-  let used_funs = ref FunDeclId.Set.empty in
+  let used_funs = ref FunDeclId.TreeSet.empty in
 
   (* First explore the transparent functions *)
   let visitor =
@@ -2133,12 +1910,12 @@ let simplify_trait_calls (crate : crate) : crate =
       inherit [_] iter_statement
 
       method! visit_trait_impl_id _ id =
-        if not (TraitImplId.Set.mem id !used_impls) then (
-          used_impls := TraitImplId.Set.add id !used_impls;
+        if not (TraitImplId.TreeSet.mem id !used_impls) then (
+          used_impls := TraitImplId.TreeSet.add id !used_impls;
           impls_to_explore := id :: !impls_to_explore)
 
       method! visit_fun_decl_id _ id =
-        used_funs := FunDeclId.Set.add id !used_funs
+        used_funs := FunDeclId.TreeSet.add id !used_funs
     end
   in
   FunDeclId.Map.iter
@@ -2146,6 +1923,11 @@ let simplify_trait_calls (crate : crate) : crate =
       if f.item_meta.is_local then visitor#visit_fun_decl_id () f.def_id;
       match f.body with
       | StructuredBody body -> visitor#visit_block () body.body
+      | TargetDispatchBody targets ->
+          List.iter
+            (fun ((_ : string), (fdr : Types.fun_decl_ref)) ->
+              visitor#visit_fun_decl_id () fdr.id)
+            targets
       | _ -> ())
     crate.fun_decls;
 
@@ -2177,7 +1959,9 @@ let simplify_trait_calls (crate : crate) : crate =
     match TraitImplId.Map.find_opt id crate.trait_impls with
     | None -> ()
     | Some impl ->
-        List.iter (visitor#visit_trait_ref ()) impl.implied_trait_refs;
+        List.iter
+          (visitor#visit_region_binder visitor#visit_trait_ref ())
+          impl.implied_trait_refs;
         TraitMethodId.Map.iter
           (fun _ (x : fun_decl_ref binder) ->
             visitor#visit_fun_decl_id () x.binder_value.id)
@@ -2188,65 +1972,73 @@ let simplify_trait_calls (crate : crate) : crate =
   let keep_group (gr : declaration_group) : bool =
     match gr with
     | TraitImplGroup (NonRecGroup id) ->
-        if TraitImplId.Set.mem id !used_impls then true else false
+        if TraitImplId.TreeSet.mem id !used_impls then true else false
     | TraitImplGroup (RecGroup ids) ->
-        if List.exists (fun id -> TraitImplId.Set.mem id !used_impls) ids then
-          true
+        if List.exists (fun id -> TraitImplId.TreeSet.mem id !used_impls) ids
+        then true
         else false
     | FunGroup (NonRecGroup id) ->
-        if FunDeclId.Set.mem id !used_funs then true else false
+        if FunDeclId.TreeSet.mem id !used_funs then true else false
     | FunGroup (RecGroup ids) ->
-        if List.exists (fun id -> FunDeclId.Set.mem id !used_funs) ids then true
+        if List.exists (fun id -> FunDeclId.TreeSet.mem id !used_funs) ids then
+          true
         else false
     | _ -> true
   in
-  let declarations = List.filter keep_group crate.declarations in
+  let declarations =
+    Some (List.filter keep_group (Option.get crate.declarations))
+  in
 
   (* *)
   { crate with declarations }
 
-(** Add missing outlives constraints for closure trait implementations.
+(** Repair the return lifetime of closure trait implementations.
 
-    Charon sometimes fails to properly retrieves the lifetime constraints
-    between the inputs and outputs of closures. This passes is a temporary
-    (ad-hoc) fix for the following situation:
+    Charon sometimes fails to retrieve the lifetime constraints between the
+    captured state and the output of a closure. When the captured fields use
+    exactly one lifetime ['a], this temporary (ad-hoc) fix changes:
     {[
-      call_mut<'a, 'b, 'c>(v@1 : &'c mut closure<'a>) -> &'b T
+      call_mut<'a, 'b, 'c>(v@1 : &'c mut closure<'a, 'b>) -> &'b T
     ]}
-    that we update to:
+    to:
     {[
-      call_mut<'b, 'c>(v@1 : &'c mut closure<'a>) -> &'a T
+      call_mut<'a, 'b, 'c>(v@1 : &'c mut closure<'a, 'b>) -> &'a T
     ]}
 
-    Similarly we do:
-    {[
-      call_once<'a, 'b>(v@1 : mut closure<'a>) -> &'b T
-    ]}
-    that we update to:
-    {[
-      call_once<'b, 'c>(v@1 : mut closure<'a>) -> &'a T
-    ]}
+    The same repair applies to [call] and [call_once].
 
     See https://github.com/AeneasVerif/aeneas/issues/804 and
     https://github.com/AeneasVerif/charon/issues/1040.
 
     TODO: remove once the Charon issue is fixed. *)
 let fix_closure_lifetimes (crate : crate) (f : fun_decl) : fun_decl =
-  (* Check that the function is a closure *)
   (* Decompose the type of the first argument (it should be the state).
-     We do the update only if the state is inside a reference. *)
+     Look at the captured fields and return the unique lifetime mentioned
+     therein, if there is one. Note that the closure adt may have lifetimes
+     params not used in its fields. *)
   let find_input_region (ty : ty) =
     match ty with
-    | TAdt { id = TAdtId id; generics = { regions = [ RVar rid ]; _ } }
-    | TRef
-        (_, TAdt { id = TAdtId id; generics = { regions = [ RVar rid ]; _ } }, _)
-      -> (
+    | TAdt { id; generics; builtin = None }
+    | TRef (_, TAdt { id; generics; builtin = None }, _) -> (
         match TypeDeclId.Map.find_opt id crate.type_decls with
-        | Some decl -> (
-            match decl.src with
-            | ClosureItem _ -> Some rid
+        | Some ({ src = ClosureType _; _ } as decl) -> (
+            let fields =
+              Substitute.type_decl_get_instantiated_variants_fields_types
+                f.item_meta.span decl generics
+              |> List.concat_map snd
+            in
+            let regions = ref RegionSet.empty in
+            let visitor =
+              object
+                inherit [_] iter_ty
+                method! visit_region _ r = regions := RegionSet.add r !regions
+              end
+            in
+            List.iter (visitor#visit_ty ()) fields;
+            match RegionSet.elements !regions with
+            | [ RVar (Free _ as rid) ] -> Some rid
             | _ -> None)
-        | None -> None)
+        | _ -> None)
     | _ -> None
   in
   match f.signature.inputs with
@@ -2266,20 +2058,335 @@ let fix_closure_lifetimes (crate : crate) (f : fun_decl) : fun_decl =
           f
       | _, _ -> f)
 
+(** Fill in erased lifetime arguments on closure types in function signatures.
+
+    For example, the user may write:
+    {[
+      fn f<'a>(x: &'a u8) -> impl Fn() -> u8 + 'a {
+        move || *x
+      }
+    ]}
+    Charon resolves the opaque [impl Fn()] return type to the generated closure
+    type, but leaves its lifetime argument erased:
+    {[
+      struct f::closure<'a> {
+        _0 : &'a u8,
+      }
+
+      fn f<'a>(x : &'a u8) -> make::closure<'_>
+    ]}
+    The return type should instead be [f::closure<'a>].
+
+    We can repair the signature when it binds exactly one region parameter: in
+    that case every erased region argument of a closure type must refer to that
+    region. With several region parameters, we cannot determine which lifetime
+    the closure captured and leave the signature unchanged. Also note that the
+    closure type may be nested inside another type, such as
+    [Map<Range<i32>, f::closure<'_>>], so we have to be quite general.
+
+    This complements [fix_closure_lifetimes], which repairs the generated
+    closure methods rather than the function creating the closure.
+
+    See https://github.com/AeneasVerif/charon/issues/1040 and
+    https://github.com/AeneasVerif/aeneas/issues/1207.
+
+    TODO: remove once the Charon issue is fixed. *)
+let fix_closure_signature_regions (crate : crate) (f : fun_decl) : fun_decl =
+  match f.generics.regions with
+  | [ rp ] ->
+      (* Only one region parameter: we can eventually fix *)
+      let region = RVar (Free rp.index) in
+      let updated = ref false in
+      let is_closure_ty (id : TypeDeclId.id) : bool =
+        match TypeDeclId.Map.find_opt id crate.type_decls with
+        | Some { src = ClosureType _; _ } -> true
+        | _ -> false
+      in
+      let visitor =
+        object
+          inherit [_] map_ty as super
+
+          method! visit_TAdt env tref =
+            let tref =
+              if is_closure_ty tref.id then
+                let regions =
+                  List.map
+                    (fun region0 ->
+                      match region0 with
+                      | RErased ->
+                          updated := true;
+                          region
+                      | _ -> region0)
+                    tref.generics.regions
+                in
+                { tref with generics = { tref.generics with regions } }
+              else tref
+            in
+            super#visit_TAdt env tref
+        end
+      in
+      let inputs = List.map (visitor#visit_ty ()) f.signature.inputs in
+      let output = visitor#visit_ty () f.signature.output in
+      if !updated then begin
+        let signature = { f.signature with inputs; output } in
+        let f = { f with signature } in
+        [%ltrace
+          let env = Print.crate_to_fmt_env crate in
+          "Updated: " ^ Print.fun_decl_to_string env "" " " f];
+        f
+      end
+      else f
+  | _ -> f
+
+(** Replace the reads of anonymous constants (i.e., the promoted constants) with
+    calls to their initializers. Ex.:
+
+    {[
+      // Before
+      x := copy { promoted_const }
+
+          ~~>
+
+      // After
+      tmp := promoted_const ();
+      x := move tmp
+    ]}
+
+    We need to introduce an auxiliary variable (rather than directly
+    transforming the above statement into [x := promoted_const ()]) because the
+    anonymous constant may appear anywhere in the statement, and in particular
+    inside an arbitrary place. For instance, we may have to read a field of the
+    constant through a dereference, like in [x := copy (( *promoted_const).f)]:
+    we then generate:
+    {[
+      tmp := promoted_const ();
+      x := copy (( *tmp).f)
+    ]}
+
+    This transformation is valid because the initializers of the anonymous
+    constants are not allowed to have side effects: evaluating the initializer
+    at the place where the constant is read (possibly several times) is thus
+    equivalent to reading a value which was computed once and for all.
+
+    We preserve the global declarations of the anonymous constants: we simply
+    ignore them at extraction time (the calls to their initializers are later
+    inlined, see [PureMicroPassesGeneral.inline_anon_const_initializers]).
+
+    Remark: the new statements all have the id 0: this pass requires to refresh
+    the ids later. *)
+let anon_consts_to_calls (crate : crate) : crate =
+  (* Retrieve the anonymous constants and their initializers *)
+  let anon_consts =
+    GlobalDeclId.Map.filter_map
+      (fun _ (g : global_decl) ->
+        match g.global_kind with
+        | AnonConst -> Charon.GAstUtils.init_fun_id_of_global g
+        | _ -> None)
+      crate.global_decls
+  in
+  let update_fun (f : fun_decl) : fun_decl =
+    match f.body with
+    | StructuredBody body ->
+        let new_locals = ref [] in
+        let _, gen =
+          LocalId.mk_stateful_generator_starting_at_id
+            (LocalId.of_int (List.length body.locals.locals))
+        in
+        let fresh_local ty =
+          let local =
+            {
+              index = gen ();
+              (* The types of the locals must have erased regions (this
+                 includes the static region) *)
+              local_ty = TypesUtils.ty_erase_regions ty;
+              name = None;
+              span = f.item_meta.span;
+              is_mutable = true;
+              borrowck_constraints = [];
+              drop_flag_for = None;
+            }
+          in
+          new_locals := local :: !new_locals;
+          local.index
+        in
+        let update_statement (st : statement) : statement list =
+          let span = st.span in
+          let new_statements = ref [] in
+          (* Introduce a call to the initializer of the anonymous constant, if
+             the global is one *)
+          let call_initializer (gref : global_decl_ref) (ty : ty) : place option
+              =
+            match GlobalDeclId.Map.find_opt gref.id anon_consts with
+            | Some init_id ->
+                let dest = { kind = PlaceLocal (fresh_local ty); ty } in
+                let call =
+                  {
+                    func =
+                      FnOpRegular
+                        { kind = Fun init_id; generics = gref.generics };
+                    args = [];
+                    safety = Inherit;
+                  }
+                in
+                let on_unwind =
+                  { span; block_id = BlockId.zero; statements = [] }
+                in
+                new_statements :=
+                  {
+                    span;
+                    statement_id = StatementId.zero;
+                    kind = Call (call, dest, on_unwind);
+                    comments_before = [];
+                  }
+                  :: !new_statements;
+                Some dest
+            | None -> None
+          in
+          let visitor =
+            object
+              inherit [_] map_statement as super
+
+              (* The nested statements are handled by [map_statement] *)
+              method! visit_block _ b = b
+
+              method! visit_Constant env (cv : constant_expr) =
+                match cv.kind with
+                | CGlobal gref -> (
+                    match call_initializer gref cv.ty with
+                    | Some dest -> Move dest
+                    | None -> super#visit_Constant env cv)
+                | _ -> super#visit_Constant env cv
+
+              method! visit_place env (p : place) =
+                match p.kind with
+                | PlaceGlobal gref -> (
+                    match call_initializer gref p.ty with
+                    | Some dest -> dest
+                    | None -> super#visit_place env p)
+                | _ -> super#visit_place env p
+            end
+          in
+          let st = visitor#visit_statement () st in
+          List.rev (st :: !new_statements)
+        in
+        let body_body = map_statement update_statement body.body in
+        let body =
+          StructuredBody
+            {
+              body with
+              body = body_body;
+              locals =
+                {
+                  body.locals with
+                  locals = body.locals.locals @ List.rev !new_locals;
+                };
+            }
+        in
+        { f with body }
+    | _ -> f
+  in
+  { crate with fun_decls = FunDeclId.Map.map update_fun crate.fun_decls }
+
+(** The anonymous constants (i.e., the promoted constants) are replaced with
+    calls to their initializers by [anon_consts_to_calls]. The output type of
+    those initializers contains erased regions: we replace them with fresh
+    region parameters (and update the call sites accordingly) so that we can
+    treat them like normal function calls. *)
+let fix_anon_const_initializers (crate : crate) (f : fun_decl) : fun_decl =
+  let is_anon_const_initializer =
+    fun_decl_is_anon_const_initializer crate.global_decls
+  in
+  (* Count the erased regions in the output of a function *)
+  let count_erased (ty : ty) : int =
+    let n = ref 0 in
+    let visitor =
+      object
+        inherit [_] iter_ty
+        method! visit_RErased _ = incr n
+      end
+    in
+    visitor#visit_ty () ty;
+    !n
+  in
+  (* Update the calls to the anonymous constant initializers *)
+  let visitor =
+    object
+      inherit [_] map_statement as super
+
+      method! visit_fn_ptr env (fn_ptr : fn_ptr) =
+        match fn_ptr.kind with
+        | Fun fid -> (
+            match FunDeclId.Map.find_opt fid crate.fun_decls with
+            | Some callee when is_anon_const_initializer callee ->
+                let n = count_erased callee.signature.output in
+                let regions =
+                  fn_ptr.generics.regions @ List.init n (fun _ -> RErased)
+                in
+                { fn_ptr with generics = { fn_ptr.generics with regions } }
+            | _ -> super#visit_fn_ptr env fn_ptr)
+        | _ -> super#visit_fn_ptr env fn_ptr
+    end
+  in
+  let body =
+    match f.body with
+    | StructuredBody body ->
+        StructuredBody { body with body = visitor#visit_block () body.body }
+    | body -> body
+  in
+  let f = { f with body } in
+  (* Update the signature *)
+  if is_anon_const_initializer f then
+    let new_regions = ref [] in
+    let next_index =
+      ref
+        (List.fold_left
+           (fun n (rp : region_param) -> max n (RegionId.to_int rp.index + 1))
+           0 f.generics.regions)
+    in
+    let visitor =
+      object
+        inherit [_] map_ty
+
+        method! visit_RErased _ =
+          let index = RegionId.of_int !next_index in
+          incr next_index;
+          new_regions :=
+            {
+              index;
+              name = None;
+              variance = VaUnknown;
+              mutability = LtUnknown;
+              late_bound = false;
+            }
+            :: !new_regions;
+          RVar (Free index)
+      end
+    in
+    let output = visitor#visit_ty () f.signature.output in
+    let regions = f.generics.regions @ List.rev !new_regions in
+    {
+      f with
+      signature = { f.signature with output };
+      generics = { f.generics with regions };
+    }
+  else f
+
 let apply_passes (crate : crate) : crate =
   (* Passes that apply to the whole crate *)
   let crate = update_array_default crate in
+  let crate = anon_consts_to_calls crate in
   (* Passes that apply to individual function bodies *)
   let function_passes =
     [
       ("fix_closure_lifetimes", fix_closure_lifetimes);
+      ("fix_closure_signature_regions", fix_closure_signature_regions);
+      ("fix_anon_const_initializers", fix_anon_const_initializers);
       ("erase_body_regions", erase_body_regions);
       ("remove_unreachable", remove_unreachable);
       ("update_loop", update_loops);
       ("remove_useless_joins", remove_useless_joins);
       ( "remove_shallow_borrows_storage_live_dead",
         remove_shallow_borrows_storage_live_dead );
-      ("decompose_str_borrows", decompose_str_borrows);
       ("simplify_panics", simplify_panics);
       ("decompose_global_accesses", decompose_global_accesses);
       ("refresh_statement_ids", refresh_statement_ids);
@@ -2330,7 +2437,6 @@ let apply_passes (crate : crate) : crate =
   let crate = strip_unnecessary_target_suffixes crate in
   let crate = filter_marker_traits crate in
   let crate = filter_type_aliases crate in
-  let crate = replace_static crate in
   let crate = remove_vtables crate in
   let crate = rename_type_vars crate in
   let crate = simplify_trait_calls crate in

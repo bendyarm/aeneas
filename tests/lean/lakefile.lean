@@ -5,8 +5,12 @@ require aeneas from "../../backends/lean"
 
 package «tests» {}
 
+/- File created by `tests/lean/script.sh`. -/
+
 @[default_target] lean_lib Adt
 @[default_target] lean_lib AdtBorrows
+@[default_target] lean_lib ArrayConstructors
+@[default_target] lean_lib ArrayIterMut
 @[default_target] lean_lib Arrays
 @[default_target] lean_lib ArraysDefs
 @[default_target] lean_lib ArraySliceIndex
@@ -17,6 +21,7 @@ package «tests» {}
 @[default_target] lean_lib Bitwise
 @[default_target] lean_lib BlanketImpl
 @[default_target] lean_lib BoolCmp
+@[default_target] lean_lib Borrow
 @[default_target] lean_lib Bst
 @[default_target] lean_lib Builtin
 @[default_target] lean_lib BuiltinAuto
@@ -37,18 +42,29 @@ package «tests» {}
 @[default_target] lean_lib DropBug
 @[default_target] lean_lib Dyn
 @[default_target] lean_lib DynamicSize
+@[default_target] lean_lib FnPtrGeneric
 @[default_target] lean_lib FromTo
 @[default_target] lean_lib GenericUnitOutput
 @[default_target] lean_lib Hashmap
 @[default_target] lean_lib HigherRankedTraitBounds
 @[default_target] lean_lib Into
+@[default_target] lean_lib Issue1043IteratorMethods
 @[default_target] lean_lib Issue1044OpaqueTuple
+@[default_target] lean_lib Issue1138SlicePositivity
 @[default_target] lean_lib Issue1140GlobalLoop
 @[default_target] lean_lib Issue1141ImplFnRef
+@[default_target] lean_lib Issue1206LoopBreak
+@[default_target] lean_lib Issue1207ClosureSignatureRegions
+@[default_target] lean_lib Issue1250AnonymousConst
+@[default_target] lean_lib Issue1260EliminateSharedLoans
 @[default_target] lean_lib Issue134LoopSharedBorrows
+@[default_target] lean_lib Issue1436LoopGenerics
+@[default_target] lean_lib Issue1436LoopGenericsRec
 @[default_target] lean_lib Issue194RecursiveStructProjector
 @[default_target] lean_lib Issue270LoopList
 @[default_target] lean_lib Issue440TypeError
+@[default_target] lean_lib Issue765HrtbConditionalNegate
+@[default_target] lean_lib Issue767AdtConstructor
 @[default_target] lean_lib Issue789LoopCtxMatch
 @[default_target] lean_lib Issue801Hrtb
 @[default_target] lean_lib Issue803SelfInArray
@@ -62,6 +78,8 @@ package «tests» {}
 @[default_target] lean_lib IteratorsScalar
 @[default_target] lean_lib JoinDuplicate
 @[default_target] lean_lib Joins
+@[default_target] lean_lib LeanKeywords
+@[default_target] lean_lib LeanKeywordsClash
 @[default_target] lean_lib ListBorrows
 @[default_target] lean_lib Loops
 @[default_target] lean_lib LoopsAdts
@@ -88,14 +106,19 @@ package «tests» {}
 @[default_target] lean_lib Print
 @[default_target] lean_lib Range
 @[default_target] lean_lib RenameAttribute
+@[default_target] lean_lib Results
 @[default_target] lean_lib RustBorrowCheckIssues
 @[default_target] lean_lib Scalars
 @[default_target] lean_lib Slices
 @[default_target] lean_lib Static
 @[default_target] lean_lib StepBy
+@[default_target] lean_lib StepOverflowing
 @[default_target] lean_lib StringChars
 @[default_target] lean_lib SwitchTest
+@[default_target] lean_lib TargetFeatures
 @[default_target] lean_lib Traits
 @[default_target] lean_lib Tutorial
+@[default_target] lean_lib UintDivOps
 @[default_target] lean_lib Vec
 @[default_target] lean_lib VecIter
+@[default_target] lean_lib VecMethods

@@ -1,5 +1,10 @@
-import Lean
-import Aeneas.Tactic.Solver.Grind.Attribute
+module
+public meta import Aeneas.Tactic.Solver.Grind.Attribute
+public meta import Lean.Elab.ConfigEval.Commands
+public meta import Lean.Elab.ConfigEval.DeriveEvalConfigItem
+public meta import Lean.Elab.Tactic.Grind.Param
+public meta import Lean.Meta.Tactic.Grind.SimpUtil
+public meta section
 
 namespace Aeneas.Grind
 
@@ -11,7 +16,7 @@ register_grind_attr' agrindExt agrind
     with `nla := true` (the default). Use `agrind -nla` to disable. -/
 register_grind_attr' agrindNlaExt agrind_nla
 
-open Lean Lean.Meta
+open _root_.Lean Lean.Meta
 
 /-- Configuration for the `agrind` tactic, extending `Lean.Grind.Config` with
     Aeneas-specific options. -/

@@ -3010,9 +3010,7 @@ let decompose_loops_aux (ctx : ctx) (def : fun_decl) (body : fun_body) :
         {
           id =
             FunOrOp
-              (Fun
-                 (FromLlbc
-                    (FunId (FRegular def.def_id), Some (loop.loop_id, false))));
+              (Fun (FromLlbc (FunId def.def_id, Some (loop.loop_id, false))));
           generics;
         }
     in
@@ -3172,8 +3170,7 @@ let decompose_loops_aux (ctx : ctx) (def : fun_decl) (body : fun_body) :
         const_generics;
         trait_clauses;
         regions = [];
-        regions_outlive = [];
-        types_outlive = [];
+        outlives = [];
         trait_type_constraints = [];
       }
     in
@@ -3520,8 +3517,7 @@ let decompose_loop_body_aux (ctx : ctx) (def : fun_decl) (body : fun_body)
       trait_clauses;
       (* Ignoring the regions - we don't use them for naming *)
       regions = [];
-      regions_outlive = [];
-      types_outlive = [];
+      outlives = [];
       trait_type_constraints = [];
     }
   in
@@ -3599,7 +3595,7 @@ let decompose_loop_body_aux (ctx : ctx) (def : fun_decl) (body : fun_body)
               FunOrOp
                 (Fun
                    (FromLlbc
-                      ( FunId (FRegular def.def_id),
+                      ( FunId def.def_id,
                         Some (fst (Option.get def.loop_id), true (* is_body *))
                       )));
             generics = generic_args;

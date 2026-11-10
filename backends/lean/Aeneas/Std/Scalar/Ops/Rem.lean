@@ -1,8 +1,10 @@
-import Aeneas.Std.Scalar.Core
-import Aeneas.Std.Scalar.Misc
-import Aeneas.Std.Scalar.Elab
-import Aeneas.Tactic.Solver.ScalarTac
-import Mathlib.Data.BitVec
+module
+public import Aeneas.Std.Scalar.Core
+public import Aeneas.Std.Scalar.Misc
+public import Aeneas.Std.Scalar.Elab
+public import Aeneas.Tactic.Solver.ScalarTac
+public import Mathlib.Data.BitVec
+public section
 
 namespace Aeneas.Std
 
@@ -11,10 +13,10 @@ open Result Error Arith ScalarElab WP
 /-!
 # Remainder: Definitions
 -/
-def UScalar.rem {ty : UScalarTy} (x y : UScalar ty) : Result (UScalar ty) :=
+@[expose] def UScalar.rem {ty : UScalarTy} (x y : UScalar ty) : Result (UScalar ty) :=
   if y.val != 0 then ok ⟨ BitVec.umod x.bv y.bv ⟩ else fail divisionByZero
 
-def IScalar.rem {ty : IScalarTy} (x y : IScalar ty) : Result (IScalar ty) :=
+@[expose] def IScalar.rem {ty : IScalarTy} (x y : IScalar ty) : Result (IScalar ty) :=
   if y.val != 0 then ok ⟨ BitVec.srem x.bv y.bv ⟩
   else fail divisionByZero
 
@@ -41,27 +43,27 @@ implemented by the `Int.tdiv`, `Int.tmod`, etc. definitions.
 
 namespace Tests
   -- Checking that the remainder over signed integers agrees with Rust
-  #assert Int.tmod 1 2 = 1
-  #assert Int.tmod (-1) 2 = -1
-  #assert Int.tmod 1 (-2) = 1
-  #assert Int.tmod (-1) (-2) = -1
-  #assert Int.tmod 7 3 = (1:Int)
-  #assert Int.tmod (-7) 3 = -1
-  #assert Int.tmod 7 (-3) = 1
-  #assert Int.tmod (-7) (-3) = -1
+  #guard Int.tmod 1 2 = 1
+  #guard Int.tmod (-1) 2 = -1
+  #guard Int.tmod 1 (-2) = 1
+  #guard Int.tmod (-1) (-2) = -1
+  #guard Int.tmod 7 3 = (1:Int)
+  #guard Int.tmod (-7) 3 = -1
+  #guard Int.tmod 7 (-3) = 1
+  #guard Int.tmod (-7) (-3) = -1
 
   -- Checking that the signed operation over bit-vectors agrees with Rust
   private def bv_srem (x y : Int) : Int :=
     (BitVec.srem (BitVec.ofInt 32 x) (BitVec.ofInt 32 y)).toInt
 
-  #assert bv_srem 1 2 = 1
-  #assert bv_srem (-1) 2 = -1
-  #assert bv_srem 1 (-2) = 1
-  #assert bv_srem (-1) (-2) = -1
-  #assert bv_srem 7 3 = (1:Int)
-  #assert bv_srem (-7) 3 = -1
-  #assert bv_srem 7 (-3) = 1
-  #assert bv_srem (-7) (-3) = -1
+  #guard bv_srem 1 2 = 1
+  #guard bv_srem (-1) 2 = -1
+  #guard bv_srem 1 (-2) = 1
+  #guard bv_srem (-1) (-2) = -1
+  #guard bv_srem 7 3 = (1:Int)
+  #guard bv_srem (-7) 3 = -1
+  #guard bv_srem 7 (-3) = 1
+  #guard bv_srem (-7) (-3) = -1
 end Tests
 
 /-!

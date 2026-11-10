@@ -1,8 +1,10 @@
-import Mathlib.Data.Nat.Log
-import Mathlib.Algebra.Order.Ring.Canonical
-import Mathlib.Tactic.Ring.RingNF
-import Aeneas.Data.Range.MulRange.Basic
-import Aeneas.Data.Range.DivRange.Lemmas
+module
+public import Mathlib.Data.Nat.Log
+public import Mathlib.Algebra.Order.Ring.Canonical
+public import Mathlib.Tactic.Ring.RingNF
+public import Aeneas.Data.Range.MulRange.Basic
+public import Aeneas.Data.Range.DivRange.Lemmas
+public section
 
 namespace Aeneas
 
@@ -63,7 +65,7 @@ decreasing_by
   have : i < i * mul := by rw [Nat.lt_mul_iff_one_lt_right] <;> omega
   omega
 
-private theorem mem_of_mem_MulRange (r : MulRange) (a : Nat)
+theorem mem_of_mem_MulRange (r : MulRange) (a : Nat)
   (h : a ∈ mulRange r.stop r.mul r.mul_pos r.start r.start_pos) : a ∈ r := by
   apply mem_of_mem_MulRange_aux r.stop r.mul r.start r.mul_pos r.start
     (by
@@ -168,7 +170,7 @@ private theorem MulRange_imp_pred (r : MulRange) (i : Nat)
     simp [hk, Nat.mul_assoc, ← Nat.pow_add_one]
 
 @[simp]
-def foldWhile'_step {α : Type u} (r : MulRange) (f : α → (a : Nat) → a ∈ r → α) (i : Nat) (init : α)
+theorem foldWhile'_step {α : Type u} (r : MulRange) (f : α → (a : Nat) → a ∈ r → α) (i : Nat) (init : α)
   (hi : r.start ≤ i ∧ ∃ k, i = r.start * r.mul ^ k)
   (h : i < r.stop) :
   foldWhile' r f i init hi =
@@ -180,7 +182,7 @@ def foldWhile'_step {α : Type u} (r : MulRange) (f : α → (a : Nat) → a ∈
   simp [*]
 
 @[simp]
-def foldWhile'_id {α : Type u} (r : MulRange) (f : α → (a : Nat) → a ∈ r → α) (i : Nat) (init : α)
+theorem foldWhile'_id {α : Type u} (r : MulRange) (f : α → (a : Nat) → a ∈ r → α) (i : Nat) (init : α)
   (hi : r.start ≤ i ∧ ∃ k, i = r.start * r.mul ^ k) (h : ¬ i < r.stop) :
   foldWhile' r f i init hi = init
   := by
@@ -188,7 +190,7 @@ def foldWhile'_id {α : Type u} (r : MulRange) (f : α → (a : Nat) → a ∈ r
   simp [*]
 
 @[simp]
-def foldWhile_step {α : Type u} (stop mul : Nat) (f : α → Nat → α) (i : Nat)
+theorem foldWhile_step {α : Type u} (stop mul : Nat) (f : α → Nat → α) (i : Nat)
   (init : α) (hMul) (hi : 0 < i) (h : i < stop) :
   foldWhile stop mul hMul f i hi init =
     foldWhile stop mul hMul f (i * mul)
@@ -198,7 +200,7 @@ def foldWhile_step {α : Type u} (stop mul : Nat) (f : α → Nat → α) (i : N
   simp [*]
 
 @[simp]
-def foldWhile_id {α : Type u} (stop mul : Nat) (f : α → Nat → α) (i : Nat)
+theorem foldWhile_id {α : Type u} (stop mul : Nat) (f : α → Nat → α) (i : Nat)
   (init : α) (hMul) (hi : 0 < i) (h : ¬ i < stop) :
   foldWhile stop mul hMul f i hi init = init := by
   conv => lhs; unfold foldWhile

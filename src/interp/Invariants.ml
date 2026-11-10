@@ -49,6 +49,7 @@ let borrows_infos_to_string (indent : string)
 type borrow_kind = BMut | BShared | BReserved [@@deriving show]
 
 (** Check that:
+    - loan ids are unique
     - loans and borrows are correctly related
     - a two-phase borrow can't point to a value inside an abstraction *)
 let check_loans_borrows_relation_invariant (span : Meta.span) (ctx : eval_ctx) :
@@ -78,6 +79,7 @@ let check_loans_borrows_relation_invariant (span : Meta.span) (ctx : eval_ctx) :
 
   let register_shared_loan (loan_in_abs : bool) (bid : BorrowId.id) : unit =
     let infos = !borrows_infos in
+    [%sanity_check] span (not (BorrowId.Map.mem bid infos));
     (* Insert the loan info *)
     let info =
       {
@@ -380,12 +382,12 @@ let check_borrowed_values_invariant (span : Meta.span) (ctx : eval_ctx) : unit =
   let info = { outer_borrow = false; outer_shared = false } in
   visitor#visit_eval_ctx info ctx
 
-let check_literal_type (span : Meta.span) (cv : literal) (ty : literal_type) :
+let check_literal_type (span : Meta.span) (cv : literal) (ty : scalar_type) :
     unit =
   match (cv, ty) with
-  | VScalar (SignedScalar (sv_ty, _)), TInt int_ty ->
+  | VScalar (SignedInteger (sv_ty, _)), TInteger (Signed int_ty) ->
       [%sanity_check] span (sv_ty = int_ty)
-  | VScalar (UnsignedScalar (sv_ty, _)), TUInt int_ty ->
+  | VScalar (UnsignedInteger (sv_ty, _)), TInteger (Unsigned int_ty) ->
       [%sanity_check] span (sv_ty = int_ty)
   | VBool _, TBool | VChar _, TChar -> ()
   | _ -> [%craise] span "Erroneous typing"
@@ -432,9 +434,9 @@ let check_typing_invariant_visitor span ctx (lookups : bool) =
       [%sanity_check] span (ty_is_ety tv.ty);
       (* Check the current pair (value, type) *)
       (match (tv.value, tv.ty) with
-      | VLiteral cv, TLiteral ty -> check_literal_type span cv ty
+      | VLiteral cv, TScalar ty -> check_literal_type span cv ty
       (* ADT case *)
-      | VAdt av, TAdt { id = TAdtId def_id; generics } ->
+      | VAdt av, TAdt { id = def_id; generics; builtin = None } ->
           (* Retrieve the definition to check the variant id, the number of
            * parameters, etc. *)
           let def = ctx_lookup_type_decl span ctx def_id in
@@ -460,7 +462,7 @@ let check_typing_invariant_visitor span ctx (lookups : bool) =
             (fun ((v, ty) : tvalue * ty) -> [%sanity_check] span (v.ty = ty))
             fields_with_types
       (* Tuple case *)
-      | VAdt av, TAdt { id = TTuple; generics } ->
+      | VAdt av, TAdt { generics; builtin = Some TTuple; _ } ->
           [%sanity_check] span (generics.regions = []);
           [%sanity_check] span (generics.const_generics = []);
           [%sanity_check] span (av.variant_id = None);
@@ -471,18 +473,14 @@ let check_typing_invariant_visitor span ctx (lookups : bool) =
             (fun ((v, ty) : tvalue * ty) -> [%sanity_check] span (v.ty = ty))
             fields_with_types
       (* Builtin type case *)
-      | VAdt av, TArray (inner_ty, len) ->
+      | VAdt av, TArray (inner_ty, len, _) ->
           [%sanity_check] span
             (List.for_all (fun (v : tvalue) -> v.ty = inner_ty) av.fields);
           (* The length is necessarily concrete *)
-          let len =
-            Scalars.get_val
-              (ValuesUtils.literal_as_scalar
-                 (TypesUtils.constant_expr_as_literal len))
-          in
+          let len = Scalars.get_val (TypesUtils.constant_expr_as_integer len) in
           [%sanity_check] span (Z.of_int (List.length av.fields) = len)
       | VAdt _, TSlice _ -> [%craise] span "Unexpected slice value"
-      | VAdt av, TAdt { id = TBuiltin aty_id; generics } -> (
+      | VAdt av, TAdt { generics; builtin = Some aty_id; _ } -> (
           [%sanity_check] span (av.variant_id = None);
           match
             ( aty_id,
@@ -535,7 +533,7 @@ let check_typing_invariant_visitor span ctx (lookups : bool) =
           check_symbolic_value_type sv.sv_id sv.sv_ty;
           let ty' = Substitute.erase_regions sv.sv_ty in
           [%sanity_check] span (ty' = ty)
-      | VLiteral (VStr _), TAdt { id = TBuiltin TStr; _ } -> ()
+      | VLiteral (VStr _), TAdt { builtin = Some TStr; _ } -> ()
       | _ ->
           [%ltrace
             "Erroneous typing:\n- value: " ^ tvalue_to_string ctx tv
@@ -558,7 +556,7 @@ let check_typing_invariant_visitor span ctx (lookups : bool) =
       (* Check the current pair (value, type) *)
       (match (atv.value, atv.ty) with
       (* ADT case *)
-      | AAdt av, TAdt { id = TAdtId def_id; generics } ->
+      | AAdt av, TAdt { id = def_id; generics; builtin = None } ->
           (* Retrieve the definition to check the variant id, the number of
            * parameters, etc. *)
           let def = ctx_lookup_type_decl span ctx def_id in
@@ -587,7 +585,7 @@ let check_typing_invariant_visitor span ctx (lookups : bool) =
             (fun ((v, ty) : tavalue * ty) -> [%sanity_check] span (v.ty = ty))
             fields_with_types
       (* Tuple case *)
-      | AAdt av, TAdt { id = TTuple; generics } ->
+      | AAdt av, TAdt { generics; builtin = Some TTuple; _ } ->
           [%sanity_check] span (generics.regions = []);
           [%sanity_check] span (generics.const_generics = []);
           [%sanity_check] span (av.variant_id = None);
@@ -598,7 +596,7 @@ let check_typing_invariant_visitor span ctx (lookups : bool) =
             (fun ((v, ty) : tavalue * ty) -> [%sanity_check] span (v.ty = ty))
             fields_with_types
       (* Builtin type case *)
-      | AAdt av, TAdt { id = TBuiltin aty_id; generics } -> (
+      | AAdt av, TAdt { generics; builtin = Some aty_id; _ } -> (
           [%sanity_check] span (av.variant_id = None);
           match
             ( aty_id,
@@ -713,10 +711,16 @@ let check_typing_invariant_visitor span ctx (lookups : bool) =
               check_symbolic_value_type proj.sv_id ty;
               let abs = Option.get info in
               [%sanity_check] span
-                (ty_has_regions_in_set abs.regions.owned proj.proj_ty)
+                (ty_has_regions_in_set ctx.type_ctx.type_infos abs.regions.owned
+                   proj.proj_ty)
           | AProjBorrows { proj; _ } ->
               check_symbolic_value_type proj.sv_id ty;
-              [%sanity_check] span (ty_has_free_regions proj.proj_ty)
+              [%sanity_check] span
+                (ty_has_regions_in_pred ctx.type_ctx.type_infos
+                   (function
+                     | RVar (Free _) | RStatic -> true
+                     | _ -> false)
+                   proj.proj_ty)
           | AEndedProjLoans { proj = _; consumed; borrows } ->
               List.iter
                 (fun (_, proj) ->
@@ -747,7 +751,7 @@ let check_typing_invariant (span : Meta.span) (ctx : eval_ctx) (lookups : bool)
 
 type proj_borrows_info = {
   abs_id : AbsId.id;
-  regions : RegionId.Set.t;
+  regions : region_set;
   proj_ty : rty;  (** The regions shouldn't be erased *)
   as_shared_value : bool;  (** True if the value is below a shared borrow *)
 }
@@ -755,7 +759,7 @@ type proj_borrows_info = {
 
 type proj_loans_info = {
   abs_id : AbsId.id;
-  regions : RegionId.Set.t;
+  regions : region_set;
   proj_ty : rty;
 }
 [@@deriving show]
@@ -771,7 +775,7 @@ let proj_borrows_info_to_string (ctx : eval_ctx) (info : proj_borrows_info) :
     string =
   let { abs_id; regions; proj_ty; as_shared_value } = info in
   "{ abs_id = " ^ AbsId.to_string abs_id ^ "; regions = "
-  ^ RegionId.Set.to_string None regions
+  ^ region_set_to_string regions
   ^ "; proj_ty = " ^ ty_to_string ctx proj_ty ^ "; as_shared_value = "
   ^ Print.bool_to_string as_shared_value
   ^ "}"
@@ -780,7 +784,7 @@ let proj_loans_info_to_string (ctx : eval_ctx) (info : proj_loans_info) : string
     =
   let { abs_id; regions; proj_ty } = info in
   "{ abs_id = " ^ AbsId.to_string abs_id ^ "; regions = "
-  ^ RegionId.Set.to_string None regions
+  ^ region_set_to_string regions
   ^ "; proj_ty = " ^ ty_to_string ctx proj_ty ^ "}"
 
 let sv_info_to_string (ctx : eval_ctx) (info : sv_info) : string =
@@ -797,7 +801,7 @@ let sv_info_to_string (ctx : eval_ctx) (info : sv_info) : string =
     This is a variant of {!normalize_proj_ty} that erases shared regions, so
     that two projections sharing a shared region don't collide. *)
 let normalize_mut_proj_ty (type_infos : TypesAnalysis.type_infos)
-    (owned_regions : RegionId.Set.t) (proj_ty : rty) : rty =
+    (owned_regions : region_set) (proj_ty : rty) : rty =
   let conflict_regions =
     ty_get_mutable_regions type_infos owned_regions proj_ty
   in

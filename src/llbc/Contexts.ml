@@ -81,7 +81,7 @@ type decls_ctx = {
 [@@deriving show]
 
 let compute_local_uses_error_message (ctx : decls_ctx) (id : item_id) : string =
-  if not (LlbcAstUtils.AnyDeclIdSet.mem id ctx.graph_of_uses.locals) then
+  if not (Meta.AnyDeclIdSet.mem id ctx.graph_of_uses.locals) then
     let uses = Deps.compute_local_uses ctx.graph_of_uses [ id ] in
     let uses = Deps.ItemInfoSet.to_list uses in
     if uses = [] then ""
@@ -150,6 +150,21 @@ type eval_ctx = {
           introduce fresh symbolic values. *)
   env : env;
   ended_regions : RegionId.Set.t;
+      (** The set of regions that were ended (can not contain the static
+          region). *)
+  can_end_static : bool;
+      (** Can we end the region abstractions which own the static region?
+
+          We can not end region abstractions owning the static region unless
+          this flag is set to [true], or the region abstraction doesn't contain
+          any borrows/loans (in which case ending the region abstraction amounts
+          to forgetting it). We set this flag to [true] only when synthesizing
+          the backward function for the static region. See {!abs_is_endable}.
+
+          Note that we never need to add the static region to {!ended_regions}
+          because this set is only used in the symbolic execution when analyzing
+          symbolic values (we don't need to use this set when ending region
+          abstractions and synthesizing the corresponding translation). *)
   fresh_symbolic_value_id : unit -> symbolic_value_id;
   fresh_dummy_var_id : unit -> dummy_var_id;
   fresh_fun_call_id : unit -> fun_call_id;
@@ -366,14 +381,7 @@ let ctx_lookup_dummy_var (span : Meta.span) (ctx : eval_ctx)
   in
   lookup_var ctx.env
 
-let erase_regions (ty : ty) : ty =
-  let v =
-    object
-      inherit [_] map_ty
-      method! visit_region _ _ = RErased
-    end
-  in
-  v#visit_ty () ty
+let erase_regions = TypesUtils.ty_erase_regions
 
 (** Push an uninitialized variable (which thus maps to
     {!constructor:Values.value.VBottom}) *)
@@ -648,19 +656,18 @@ let ctx_type_get_instantiated_field_etypes (span : Meta.span) (ctx : eval_ctx)
 (** Return the types of the properly instantiated ADT value (note that here, ADT
     is understood in its broad meaning: ADT, builtin value or tuple). *)
 let ctx_adt_get_instantiated_field_types (span : Meta.span) (ctx : eval_ctx)
-    (id : type_id) (variant_id : variant_id option) (generics : generic_args) :
-    ty list =
-  match id with
-  | TAdtId id ->
-      (* Retrieve the types of the fields *)
-      ctx_type_get_instantiated_field_types span ctx id variant_id generics
-  | TTuple ->
-      [%cassert] span (variant_id = None) "Tuples don't have variants";
-      [%cassert] span (generics.regions = [])
-        "Tuples don't have region parameters";
-      generics.types
-  | TBuiltin aty -> (
+    (tref : type_decl_ref) (variant_id : variant_id option) : ty list =
+  let generics = tref.generics in
+  match tref.builtin with
+  | None ->
+      ctx_type_get_instantiated_field_types span ctx tref.id variant_id generics
+  | Some aty -> (
       match aty with
+      | TTuple ->
+          [%cassert] span (variant_id = None) "Tuples don't have variants";
+          [%cassert] span (generics.regions = [])
+            "Tuples don't have region parameters";
+          generics.types
       | TBox ->
           [%cassert] span (variant_id = None) "Boxes don't have variants";
           [%sanity_check] span (generics.regions = []);
@@ -714,6 +721,110 @@ let env_get_abs (env : env) : abs AbsId.Map.t =
 
 let ctx_get_abs (ctx : eval_ctx) : abs AbsId.Map.t = env_get_abs ctx.env
 
+(** Compute the set of (shared or reserved) borrow ids of the shared borrows
+    appearing in a context *)
+let ctx_get_shared_borrow_ids (ctx : eval_ctx) : BorrowId.Set.t =
+  let bids = ref BorrowId.Set.empty in
+  let add bid = bids := BorrowId.Set.add bid !bids in
+  let visitor =
+    object
+      inherit [_] iter_env as super
+
+      method! visit_VSharedBorrow env bid sid =
+        add bid;
+        super#visit_VSharedBorrow env bid sid
+
+      method! visit_VReservedMutBorrow env bid sid =
+        add bid;
+        super#visit_VReservedMutBorrow env bid sid
+
+      method! visit_ASharedBorrow env pm bid sid =
+        add bid;
+        super#visit_ASharedBorrow env pm bid sid
+
+      method! visit_AsbBorrow env bid sid =
+        add bid;
+        super#visit_AsbBorrow env bid sid
+    end
+  in
+  visitor#visit_env () ctx.env;
+  !bids
+
+(** Check if a region abstraction contains (non-ended) borrows or loans which
+    are still in use.
+
+    We consider that a shared loan is not in use if there are no shared borrows
+    for this loan in the context. *)
+let abs_has_borrows_or_loans (ctx : eval_ctx) (abs : abs) : bool =
+  let shared_borrows = lazy (ctx_get_shared_borrow_ids ctx) in
+  let visitor =
+    object
+      inherit [_] iter_abs as super
+
+      method! visit_ALoan env lc =
+        (match lc with
+        | AMutLoan _ -> raise Utils.Found
+        | ASharedLoan (_, bid, _, _) ->
+            if BorrowId.Set.mem bid (Lazy.force shared_borrows) then
+              raise Utils.Found
+        | AEndedMutLoan _
+        | AEndedSharedLoan _
+        | AIgnoredMutLoan _
+        | AEndedIgnoredMutLoan _
+        | AIgnoredSharedLoan _ -> ());
+        super#visit_ALoan env lc
+
+      method! visit_ABorrow env bc =
+        (match bc with
+        | AMutBorrow _ | ASharedBorrow _ | AProjSharedBorrow (_ :: _) ->
+            raise Utils.Found
+        | AIgnoredMutBorrow _
+        | AEndedMutBorrow _
+        | AEndedSharedBorrow
+        | AEndedIgnoredMutBorrow _
+        | AProjSharedBorrow [] -> ());
+        super#visit_ABorrow env bc
+
+      method! visit_ASymbolic env pm proj =
+        (match proj with
+        | AProjLoans _ | AProjBorrows _ -> raise Utils.Found
+        | AEndedProjLoans _ | AEndedProjBorrows _ | AEmpty -> ());
+        super#visit_ASymbolic env pm proj
+
+      method! visit_VBorrow _ _ = raise Utils.Found
+      method! visit_VLoan _ _ = raise Utils.Found
+    end
+  in
+  try
+    List.iter (visitor#visit_tavalue ()) abs.avalues;
+    false
+  with Utils.Found -> true
+
+(** Check if a region abstraction owns the static region *)
+let abs_owns_static (abs : abs) : bool = RegionSet.mem RStatic abs.regions.owned
+
+(** Check if we can end a region abstraction.
+
+    We can end a region abstraction if:
+    - it is not frozen (see the field [can_end] of {!type:Values.abs})
+    - and if it owns the static region: if we are allowed to end the static
+      region (see the field [can_end_static] of {!type:eval_ctx}) or if it
+      doesn't contain any borrows nor loans which are still in use (in which
+      case ending it amounts to forgetting it - see
+      {!abs_has_borrows_or_loans}). *)
+let abs_is_endable (ctx : eval_ctx) (abs : abs) : bool =
+  abs.can_end
+  && ((not (abs_owns_static abs))
+     || ctx.can_end_static
+     || not (abs_has_borrows_or_loans ctx abs))
+
+(** Compute the set of frozen region abstractions, i.e., the abstractions whose
+    field [can_end] is [false].
+
+    Remark: we do not consider the region abstractions owning the static region
+    as frozen, even if they can't be ended because they contain borrows or loans
+    which are still in use (see {!abs_is_endable}): the joins, for instance, can
+    still merge them with other region abstractions. *)
 let ctx_get_frozen_abs_set (ctx : eval_ctx) : AbsId.Set.t =
   let abs = ctx_get_abs ctx in
   AbsId.Set.of_list

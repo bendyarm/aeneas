@@ -3,11 +3,13 @@ open Lake DSL
 
 -- Important: mathlib imports std4 and quote4: we mustn't add a `require std4` line
 require mathlib from git
-  "https://github.com/leanprover-community/mathlib4.git" @ "v4.31.0"
+  "https://github.com/leanprover-community/mathlib4.git" @ "v4.36.0-rc2"
 
 package «aeneas» where
   preferReleaseBuild := true
   buildArchive := s!"lean-build-aeneas-{System.Platform.target}.tar.gz"
+  -- Models of the Rust standard library mirror Rust paths (e.g. `core.clone.Clone.clone`)
+  leanOptions := #[⟨`weak.linter.dupNamespace, false⟩]
 
 @[default_target] lean_lib «Aeneas» {}
 
@@ -23,3 +25,10 @@ private def notCI : Bool := run_io
 lean_exe extract where
   root := `AeneasExtract
   supportInterpreter := true
+  needs := #[`@/Aeneas]
+
+/-- Extract the Lean tokens that are not permitted as standalone identifiers. -/
+lean_exe extract_lean_keywords where
+  root := `ExtractLeanKeywords
+  supportInterpreter := true
+  needs := #[`@/Aeneas]

@@ -29,7 +29,7 @@ namespace HashMap
 def distinct_keys (ls : List (Usize × α)) := ls.pairwise_rel (λ x y => x.fst ≠ y.fst)
 
 def hash_mod_key (k : Usize) (l : Nat) : Nat :=
-  match hash_key k with
+  match (hash_key k).match with
   | .ok k => k.val % l
   | _ => 0
 
@@ -313,13 +313,11 @@ theorem insert_in_list_spec {α : Type} (l : Nat) (key: Usize) (value: α) (l0: 
   step with insert_in_list_spec_aux as ⟨ b, l1 ⟩
   simp_all
 
--- Remark: α and β must live in the same universe, otherwise the
--- bind doesn't work
 theorem if_update_eq
-  {α β : Type u} (b : Bool) (y : α) (e : Result α) (f : α → Result β) :
-  (if b then Bind.bind e f else f y) = Bind.bind (if b then e else pure y) f
+  {α : Type u} {β : Type v} (b : Bool) (y : α) (e : Result α) (f : α → Result β) :
+  (if b then Std.bind e f else f y) = Std.bind (if b then e else ok y) f
   := by
-  split <;> simp [Pure.pure]
+  split <;> simp
 
 def frame_slots_params (hm1 hm2 : HashMap α) :=
   -- The max load factor is the same
@@ -346,7 +344,7 @@ theorem insert_no_resize_spec {α : Type} (hm : HashMap α) (key : Usize) (value
     | some _ => nhm.len_s = hm.len_s) ⦄ := by
   unfold insert_no_resize
   -- Simplify. Note that this also simplifies some function calls, like array index
-  simp [hash_key, bind_tc_ok]
+  simp [hash_key]
   step as ⟨ hash_mod, hhm ⟩
   simp at hhm
   have _ : hash_mod.val < alloc.vec.Vec.length hm.slots := by
@@ -851,8 +849,8 @@ theorem try_resize_spec {α : Type} (hm : HashMap α) (hInv : hm.inv):
       simp_all [inv, inv_load]
       split_conjs at hInv
       --
-      apply Nat.mul_le_of_le_div at hSmaller; try simp [*]
-      apply Nat.mul_le_of_le_div at hSmaller; try simp
+      apply Nat.mul_le_of_le_div at hSmaller
+      apply Nat.mul_le_of_le_div at hSmaller
       --
       have : (hm.slots.val.length * hm.2.1.val) * 1 ≤ (hm.slots.val.length * hm.2.1.val) * 2 := by
         apply Nat.mul_le_mul <;> (try simp [*])

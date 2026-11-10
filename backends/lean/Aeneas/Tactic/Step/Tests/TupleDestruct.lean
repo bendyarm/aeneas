@@ -1,3 +1,4 @@
+module
 import Aeneas.Do
 import Aeneas.Std.Slice
 import Aeneas.Tactic.Step
@@ -16,7 +17,7 @@ private def threeNats : Result (Nat × Nat × Nat) :=
 private theorem twoNats_spec : twoNats ⦃ a b => a = 1 ∧ b = 2⦄ := by unfold twoNats; step*
 
 @[local step]
-private def threeNats_spec : threeNats ⦃ a b c => a = 1 ∧ b = 2 ∧ c = 3⦄ := by unfold threeNats; step*
+private theorem threeNats_spec : threeNats ⦃ a b c => a = 1 ∧ b = 2 ∧ c = 3⦄ := by unfold threeNats; step*
 
 private def fourNats : Result ((Nat × Nat) × (Nat × Nat)) :=
   ok ((3, 4), (5, 6))
@@ -35,49 +36,57 @@ private theorem sixNats_spec : sixNats ⦃ ((a, b), c) ((d, e), f) => a = 3 ∧ 
 /--
 warning: Variable name `a` is not explicitly referenced.
 
-The binding can be removed (if unused) or named `_` (if used implicitly).
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _a
 
 Note: This linter can be disabled with `set_option linter.unusedVariables false`
 ---
 warning: Variable name `b` is not explicitly referenced.
 
-The binding can be removed (if unused) or named `_` (if used implicitly).
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _b
 
 Note: This linter can be disabled with `set_option linter.unusedVariables false`
 ---
 warning: Variable name `c` is not explicitly referenced.
 
-The binding can be removed (if unused) or named `_` (if used implicitly).
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _c
 
 Note: This linter can be disabled with `set_option linter.unusedVariables false`
 ---
 warning: Variable name `d` is not explicitly referenced.
 
-The binding can be removed (if unused) or named `_` (if used implicitly).
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _d
 
 Note: This linter can be disabled with `set_option linter.unusedVariables false`
 ---
 warning: Variable name `b` is not explicitly referenced.
 
-The binding can be removed (if unused) or named `_` (if used implicitly).
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _b
 
 Note: This linter can be disabled with `set_option linter.unusedVariables false`
 ---
 warning: Variable name `c` is not explicitly referenced.
 
-The binding can be removed (if unused) or named `_` (if used implicitly).
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _c
 
 Note: This linter can be disabled with `set_option linter.unusedVariables false`
 ---
 warning: Variable name `e` is not explicitly referenced.
 
-The binding can be removed (if unused) or named `_` (if used implicitly).
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _e
 
 Note: This linter can be disabled with `set_option linter.unusedVariables false`
 ---
 warning: Variable name `h` is not explicitly referenced.
 
-The binding can be removed (if unused) or named `_` (if used implicitly).
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _h
 
 Note: This linter can be disabled with `set_option linter.unusedVariables false`
 -/
@@ -92,10 +101,10 @@ private def testTuples : Result Nat := do
 /--
 info: Try this:
 
-  [apply]     let* ⟨ a, b, a_post1, a_post2 ⟩ ← twoNats_spec
-    let* ⟨ c, d, c_post1, c_post2 ⟩ ← twoNats_spec
-    let* ⟨ a, b, c, d, a_post1, a_post2, a_post3, a_post4 ⟩ ← fourNats_spec
-    let* ⟨ e, f, g, h, e_post1, e_post2, e_post3, e_post4 ⟩ ← fourNats_spec
+  [apply]     let* ⟨ a, b, a_post, b_post ⟩ ← twoNats_spec
+    let* ⟨ c, d, c_post, d_post ⟩ ← twoNats_spec
+    let* ⟨ a, b, c, d, a_post, b_post, c_post, d_post ⟩ ← fourNats_spec
+    let* ⟨ e, f, g, h, e_post, f_post, g_post, h_post ⟩ ← fourNats_spec
     agrind
 -/
 #guard_msgs in
@@ -111,8 +120,8 @@ private def testTuples1 : Result Nat := do
 /--
 info: Try this:
 
-  [apply]     let* ⟨ a, b, c, a_post1, a_post2, a_post3 ⟩ ← threeNats_spec
-    let* ⟨ e, f, g, e_post1, e_post2, e_post3 ⟩ ← threeNats_spec
+  [apply]     let* ⟨ a, b, c, a_post, b_post, c_post ⟩ ← threeNats_spec
+    let* ⟨ e, f, g, e_post, f_post, g_post ⟩ ← threeNats_spec
     agrind
 -/
 #guard_msgs in
@@ -127,7 +136,7 @@ private def testTuples2 : Result Nat := do
 /--
 info: Try this:
 
-  [apply]     let* ⟨ a, b, c, d, e, f, a_post1, a_post2, a_post3, a_post4, a_post5, a_post6 ⟩ ← sixNats_spec
+  [apply]     let* ⟨ a, b, c, d, e, f, a_post, b_post, c_post, d_post, e_post, f_post ⟩ ← sixNats_spec
     agrind
 -/
 #guard_msgs in
