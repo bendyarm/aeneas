@@ -443,8 +443,11 @@ preset's `--index-to-function-calls` / `--ops-to-function-calls` desugar
 functions, which a monomorphic run does not have (PR #1382 removed the LLBC
 builtins they replace); and monomorphic mode now excludes polymorphic items
 altogether (PR #1436), which is what the carve-out relied on keeping.  The
-`acl2-next` branch of bendyarm/charon carries the carve-out merged onto
-upstream main; it builds but is not used by anything here.
+carve-out was merged onto upstream main (bfb01963) as an experiment: it
+builds, but with polymorphic items excluded the carved items no longer come
+through, and the merge is not published.  bendyarm/charon stays as it is, at
+the commit the paper pins (58b7d543, its `main`); nothing on `acl2-next`
+uses it.
 
 ### What monomorphization was doing for the backend, and what does it now
 
