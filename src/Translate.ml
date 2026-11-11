@@ -1606,9 +1606,8 @@ let extract_translated_crate (filename : string) (dest_dir : string)
   let ctx =
     (* The ACL2 printer builds its own name maps (see
        ExtractAcl2.extract_crate); computing the foreign-backend
-       names here can only produce spurious collisions (e.g. on
-       monomorphized instances, whose instantiation the pattern
-       machinery drops).  Skip registration entirely. *)
+       names here can only produce spurious collisions.  Skip
+       registration entirely. *)
     if Config.backend () = Acl2 then ctx
     else
       List.fold_left
@@ -1638,9 +1637,8 @@ let extract_translated_crate (filename : string) (dest_dir : string)
   let ctx =
     (* The ACL2 printer builds its own name maps (see
        ExtractAcl2.extract_crate); computing the foreign-backend
-       names here can only produce spurious collisions (e.g. on
-       monomorphized instances, whose instantiation the pattern
-       machinery drops).  Skip registration entirely. *)
+       names here can only produce spurious collisions.  Skip
+       registration entirely. *)
     if Config.backend () = Acl2 then ctx
     else
       List.fold_left
@@ -1685,9 +1683,8 @@ let extract_translated_crate (filename : string) (dest_dir : string)
   let ctx =
     (* The ACL2 printer builds its own name maps (see
        ExtractAcl2.extract_crate); computing the foreign-backend
-       names here can only produce spurious collisions (e.g. on
-       monomorphized instances, whose instantiation the pattern
-       machinery drops).  Skip registration entirely. *)
+       names here can only produce spurious collisions.  Skip
+       registration entirely. *)
     if Config.backend () = Acl2 then ctx
     else
       List.fold_left
@@ -1717,9 +1714,8 @@ let extract_translated_crate (filename : string) (dest_dir : string)
   let ctx =
     (* The ACL2 printer builds its own name maps (see
        ExtractAcl2.extract_crate); computing the foreign-backend
-       names here can only produce spurious collisions (e.g. on
-       monomorphized instances, whose instantiation the pattern
-       machinery drops).  Skip registration entirely. *)
+       names here can only produce spurious collisions.  Skip
+       registration entirely. *)
     if Config.backend () = Acl2 then ctx
     else
       List.fold_left
@@ -1749,9 +1745,8 @@ let extract_translated_crate (filename : string) (dest_dir : string)
   let ctx =
     (* The ACL2 printer builds its own name maps (see
        ExtractAcl2.extract_crate); computing the foreign-backend
-       names here can only produce spurious collisions (e.g. on
-       monomorphized instances, whose instantiation the pattern
-       machinery drops).  Skip registration entirely. *)
+       names here can only produce spurious collisions.  Skip
+       registration entirely. *)
     if Config.backend () = Acl2 then ctx
     else
       List.fold_left

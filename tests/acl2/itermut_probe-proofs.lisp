@@ -3,12 +3,9 @@
 ; and the add_round_key shape (iter_mut().zip(shared)), including the
 ; verbatim upstream add_round_key text (p4).
 ;
-; The Rust source is tests/src/itermut_probe.rs, compiled with charon's
-; carved pipeline (--preset=aeneas --monomorphize
-; --monomorphize-mut=except-types --remove-adt-clauses
-; --lift-associated-types='*' -- --edition=2021) and extracted with
-; -backend acl2 -use-fuel -loops-to-rec.  Iter/IterMut/Zip stay polymorphic
-; (their regions are unrecoverable once baked) and arrive as opaque decls;
+; The Rust source is tests/src/itermut_probe.rs, compiled with stock charon
+; (--preset=aeneas -- --edition=2021) and extracted with -backend acl2
+; -use-fuel -loops-to-rec.  Iter/IterMut/Zip are opaque generic declarations;
 ; the printer models them as {lst, pos} defprods (Zip as {a, b}) and
 ; defunctionalizes the loops' composed write-back continuations into lists
 ; of pending values, applied by the -apply-back/-wb-some companions on the

@@ -1,5 +1,10 @@
 # ACL2 backend — porting notes (branch `acl2-backend`)
 
+**Current state: see "The pipeline on `acl2-next`", "Trait-generic code" and
+"Toward all Rust code" at the end.  The sections in between are the port's
+log, oldest first; where they describe `--monomorphize` or the carved
+pipeline they describe `acl2-backend`, not `acl2-next`.**
+
 State of this branch: `Config.ml`, `Main.ml`, and `tests/test_runner/Backend.ml`
 carry the real `Acl2` additions; `src/extract/ExtractAcl2.ml.draft` encodes the
 printer design (not yet compiled — rename to `.ml` when completing it). The
@@ -403,3 +408,392 @@ Upstream-facing fix (for the tracking issue): render `PeInstantiated`
 arguments in name generation -- either a `to_pat_config` flag in charon-ml's
 NameMatcher or a post-pass in aeneas's ExtractName -- so every backend gets
 collision-free names under `--monomorphize`.
+
+## The pipeline on `acl2-next`: polymorphic LLBC
+
+`acl2-next` is `acl2-backend` (23cf8c88) merged with AeneasVerif/aeneas main
+as of 2026-11-10 (0d21a9ec; charon 0.1.315, rust `nightly-2026-09-17`), with
+the backend moved to the polymorphic pipeline.  Every crate is extracted the
+same way:
+
+    charon rustc --preset=aeneas --dest-file X.llbc -- [--edition=2021] X.rs ...
+    aeneas -backend acl2 -use-fuel -loops-to-rec X.llbc
+
+Stock upstream charon: no `--monomorphize`, no carve-out, no charon fork
+(checked with unmodified AeneasVerif/charon at the commit this tree pins,
+454586e9).  All 20 books generated on `acl2-backend` regenerate this way
+with every crate function they had before, and the directory certifies (84
+books, with those of `traits_probe` and `std_glue_probe` below).  (Building
+needs `ppx_deriving_hash >= 0.1.5` on the OCaml side and the
+`crates/minirust` submodule on the charon side.)
+
+### Why not `--monomorphize`
+
+Monomorphization bakes region-erased instances of borrow-carrying items
+(`Option<&mut u32>`, the slice iterators) before Aeneas's borrow analysis,
+which needs those regions; the carve-out in bendyarm/charon kept exactly
+those items polymorphic.  In polymorphic LLBC nothing erases the regions, so
+the problem does not arise: `itermut_probe`, the crate the carve-out existed
+for, extracts as is.
+
+Upstream has also moved away from the combination.  Current charon rejects
+`--preset=aeneas` together with `--monomorphize` (issue #1538, PR #1539): the
+preset's `--index-to-function-calls` / `--ops-to-function-calls` desugar
+`a[i]`, `[x; N]` and array-to-slice coercions to calls to polymorphic std
+functions, which a monomorphic run does not have (PR #1382 removed the LLBC
+builtins they replace); and monomorphic mode now excludes polymorphic items
+altogether (PR #1436), which is what the carve-out relied on keeping.  The
+`acl2-next` branch of bendyarm/charon carries the carve-out merged onto
+upstream main; it builds but is not used by anything here.
+
+### What monomorphization was doing for the backend, and what does it now
+
+ACL2 functions have no type parameters, so the monomorphized copies of a std
+type were already identical products with `any-p` fields under different
+names (`core-option-option-usize-`, `core-option-option-i32-`).  The
+polymorphic pipeline has one (`core-option-option`).  What monomorphization
+contributed was only the *resolution of instantiations*: each std function
+the backend models arrived as one declaration per instantiation, recognized
+by its mangled name.  Now each arrives as one generic declaration:
+
+- **Recognition** is by Rust name pattern (`std_fun_table` in
+  `ExtractAcl2.ml`; the mechanism of the reference backends' builtin
+  tables).  `ACL2_DEBUG_PATTERNS=1` prints every declaration's pattern next
+  to its mangled name.
+- **Names.**  The table gives each modeled function a stable ACL2 name
+  (`core-ops-range-range-next`, `core-slice-iter-itermut-next`,
+  `core-array-index-range`, `u32-bitxor-assign-ref`, ...) where the mangled
+  impl path would carry charon's internal clause names
+  (`...-clause0-clause1-item-...`).
+- **Instantiation checks.**  One model serves every instantiation, so each
+  call site checks that the instantiation is one the model is valid for (a
+  range of integers for `Range::next`, a `Range<usize>` under `StepBy`, a
+  slice `IterMut` zipped with a slice `Iter`, a usize or range index) and
+  fails loudly otherwise.  Under monomorphization that check was implicit in
+  the name.
+- **Fallibility** follows the AST: a call is printed monadically iff Aeneas
+  typed it as a `result`.  `[T]::len`, `Vec::len` and `Vec::new` are
+  infallible in Aeneas's builtin table and print as `(len v)` / `nil`.
+- **Only what is used is emitted.**  Charon declares every method of every
+  impl a crate touches and the types of all their signatures; a std model is
+  emitted only if the crate calls it, a std type only if the emitted code
+  mentions it, and an opaque std declaration nobody calls produces no line.
+  A call to an unmodeled std function fails at the call site and names it.
+
+### What changed in the generated books, against `acl2-backend`
+
+Crate functions are the same code.  The differences are: std items are
+renamed as above; `x.len()` binds without the monad; the identity
+`into_iter` of a `for` loop over a range is gone (Aeneas elides it), so the
+loop is called on the range directly; bound variables are numbered from 1 in
+each declaration instead of across the crate, so a function's text no longer
+depends on the rest of the crate or on the order charon lists it in.  In the
+hand-written books this needed renames in five (63 occurrences) and the
+removal of two hints that named the vanished `into_iter` wrappers.  No proof
+needed rework.
+
+### Other backend changes on this branch
+
+- LLBC builtin function ids are gone upstream: `FunId (FRegular id)` is
+  `FunId id`; single-element indexing is the pure `IndexAtIndex` /
+  `IndexMutAtIndex`; `[x; N]`, `as_slice`, `as_mut_slice` are std calls
+  (kinds `StdArrayRepeat`, `StdArrayAsSlice`, `StdArrayAsMutSlice`).
+- **Structs are nominal throughout** (`Config.use_tuple_structs := false`
+  for this backend).  With the default, the pure AST leaves it to the printer
+  to erase one-field tuple structs and print the others as tuples; the
+  printer emitted products but read them as conses, so construction and
+  field access of a tuple struct disagreed (`no_nested_borrows` had such
+  functions; nothing proved anything about them).  A struct without fields
+  is `(unit)`.
+- **Const generics are ordinary parameters**: a function's const generic
+  parameters are its first formals, named `const-<name>` (so `N` cannot
+  collide with the fuel formal `n`), and calls pass them first.
+- `tests/src/generics_probe.rs` with a proofs book covers type parameters,
+  const generics and tuple structs.
+
+## Trait-generic code: one function per trait instance
+
+A trait bound is a function-valued parameter in disguise:
+
+    pub fn total<S: Shape, T: Shape>(s: &S, t: &T) -> u32 {
+        s.area() + t.double_area()
+    }
+
+calls whatever `area` its caller picks.  In Aeneas's pure code `total` takes
+the two impls as arguments and projects the methods from them
+(`TraitClause(0).area s`), which a first-order ACL2 function cannot.  So the
+backend specializes: a function whose code depends on a trait bound is not
+printed where it is declared, but once per **instance** of the bound the
+crate uses it at, with each call through the bound resolved to the function
+the impl gives for the method.  `total(&Sq(2), &Rect(2, 3))` is a call to
+
+    (defun traits-probe-total[traits-probe-sq][traits-probe-rect] (s t-var)
+      (b* (((ok v1_1) (traits-probe-impl-traits-probe-shape-for-traits-probe-sq-area s)))
+      (b* (((ok v2_2) (traits-probe-impl-traits-probe-shape-for-traits-probe-rect-double-area t-var)))
+      (u32-add v1_1 v2_2))))
+
+This is the part of `--monomorphize` the backend needed, done after Aeneas
+instead of before it, on the pure AST (`ExtractAcl2.ml`, the section
+"specialization"), with stock charon output as input:
+
+- **Only trait instances are specialized.**  Types stay erased and const
+  generics stay parameters, so one function still serves every type.  An
+  instance is keyed on the function and one trait instance per bound; a
+  trait instance (`dict`) is an impl applied to the instances its own bounds
+  stand for (`{impl Shape for Two<S>}` at `{impl Shape for Sq}`).
+- **Only the bounds the code depends on count** (`compute_relevance`, a
+  least fixed point over the functions and the impls).  A bound matters to a
+  function when the body calls a method or reads a constant of an instance
+  built from it, or hands such an instance to a callee for a bound that
+  matters there.  A function none of whose bounds matter
+  (`fn first<T: Copy>(xs: &[T; 2]) -> T`) is printed once, as before: the
+  generated books that existed before this change are the same byte for
+  byte, except for one SKIPPED message in `demo.lisp`.
+- **Names** follow the convention of the SOFT library for the instances of a
+  second-order function: the function's name, then one bracket per bound
+  naming the type the impl is for, the impl's own instances nested inside:
+  `total[sq][rect]`, `total[two[sq]][sq]`, `mul-add[u32][u32]`,
+  `apply[closures-closure]` (each with the crate prefix).  Two impls of one
+  trait for types with the same head (`Shape for Wrap<u8>` and `Shape for
+  Wrap<u32>`; `From<u8> for u64` and `From<u16> for u64`) both go by the
+  impl's full name instead.  Which name an instance gets depends on the
+  impls in the crate only, not on the order instances are met in, so a name
+  never comes to mean a different instance.
+- **Resolved:** required methods; provided methods (an impl's method table
+  points to the trait's default, which becomes an instance at that impl);
+  impls with bounds of their own, to any depth; supertraits; associated
+  constants; bounds on associated types; trait methods with trait bounds of
+  their own; blanket impls.
+- **Closures need nothing more.**  Charon gives a closure a struct for its
+  captures and impls of `Fn` / `FnMut` / `FnOnce`, so
+  `apply<F: Fn(u32) -> u32>` at a closure is an instance like any other,
+  calling the closure's `call`.
+- **Emission.**  An instance is generated the first time a call needs it and
+  written before the declaration that asked for it, the instances it needs
+  itself first.  A recursive function is recursive at its instance, with the
+  same measure on the fuel.  Where the generic function was declared the
+  book has a comment listing its instances.  A function of the crate that is
+  used at no instance has no ACL2 counterpart and is listed as SKIPPED; to
+  get one, call it from a monomorphic function in the crate.
+- **The std impls of the integer types, through a bound.**  In generic code
+  `x + y`, `x < y`, `x == y` and `x.clone()` are calls through `Add`,
+  `PartialOrd`, `PartialEq` and `Clone` bounds; at an integer type the impl
+  is std's, opaque, and maps to the primitive (`std_prim_table`, 163 name
+  patterns).  The same table makes derived `Clone` and `PartialEq` work for
+  structs of integers in ordinary code.
+
+`ACL2_DEBUG_TRAITS=1` prints the trait impls (clauses, method tables, parent
+instances) and the bounds each function and impl depends on.
+
+`tests/src/traits_probe.rs` exercises all of the above.  Its proofs book has
+known answers (the values the compiled Rust returns) and theorems about
+instances: `total` at `Sq` and `Rect` is `a*a + 2*b*c` when nothing
+overflows; four closures handed to four higher-order functions come to
+`29 + (5 xor k)` modulo 2^32, for every u32 `k`.
+
+Not handled.  Each fails at the instance or at the call, with a message, and
+the function is SKIPPED:
+
+| case | why |
+|---|---|
+| mutually recursive trait-generic functions | instances are generated one at a time; a clique of instances would have to come out as one `mutual-recursion` |
+| an impl method that reaches itself through a generic function (`impl Shape for Tree` calling `twice(&**l)`) | the instance is written before the method that asked for it |
+| a modeled std function called through a bound (`for x in it` where `it: I`, `I: Iterator`) | the models check their instantiation by its type arguments, which an instance does not record |
+| a method of an impl with const generic parameters, called through a bound | an instance does not record the const generic arguments of its impls either |
+| an associated constant that depends on the bounds of its impl (`const ID: u32 = S::ID + 1`) | constants are not specialized |
+| a closure that mutates what it captures | its `call_mut` returns a backward function (1c below) |
+| a function item where a closure is expected (`apply(double, 3)`) | charon gives the item an impl of `Fn`, so the mechanism would apply, but Aeneas's `-use-fuel` pass stops on a function used as a value (internal error) |
+
+An instance is an ordinary function, so a proof about it is an ordinary
+proof; but a theorem about `total` at one instance says nothing about
+another.  Stating a theorem once for all instances is what SOFT is for
+(below).
+
+Three small changes came with it: a formal the body ignores (the `()` a
+closure without arguments is called with) is printed, as `acl2unused<i>`,
+instead of failing the function; the type of a closure, `f::{closure}`, is
+named `f-closure`, without the trailing dash of the mangled brace; and an
+opaque global of another crate, like an opaque std function, gets a line in
+the book only if the code refers to it.
+
+## Toward all Rust code: what is missing, and the options
+
+A Rust program can fall out of the pipeline in three places: Aeneas does not
+translate it; the pure code Aeneas produces holds function values, which
+ACL2's first-order functions cannot; or it calls a std function nobody has
+modeled.  Small printer gaps are a fourth, minor, category.  The probes
+referred to below are small crates run through the Lean backend (as the
+reference for what Aeneas itself accepts) and the ACL2 backend.
+
+### 1. Function values in the pure code
+
+This is the central issue.  Aeneas's output is a typed lambda calculus, and
+function values occur in it in exactly four forms:
+
+a. **Trait dictionaries.**  A function with trait bounds takes the impls as
+   arguments, and a call through a bound projects a method from one:
+   `fn total<S: Shape, T: Shape>(s: &S, t: &T)` has body
+   `TraitClause(0).area s ...`, and its caller passes
+   `{impl Shape for Sq} {impl Shape for Rect}`.  A derived impl is a
+   dictionary applied to dictionaries: `{impl Shape for Two<S>} [{impl Shape
+   for Sq}]`.  The backend specializes these away (previous section).
+b. **Closures.**  Charon represents a closure as a struct of its captures
+   with impls of `Fn` / `FnMut` / `FnOnce`, and Aeneas translates them: the
+   closure's `call` is already a first-order function.  The generic consumer
+   (`fn apply<F: Fn(u32) -> u32>(f: F, x: u32)`) is case (a), so it is
+   specialized too.  What remains is a closure that mutates what it
+   captures: its `call_mut` returns a backward function, case (c).
+c. **Backward functions.**  A function that returns a mutable borrow returns
+   a pair of the value and a closure that puts a new value back:
+   `choose(b, x, y) = if b then (x, fun x' -> (x', y)) else ...`.  The printer
+   handles the shapes it recognizes (`iter_mut`, `zip`, mutable indexing,
+   array-to-slice, and the write-back continuations of loops over them) and
+   rejects the rest ("lambda in output").
+d. **Function pointers and `dyn Trait`.**  Aeneas rejects these itself
+   ("Function pointers are not supported yet"), so they are not yet the
+   backend's problem.
+
+Options, by what they address:
+
+- **Specialize after Aeneas** (for a and b): done, in the printer; see the
+  previous section.  In every caller reachable from non-generic code each
+  dictionary argument is a closed term, an impl possibly applied to impls,
+  so a generic function can be instantiated once per tuple of dictionaries,
+  each method projection becoming a direct call.  The result is the
+  first-order code `--monomorphize` produced, with three differences that
+  matter.  Regions were consumed by Aeneas before the pass runs, so nothing
+  like the erasure problem can occur.  Instances are keyed on dictionaries
+  only, since the ACL2 code has no types to instantiate, so `id::<u32>` and
+  `id::<u8>` stay one function.  And there is no dependency on charon beyond
+  its stock output.  What is left of it is the table at the end of the
+  previous section: cliques of mutually recursive instances; instances that
+  record type and const generic arguments, for the modeled std functions and
+  the const-generic impls reached through a bound; specialized constants.
+  As a pass over the pure AST in Aeneas, rather than in this printer, it
+  would serve any first-order backend.
+- **Second-order functions in ACL2 (SOFT)** (for a, where a *generic*
+  theorem or an uninstantiated generic function is wanted).  Kestrel's SOFT
+  mimics second-order functions with function variables: a trait method
+  becomes a function variable (`defunvar`), a generic function a second-order
+  function (`defun2`), and an instantiation a `defun-inst`, whose result is
+  first-order once no function variable is left; `defthm-inst` carries a
+  theorem about the generic function to each instance by functional
+  instantiation.  That is specialization performed by ACL2 itself, with
+  theorem reuse, which the backend-side pass does not give.  Limits: an
+  instantiation needs the instances of the functions it depends on to exist
+  already (emit inner-first); mutual recursion is listed as future work; a
+  generic *method* of a trait would need function variables that take
+  function variables.  The instances the backend prints are already named
+  the way SOFT names them (`total[sq][rect]`), so emitting `defun2` for the
+  generic function and `defun-inst` for each instance, where SOFT can take
+  them, would keep every name.
+- **Splitting** (for the common shape of c).  When a function builds its
+  backward function in tail position and the caller applies it directly,
+  the function can be printed as two first-order functions, forward and
+  backward, the backward one re-running the forward computation.  This is
+  the scheme earlier versions of Aeneas used before it returned closures.
+- **Defunctionalization** (for c in general, and d).  A closure becomes a
+  tagged tuple of its captured values, and each application of an unknown
+  function becomes a call to an `apply` function that dispatches on the tag.
+  The loop write-back continuations are an instance of this today (a list of
+  pending writes, applied by `-apply-back`).  It is closed-world, and the
+  `apply` function is in a clique with whatever the closure bodies call, so
+  it needs a measure; fuel serves.
+- **`apply$`.**  ACL2's own first-class functions.  Function symbols become
+  values with no new machinery in the printer, at the price of warrant
+  hypotheses in every theorem, the restriction that a recursive function in
+  a mutually recursive clique cannot be warranted, and proofs (GL in
+  particular) that do not see through `apply$`.
+
+The combination that fits the proofs done so far: specialize what is
+statically known (done), split or defunctionalize what remains, and use SOFT
+where a theorem should be stated once for all instantiations.
+
+### 2. The standard library
+
+The backend models 25 kinds of std function by table (30 patterns), each
+synthesized into the book of every crate that uses it, besides the integer,
+`Vec` and slice operations that map straight to the primitives book (by
+mangled name, and by pattern for the integer impls of the operator,
+comparison and clone traits).  That does not scale to all of std.  Three
+moves, which compose:
+
+- **A model library.**  Hand-written ACL2 books for the models, with their
+  lemmas, certified once; the table maps patterns to library functions, as
+  the reference backends' tables map them to their libraries.  The std types
+  the models mention (`Option`, `Range`, the iterator models) then have to
+  live in the library rather than in each generated book.
+- **Extract std's own bodies where they are ordinary Rust.**  Much of std is
+  thin generic code over trait bounds and closures (`Option::map`, the
+  blanket `Into`, `==` on references, the iterator adapters).  With
+  specialization its real bodies can be translated like user code: charon's
+  `--include` makes a std function transparent, and the backend prints it at
+  the instances the crate uses.  `tests/src/std_glue_probe.rs` does this, in
+  the certified suite (the flags are `STD_GLUE` in `tests/acl2/Makefile`):
+
+      charon rustc --preset=aeneas \
+        --include core::option::_::map --include core::option::_::and_then \
+        --include core::option::_::map_or --include core::option::_::unwrap_or_else \
+        --include core::option::_::unwrap_or --include core::option::_::is_some \
+        --include core::option::_::ok_or --include core::result::_::map \
+        --include 'core::convert::{core::convert::Into<_,_>}::into' \
+        --include core::convert::num::_::from --include core::cmp::impls::_::eq -- ...
+
+  With these, `o.map(|x| x.wrapping_add(k))` is core's `Option::map` at the
+  closure (`core-option-core-option-option-t-map[std-glue-probe-add-to-closure]`),
+  `x.into()` goes through the blanket `Into` impl to `(u64-cast x)`, and
+  `a == b` on two `&u32` reaches `(equal a b)`.  Of the book's 37 functions
+  16 are core's, printed from its source, and none is a hand model; the
+  proofs book states what they compute (`add_to(Some(x), k)` is
+  `Some((x + k) mod 2^32)`).  It is limited by Aeneas, function by function.  Every included body has to be in its fragment: `Result::unwrap_or`
+  is not ("There should be no bottoms in the value").  And an include can
+  create a declaration group Aeneas rejects for the whole crate: adding
+  `core::cmp::impls::_::max` (for `core::cmp::max`) gave a function mutually
+  recursive with a trait impl.  The leaves stay hand models: the integer
+  `Step` impls, the slice iterators (raw pointers), the intrinsics.
+- **Check models against the MIR semantics.**  Each hand model is trusted.
+  The interpreter can run the real std code, so a model can be tested, or
+  proved, against it.
+
+### 3. Outside Aeneas's fragment
+
+Function pointers, `dyn`, unsafe code and raw pointers, interior mutability,
+and some nestings of mutable borrows are not translated by Aeneas, and what
+it accepts changes from release to release.  The executable MIR semantics
+has no such fragment: it is the path for code Aeneas rejects, and the two
+can be mixed function by function once a theorem relates an extracted
+function to the interpreter's run of the same function.
+
+Upstream is reported to be working on a successor ("Aeneas 2": a rewrite in
+Rust, with unsafe code, raw pointers and a byte-level memory model).  If it
+arrives as described, this fragment grows, and the backend -- an OCaml
+printer over the pure AST -- has to be carried over.  What it does is small
+and stated here so that it can be: name-pattern tables for std, per-instance
+specialization of trait instances, the let shapes for backward functions.
+
+### 4. Printer gaps, as measured on the test suite
+
+What is still skipped across the 22 generated books (all in the three
+upstream Aeneas test crates, but for the function `traits_probe` leaves
+uninstantiated on purpose):
+
+| reason | functions |
+|---|---|
+| backward function or closure in the output (1c) | 16 |
+| tuple of arity greater than 2 | 7 |
+| negation / bitwise-not | 3 |
+| unmodeled std function | 2 |
+| `char` / `str` / float literal | 1 |
+| trait-generic, used at no instance in its crate | 2 |
+| application of a function-typed variable (1c) | 1 |
+| mutually recursive types | 1 group |
+| calls one of the above | 11 |
+
+### 5. Staying current with upstream
+
+The polymorphic pipeline is the configuration upstream Aeneas runs and
+tests.  Three things on this branch are there to make the next merge
+cheaper: std items recognized by name pattern rather than by mangled name;
+ACL2 names for them chosen here rather than derived from charon's clause
+naming; and per-declaration variable numbering, so that a reordering
+upstream does not rewrite every book.

@@ -405,8 +405,10 @@
 
 ;; ------------------------------------------------------------------ Vec
 ;; Rust Vec<T> is a growable array, modeled (like arrays/slices) as a list.
-;; push/insert take &mut self, so Aeneas returns the updated vector; new
-;; and len cannot fail. Requires the crate extracted with --monomorphize.
+;; push/insert take &mut self, so Aeneas returns the updated vector.  new
+;; and len cannot fail, and Aeneas binds their results without the monad:
+;; the printer then emits nil and (len v) directly, and these two only
+;; appear where a call is bound monadically.
 
 (defun vec-new () (ok nil))
 (defun vec-len (v) (ok (len v)))

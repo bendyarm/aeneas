@@ -322,44 +322,44 @@
   :rule-classes nil))
 (defthm rk-of-window-to
   (implies (<= 8 (len rk))
-           (equal (result-kind (core-array-impl-core-ops-index-index-core-ops-range-rangeto-usize-for-u32-88usize-index-u32-core-ops-range-rangeto-usize-88usize- rk (core-ops-range-rangeto-usize- 8))) :ok))
-  :hints (("Goal" :in-theory (enable core-array-impl-core-ops-index-index-core-ops-range-rangeto-usize-for-u32-88usize-index-u32-core-ops-range-rangeto-usize-88usize-))))
+           (equal (result-kind (core-array-index-rangeto rk (core-ops-range-rangeto 8))) :ok))
+  :hints (("Goal" :in-theory (enable core-array-index-rangeto))))
 (defthm ark-of-window-to
   (implies (and (st8p s) (true-listp rk) (equal (len rk) 88) (< 8 (nfix n)))
            (equal (aes-fixslice-encrypt-add-round-key n s
-                    (result-ok->val (core-array-impl-core-ops-index-index-core-ops-range-rangeto-usize-for-u32-88usize-index-u32-core-ops-range-rangeto-usize-88usize- rk (core-ops-range-rangeto-usize- 8))))
+                    (result-ok->val (core-array-index-rangeto rk (core-ops-range-rangeto 8))))
                   (ok (arkw-spec 0 8 s rk 0))))
   :hints (("Goal" :do-not-induct t
-           :in-theory (e/d (core-array-impl-core-ops-index-index-core-ops-range-rangeto-usize-for-u32-88usize-index-u32-core-ops-range-rangeto-usize-88usize-) (aes-fixslice-encrypt-add-round-key arkw-spec rd8 nth))
+           :in-theory (e/d (core-array-index-rangeto) (aes-fixslice-encrypt-add-round-key arkw-spec rd8 nth))
            :use ((:instance take8-nthcdr-is-rd8 (off 0))
                  (:instance ark-form-n (w (rd8 rk 0)))
                  (:instance arkw-window-shift-c (i 0) (e 8) (off 0))))))
 (defthm rk-of-window-from80
   (implies (equal (len rk) 88)
-           (equal (result-kind (core-array-impl-core-ops-index-index-core-ops-range-rangefrom-usize-for-u32-88usize-index-u32-core-ops-range-rangefrom-usize-88usize- rk (core-ops-range-rangefrom-usize- 80))) :ok))
-  :hints (("Goal" :in-theory (enable core-array-impl-core-ops-index-index-core-ops-range-rangefrom-usize-for-u32-88usize-index-u32-core-ops-range-rangefrom-usize-88usize-))))
+           (equal (result-kind (core-array-index-rangefrom rk (core-ops-range-rangefrom 80))) :ok))
+  :hints (("Goal" :in-theory (enable core-array-index-rangefrom))))
 (defthm ark-of-window-from80
   (implies (and (st8p s) (true-listp rk) (equal (len rk) 88) (< 8 (nfix n)))
            (equal (aes-fixslice-encrypt-add-round-key n s
-                    (result-ok->val (core-array-impl-core-ops-index-index-core-ops-range-rangefrom-usize-for-u32-88usize-index-u32-core-ops-range-rangefrom-usize-88usize- rk (core-ops-range-rangefrom-usize- 80))))
+                    (result-ok->val (core-array-index-rangefrom rk (core-ops-range-rangefrom 80))))
                   (ok (arkw-spec 0 8 s rk 80))))
   :hints (("Goal" :do-not-induct t
-           :in-theory (e/d (core-array-impl-core-ops-index-index-core-ops-range-rangefrom-usize-for-u32-88usize-index-u32-core-ops-range-rangefrom-usize-88usize-) (aes-fixslice-encrypt-add-round-key arkw-spec rd8 nth))
+           :in-theory (e/d (core-array-index-rangefrom) (aes-fixslice-encrypt-add-round-key arkw-spec rd8 nth))
            :use ((:instance take8-nthcdr-is-rd8 (off 80))
                  (:instance ark-form-n (w (rd8 rk 80)))
                  (:instance arkw-window-shift-c (i 0) (e 8) (off 80))))))
 (defthm rk-of-window-range
   (implies (and (natp lo) (natp hi) (<= lo hi) (<= hi (len rk)))
-           (equal (result-kind (core-array-impl-core-ops-index-index-core-ops-range-range-usize-for-u32-88usize-index-u32-core-ops-range-range-usize-88usize- rk (core-ops-range-range-usize- lo hi))) :ok))
-  :hints (("Goal" :in-theory (enable core-array-impl-core-ops-index-index-core-ops-range-range-usize-for-u32-88usize-index-u32-core-ops-range-range-usize-88usize-))))
+           (equal (result-kind (core-array-index-range rk (core-ops-range-range lo hi))) :ok))
+  :hints (("Goal" :in-theory (enable core-array-index-range))))
 (defthm ark-of-window-range
   (implies (and (st8p s) (true-listp rk) (equal (len rk) 88)
                 (natp lo) (<= (+ lo 8) 88) (< 8 (nfix n)))
            (equal (aes-fixslice-encrypt-add-round-key n s
-                    (result-ok->val (core-array-impl-core-ops-index-index-core-ops-range-range-usize-for-u32-88usize-index-u32-core-ops-range-range-usize-88usize- rk (core-ops-range-range-usize- lo (+ lo 8)))))
+                    (result-ok->val (core-array-index-range rk (core-ops-range-range lo (+ lo 8)))))
                   (ok (arkw-spec 0 8 s rk lo))))
   :hints (("Goal" :do-not-induct t
-           :in-theory (e/d (core-array-impl-core-ops-index-index-core-ops-range-range-usize-for-u32-88usize-index-u32-core-ops-range-range-usize-88usize-) (aes-fixslice-encrypt-add-round-key arkw-spec rd8 nth))
+           :in-theory (e/d (core-array-index-range) (aes-fixslice-encrypt-add-round-key arkw-spec rd8 nth))
            :use ((:instance take8-nthcdr-is-rd8 (off lo))
                  (:instance ark-form-n (w (rd8 rk lo)))
                  (:instance arkw-window-shift-c (i 0) (e 8) (off lo))))))

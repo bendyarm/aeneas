@@ -42,7 +42,7 @@
                            (kround sched-loop0-step sched-loop0-done
                             aes-fixslice-encrypt-aes128-key-schedule-loop0
                             rd8 nth wstatep
-                            (:executable-counterpart core-ops-range-range-usize-))))
+                            (:executable-counterpart core-ops-range-range))))
           ("Subgoal *1/2"
            :expand ((kr-chain rk off c))
            :use ((:instance sched-loop0-step (n m) (rkeys rk) (off off) (c c))
@@ -143,7 +143,7 @@
 (defthm ks-loop1-collapse
   (implies (and (equal (len rk) 88) (true-listp rk) (natp m) (< 12 (nfix m)))
            (equal (aes-fixslice-encrypt-aes128-key-schedule-loop1 m
-                    (core-iter-adapters-step-by-stepby-core-ops-range-range-usize- (rng 8 72) 31 t)
+                    (core-iter-adapters-step-by-stepby (rng 8 72) 31 t)
                     rk)
                   (ok (isr-step (isr-step rk 8) 40))))
   :hints (("Goal" :do-not-induct t
@@ -155,8 +155,8 @@
                             aes-fixslice-encrypt-inv-shift-rows-3
                             vec-index-range vec-update-range
                             w8-spec rd8 nth wstatep
-                            (:executable-counterpart core-ops-range-range-usize-)
-                            (:executable-counterpart core-iter-adapters-step-by-stepby-core-ops-range-range-usize-))))))
+                            (:executable-counterpart core-ops-range-range)
+                            (:executable-counterpart core-iter-adapters-step-by-stepby))))))
 
 ;; result-p facts (the fty equality (equal x (ok v)) decomposes into
 ;; result-p x + kind + val; the loop needs its own return-type fact).
@@ -193,7 +193,7 @@
                             aes-fixslice-encrypt-sub-bytes-nots
                             vec-index-range vec-update-range
                             sbn-chain w8-spec rd8 nth wstatep
-                            (:executable-counterpart core-ops-range-range-usize-))))
+                            (:executable-counterpart core-ops-range-range))))
           ("Subgoal *1/2"
            :expand ((aes-fixslice-encrypt-aes128-key-schedule-loop2 m (rng i 11) rk)
                     (sbn-chain rk (* 8 i) i)))
@@ -219,37 +219,37 @@
 ;; below, where they must stay closed).  Written with the body's exact shapes.
 (defthm seed-read-ok
   (equal (result-kind (vec-index-range (array-repeat 88 0) 0
-           (core-ops-range-rangeto-usize-->end (core-ops-range-rangeto-usize- 8))))
+           (core-ops-range-rangeto->end (core-ops-range-rangeto 8))))
          :ok))
 (defthm seed-read-val
   (equal (result-ok->val (vec-index-range (array-repeat 88 0) 0
-           (core-ops-range-rangeto-usize-->end (core-ops-range-rangeto-usize- 8))))
+           (core-ops-range-rangeto->end (core-ops-range-rangeto 8))))
          (list 0 0 0 0 0 0 0 0)))
 (defthm seed-write-is-seed
   (equal (vec-update-range (array-repeat 88 0) 0
-           (core-ops-range-rangeto-usize-->end (core-ops-range-rangeto-usize- 8))
+           (core-ops-range-rangeto->end (core-ops-range-rangeto 8))
            (result-ok->val (aes-fixslice-encrypt-bitslice (list 0 0 0 0 0 0 0 0) key key)))
          (seed key))
   :hints (("Goal" :in-theory (enable seed))))
 (defthm w72-read-ok
   (implies (equal (len rk) 88)
            (equal (result-kind (vec-index-range rk
-                    (core-ops-range-range-usize-->start (core-ops-range-range-usize- 72 80))
-                    (core-ops-range-range-usize-->end (core-ops-range-range-usize- 72 80))))
+                    (core-ops-range-range->start (core-ops-range-range 72 80))
+                    (core-ops-range-range->end (core-ops-range-range 72 80))))
                   :ok)))
 (defthm w72-read-val
   (implies (and (equal (len rk) 88) (true-listp rk))
            (equal (result-ok->val (vec-index-range rk
-                    (core-ops-range-range-usize-->start (core-ops-range-range-usize- 72 80))
-                    (core-ops-range-range-usize-->end (core-ops-range-range-usize- 72 80))))
+                    (core-ops-range-range->start (core-ops-range-range 72 80))
+                    (core-ops-range-range->end (core-ops-range-range 72 80))))
                   (rd8 rk 72)))
   :hints (("Goal" :in-theory (disable rd8 nth))))
 (defthm w72-write
   (implies (and (equal (len rk) 88) (true-listp rk)
                 (true-listp s) (equal (len s) 8))
            (equal (vec-update-range rk
-                    (core-ops-range-range-usize-->start (core-ops-range-range-usize- 72 80))
-                    (core-ops-range-range-usize-->end (core-ops-range-range-usize- 72 80))
+                    (core-ops-range-range->start (core-ops-range-range 72 80))
+                    (core-ops-range-range->end (core-ops-range-range 72 80))
                     s)
                   (w8-spec 0 8 rk 72 s)))
   :hints (("Goal" :in-theory (disable w8-spec nth))))
@@ -269,9 +269,7 @@
            :in-theory (union-theories (theory 'ground-zero)
                         '((:definition aes-fixslice-encrypt-aes128-key-schedule)
                           (:definition ks-fold2)
-                          (:definition core-iter-traits-collect-impl-core-iter-traits-collect-intoiterator-for-core-ops-range-range-usize-into-iter-core-ops-range-range-usize-)
-                          (:definition core-iter-traits-iterator-iterator-step-by-core-ops-range-range-usize-)
-                          (:definition core-iter-traits-collect-impl-core-iter-traits-collect-intoiterator-for-core-iter-adapters-step-by-stepby-core-ops-range-range-usize-into-iter-core-iter-adapters-step-by-stepby-core-ops-range-range-usize-)
+                          (:definition core-iter-traits-iterator-iterator-step-by)
                           (:definition not)
                           (:rewrite seed-read-ok) (:rewrite seed-read-val)
                           (:rewrite seed-write-is-seed)

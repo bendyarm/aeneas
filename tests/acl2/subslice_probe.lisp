@@ -7,44 +7,38 @@
 (set-ignore-ok t)
 (set-irrelevant-formals-ok t)
 
-(fty::defprod core-ops-range-range-usize-
-  ((start acl2::any-p) (end acl2::any-p))
-  :xvar the-core-ops-range-range-usize-)
-
-(fty::defprod core-iter-adapters-step-by-stepby-core-ops-range-range-usize-
-  ((iter acl2::any-p) (step acl2::any-p) (first-take acl2::any-p))
-  :xvar the-core-iter-adapters-step-by-stepby-core-ops-range-range-usize-)
-
-(fty::deftagsum core-option-option-usize-
+(fty::deftagsum core-option-option
   (:none ())
   (:some ((f0 acl2::any-p)))
-  :xvar the-core-option-option-usize-)
+  :xvar the-core-option-option)
 
-(defun core-array-impl-core-ops-index-index-core-ops-range-range-usize-for-u32-8usize-index-u32-core-ops-range-range-usize-8usize- (self r) (vec-index-range self (core-ops-range-range-usize-->start r) (core-ops-range-range-usize-->end r)))
+(fty::defprod core-iter-adapters-step-by-stepby
+  ((iter acl2::any-p) (step acl2::any-p) (first-take acl2::any-p))
+  :xvar the-core-iter-adapters-step-by-stepby)
 
-;; SKIPPED function core-array-impl-core-ops-index-indexmut-core-ops-range-range-usize-for-u32-8usize-index-mut-u32-core-ops-range-range-usize-8usize-: ACL2: call to an opaque/std function with no ACL2 mapping yet
+(fty::defprod core-ops-range-range
+  ((start acl2::any-p) (end acl2::any-p))
+  :xvar the-core-ops-range-range)
 
-(defun core-iter-adapters-step-by-impl-core-iter-traits-iterator-iterator-for-core-iter-adapters-step-by-stepby-core-ops-range-range-usize-next-core-ops-range-range-usize- (self)
-  (b* ((it (core-iter-adapters-step-by-stepby-core-ops-range-range-usize-->iter self))
-       (smo (core-iter-adapters-step-by-stepby-core-ops-range-range-usize-->step self))
-       (s (core-ops-range-range-usize-->start it))
-       (e (core-ops-range-range-usize-->end it)))
-  (if (core-iter-adapters-step-by-stepby-core-ops-range-range-usize-->first-take self)
-      (if (< s e)
-          (ok (cons (core-option-option-usize--some s) (core-iter-adapters-step-by-stepby-core-ops-range-range-usize- (core-ops-range-range-usize- (+ s 1) e) smo nil)))
-        (ok (cons (core-option-option-usize--none) (core-iter-adapters-step-by-stepby-core-ops-range-range-usize- it smo nil))))
-    (if (< (+ s smo) e)
-        (ok (cons (core-option-option-usize--some (+ s smo)) (core-iter-adapters-step-by-stepby-core-ops-range-range-usize- (core-ops-range-range-usize- (+ s smo 1) e) smo nil)))
-      (ok (cons (core-option-option-usize--none) (core-iter-adapters-step-by-stepby-core-ops-range-range-usize- (core-ops-range-range-usize- e e) smo nil)))))))
+(defun core-array-index-range (self r) (vec-index-range self (core-ops-range-range->start r) (core-ops-range-range->end r)))
 
-(defun core-iter-traits-collect-impl-core-iter-traits-collect-intoiterator-for-core-iter-adapters-step-by-stepby-core-ops-range-range-usize-into-iter-core-iter-adapters-step-by-stepby-core-ops-range-range-usize- (self) (ok self))
-
-;; SKIPPED trait/mixed declaration group (run with --monomorphize)
-
-(defun core-iter-traits-iterator-iterator-step-by-core-ops-range-range-usize- (self step)
+(defun core-iter-traits-iterator-iterator-step-by (self step)
   (if (equal step 0)
       (result-fail (err-failure))
-    (ok (core-iter-adapters-step-by-stepby-core-ops-range-range-usize- self (- step 1) t))))
+    (ok (core-iter-adapters-step-by-stepby self (- step 1) t))))
+
+(defun core-iter-adapters-step-by-stepby-next (self)
+  (b* ((it (core-iter-adapters-step-by-stepby->iter self))
+       (smo (core-iter-adapters-step-by-stepby->step self))
+       (s (core-ops-range-range->start it))
+       (e (core-ops-range-range->end it)))
+  (if (core-iter-adapters-step-by-stepby->first-take self)
+      (if (< s e)
+          (ok (cons (core-option-option-some s) (core-iter-adapters-step-by-stepby (core-ops-range-range (+ s 1) e) smo nil)))
+        (ok (cons (core-option-option-none) (core-iter-adapters-step-by-stepby it smo nil))))
+    (if (< (+ s smo) e)
+        (ok (cons (core-option-option-some (+ s smo)) (core-iter-adapters-step-by-stepby (core-ops-range-range (+ s smo 1) e) smo nil)))
+      (ok (cons (core-option-option-none) (core-iter-adapters-step-by-stepby (core-ops-range-range e e) smo nil)))))))
 
 (defun subslice-probe-bump (s)
   (b* (((ok v1_1) (array-index s 0)))
@@ -55,50 +49,49 @@
   (array-update s_3 3 v5_5)))))))
 
 (defun subslice-probe-go (a)
-  (b* ((acl2tmp6 a)
-     (acl2tmp7 (make-core-ops-range-range-usize- :start 2 :end 6))
-     ((ok acl2tmp8) (vec-index-range acl2tmp6 (core-ops-range-range-usize-->start acl2tmp7) (core-ops-range-range-usize-->end acl2tmp7))))
-  (b* ((v10_10 acl2tmp8))
-  (b* (((ok v12_12) (subslice-probe-bump v10_10)))
-  (ok (vec-update-range acl2tmp6 (core-ops-range-range-usize-->start acl2tmp7) (core-ops-range-range-usize-->end acl2tmp7) v12_12))))))
+  (b* ((acl2tmp1 a)
+     (acl2tmp2 (core-ops-range-range 2 6))
+     ((ok acl2tmp3) (vec-index-range acl2tmp1 (core-ops-range-range->start acl2tmp2) (core-ops-range-range->end acl2tmp2))))
+  (b* ((v5_5 acl2tmp3))
+  (b* (((ok v7_7) (subslice-probe-bump v5_5)))
+  (ok (vec-update-range acl2tmp1 (core-ops-range-range->start acl2tmp2) (core-ops-range-range->end acl2tmp2) v7_7))))))
 
 (defun subslice-probe-peek (s)
   (array-index s 1))
 
 (defun subslice-probe-rd (a)
-  (b* (((ok v13_13) (core-array-impl-core-ops-index-index-core-ops-range-range-usize-for-u32-8usize-index-u32-core-ops-range-range-usize-8usize- a (make-core-ops-range-range-usize- :start 2 :end 6))))
-  (subslice-probe-peek v13_13)))
+  (b* (((ok v1_1) (core-array-index-range a (core-ops-range-range 2 6))))
+  (subslice-probe-peek v1_1)))
 
 (defun subslice-probe-len-of (a)
-  (b* (((ok s_14) (core-array-impl-core-ops-index-index-core-ops-range-range-usize-for-u32-8usize-index-u32-core-ops-range-range-usize-8usize- a (make-core-ops-range-range-usize- :start 2 :end 6))))
-  (vec-len s_14)))
+  (b* (((ok s_1) (core-array-index-range a (core-ops-range-range 2 6))))
+  (ok (len s_1))))
 
 (defun subslice-probe-set0 (s)
   (array-update s 0 7))
 
 (defun subslice-probe-coerce (a)
-  (b* ((v15_15 a))
-  (b* (((ok v17_17) (subslice-probe-set0 v15_15)))
-  (ok v17_17))))
+  (b* ((v1_1 a))
+  (b* (((ok v3_3) (subslice-probe-set0 v1_1)))
+  (ok v3_3))))
 
 (defun subslice-probe-stepby-loop0 (n iter a acc)
   (declare (xargs :measure (nfix n)
                   :hints (("Goal" :in-theory (theory 'ground-zero)))))
-  (if (zp n) (result-fail (err-out-of-fuel)) (b* ((n_18 (1- n)))
-  (b* (((ok v19_19) (core-iter-adapters-step-by-impl-core-iter-traits-iterator-iterator-for-core-iter-adapters-step-by-stepby-core-ops-range-range-usize-next-core-ops-range-range-usize- iter)))
-  (b* ((acl2tmp20 v19_19)
-     (v21_21 (car acl2tmp20))
-     (iter_22 (cdr acl2tmp20)))
-  (b* ((acl2tmp23 v21_21))
-  (core-option-option-usize--case acl2tmp23
+  (if (zp n) (result-fail (err-out-of-fuel)) (b* ((n_1 (1- n)))
+  (b* (((ok v2_2) (core-iter-adapters-step-by-stepby-next iter)))
+  (b* ((acl2tmp3 v2_2)
+     (v4_4 (car acl2tmp3))
+     (iter_5 (cdr acl2tmp3)))
+  (b* ((acl2tmp6 v4_4))
+  (core-option-option-case acl2tmp6
     :none (ok acc)
-    :some (b* ((i_24 (core-option-option-usize--some->f0 acl2tmp23))) (b* (((ok v25_25) (array-index a i_24)))
-  (b* (((ok acc_26) (u32-wrapping-add acc v25_25)))
-  (subslice-probe-stepby-loop0 n_18 iter_22 a acc_26)))))))))))
+    :some (b* ((i_7 (core-option-option-some->f0 acl2tmp6))) (b* (((ok v8_8) (array-index a i_7)))
+  (b* (((ok acc_9) (u32-wrapping-add acc v8_8)))
+  (subslice-probe-stepby-loop0 n_1 iter_5 a acc_9)))))))))))
 
 (defun subslice-probe-stepby (n a)
-  (b* (((ok v27_27) (core-iter-traits-iterator-iterator-step-by-core-ops-range-range-usize- (make-core-ops-range-range-usize- :start 0 :end 8) 4)))
-  (b* (((ok iter_28) (core-iter-traits-collect-impl-core-iter-traits-collect-intoiterator-for-core-iter-adapters-step-by-stepby-core-ops-range-range-usize-into-iter-core-iter-adapters-step-by-stepby-core-ops-range-range-usize- v27_27)))
-  (subslice-probe-stepby-loop0 n iter_28 a 0))))
+  (b* (((ok iter_1) (core-iter-traits-iterator-iterator-step-by (core-ops-range-range 0 8) 4)))
+  (subslice-probe-stepby-loop0 n iter_1 a 0)))
 
 ;; END OF GENERATED FILE

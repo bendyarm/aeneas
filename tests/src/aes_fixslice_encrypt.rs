@@ -7,8 +7,7 @@
 // ALL thirteen debug_assert!s restored verbatim); the former read8/write8/
 // *_at/key_round/bitslice_into wrapper layer is DELETED.
 // Documented de-sugarings (shift_rows_*/add_round_key are VERBATIM upstream
-// iter_mut()/zip() loops since roadmap #8 landed; extraction now requires
-// charon's carved pipeline -- see the Makefile recipe):
+// iter_mut()/zip() loops since roadmap #8 landed):
 //  * State::default()/BatchBlocks -> explicit [u32;8] / [[u8;16];2] literals;
 //      the FixsliceKeys128 type alias -> its definition [u32; 88]
 //  * cfg(aes_backend_soft="compact") branches resolved

@@ -24,37 +24,37 @@
 ;; FUNCTION rules out including range_for-proofs, which pulls in the `fail`
 ;; MACRO from rust-primitives).  rnext-on-range -- what the synthesized range
 ;; iterator's next does on a concrete range -- is re-derived here directly.
-(defmacro rng (i e) `(core-ops-range-range-usize- ,i ,e))
+(defmacro rng (i e) `(core-ops-range-range ,i ,e))
 (defmacro rnext (r)
-  `(core-iter-range-impl-core-iter-traits-iterator-iterator-for-core-ops-range-range-usize-next-usize-
+  `(core-ops-range-range-next
     ,r))
 ;; the reversed-range iterator (`for i in (a..b).rev()`, upstream memshift32):
 ;; `rev` is the identity on the (newtype-erased) range, and its `next` is the
 ;; reverse advance -- both backend-synthesized when the sysroot has no MIR
 ;; for them, with identical semantics either way.
 (defmacro rrev (r)
-  `(core-iter-traits-iterator-iterator-rev-core-ops-range-range-usize- ,r))
+  `(core-iter-traits-iterator-iterator-rev ,r))
 (defmacro rvnext (r)
-  `(core-iter-adapters-rev-impl-core-iter-traits-iterator-iterator-for-core-iter-adapters-rev-rev-core-ops-range-range-usize-next-core-ops-range-range-usize-
+  `(core-iter-adapters-rev-rev-next
     ,r))
 (defthm rev-on-range
   (equal (rrev r) (ok r))
   :hints (("Goal" :in-theory
-           (enable core-iter-traits-iterator-iterator-rev-core-ops-range-range-usize-))))
+           (enable core-iter-traits-iterator-iterator-rev))))
 (defthm rvnext-on-range
   (equal (rvnext (rng s e))
          (if (< s e)
-             (ok (cons (core-option-option-usize--some (- e 1)) (rng s (- e 1))))
-           (ok (cons (core-option-option-usize--none) (rng s e)))))
+             (ok (cons (core-option-option-some (- e 1)) (rng s (- e 1))))
+           (ok (cons (core-option-option-none) (rng s e)))))
   :hints (("Goal" :in-theory
-           (enable core-iter-adapters-rev-impl-core-iter-traits-iterator-iterator-for-core-iter-adapters-rev-rev-core-ops-range-range-usize-next-core-ops-range-range-usize-))))
+           (enable core-iter-adapters-rev-rev-next))))
 (defthm rnext-on-range
   (equal (rnext (rng i e))
          (if (< i e)
-             (ok (cons (core-option-option-usize--some i) (rng (+ i 1) e)))
-           (ok (cons (core-option-option-usize--none) (rng i e)))))
+             (ok (cons (core-option-option-some i) (rng (+ i 1) e)))
+           (ok (cons (core-option-option-none) (rng i e)))))
   :hints (("Goal" :in-theory
-           (enable core-iter-range-impl-core-iter-traits-iterator-iterator-for-core-ops-range-range-usize-next-usize-))))
+           (enable core-ops-range-range-next))))
 ;; NOTE on ranges as constants vs constructors: when a generated body opens
 ;; in a proof, its (rng s e) literals EVALUATE to quoted alists, which the
 ;; (rng s e)-patterned loop lemmas cannot match.  Books that reason about an
@@ -126,7 +126,7 @@
                   :do-not '(eliminate-destructors generalize)
                   :in-theory (e/d (ms-spec-d)
                                   (aes-fixslice-encrypt-memshift32-loop0 rvnext-on-range
-                                   (:executable-counterpart core-ops-range-range-usize-))))))
+                                   (:executable-counterpart core-ops-range-range))))))
 (defthm len-of-ms-spec-d
   (implies (and (natp s) (natp e) (natp dst) (<= (+ dst e) (len buffer)))
            (equal (len (ms-spec-d s e buffer src dst)) (len buffer))))
@@ -226,7 +226,7 @@
                   :do-not '(eliminate-destructors generalize)
                   :in-theory (e/d (xc-spec)
                                   (aes-fixslice-encrypt-xor-columns-loop0 rnext-on-range xc-word
-                                   (:executable-counterpart core-ops-range-range-usize-))))))
+                                   (:executable-counterpart core-ops-range-range))))))
 (defthm len-of-xc-spec
   (implies (and (natp i) (natp e) (natp off) (<= (+ off e) (len rkeys)))
            (equal (len (xc-spec i e rkeys off dx dror)) (len rkeys)))

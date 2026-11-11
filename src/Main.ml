@@ -564,7 +564,14 @@ let () =
             (* Keep the emitted b* forms simple (same motivation as Coq:
                limited patterns in the target syntax) *)
             decompose_monadic_let_bindings := true;
-            decompose_nested_let_patterns := true)
+            decompose_nested_let_patterns := true;
+            (* Every struct is an FTY product with named accessors, tuple
+               structs included (fields f0, f1, ...).  With the default
+               (tuple structs extracted as tuples) the pure AST leaves it to
+               the printer to erase one-field tuple structs and to print the
+               others as tuples; the ACL2 printer emits products instead, so
+               ask for the nominal representation throughout. *)
+            use_tuple_structs := false)
   in
 
   (* If running in parallel mode there can be racing conditions on the memoized

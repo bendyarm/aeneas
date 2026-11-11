@@ -7,17 +7,14 @@
 (set-ignore-ok t)
 (set-irrelevant-formals-ok t)
 
-;; opaque type alloc-vec-vec-u32- (skipped)
-
 (defun vec-demo-build-pair (a b)
-  (b* (((ok v_1) (vec-new)))
-  (b* (((ok v_2) (vec-push v_1 a)))
-  (vec-push v_2 b))))
+  (b* (((ok v_1) (vec-push nil a)))
+  (vec-push v_1 b)))
 
 (defun vec-demo-get0 (v)
   (array-index v 0))
 
 (defun vec-demo-len-of (v)
-  (vec-len v))
+  (ok (len v)))
 
 ;; END OF GENERATED FILE

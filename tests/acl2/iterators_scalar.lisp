@@ -7,40 +7,37 @@
 (set-ignore-ok t)
 (set-irrelevant-formals-ok t)
 
-(fty::deftagsum core-option-option-usize-
+(fty::deftagsum core-option-option
   (:none ())
   (:some ((f0 acl2::any-p)))
-  :xvar the-core-option-option-usize-)
+  :xvar the-core-option-option)
 
-(fty::defprod core-ops-range-range-usize-
+(fty::defprod core-ops-range-range
   ((start acl2::any-p) (end acl2::any-p))
-  :xvar the-core-ops-range-range-usize-)
+  :xvar the-core-ops-range-range)
 
-(defun core-iter-range-impl-core-iter-traits-iterator-iterator-for-core-ops-range-range-usize-next-usize- (self)
-  (b* ((s (core-ops-range-range-usize-->start self))
-       (e (core-ops-range-range-usize-->end self)))
+(defun core-ops-range-range-next (self)
+  (b* ((s (core-ops-range-range->start self))
+       (e (core-ops-range-range->end self)))
   (if (< s e)
-      (ok (cons (core-option-option-usize--some s) (core-ops-range-range-usize- (+ s 1) e)))
-    (ok (cons (core-option-option-usize--none) self)))))
-
-(defun core-iter-traits-collect-impl-core-iter-traits-collect-intoiterator-for-core-ops-range-range-usize-into-iter-core-ops-range-range-usize- (self) (ok self))
+      (ok (cons (core-option-option-some s) (core-ops-range-range (+ s 1) e)))
+    (ok (cons (core-option-option-none) self)))))
 
 (defun iterators-scalar-iter-loop0 (n iter x)
   (declare (xargs :measure (nfix n)
                   :hints (("Goal" :in-theory (theory 'ground-zero)))))
   (if (zp n) (result-fail (err-out-of-fuel)) (b* ((n_1 (1- n)))
-  (b* (((ok v2_2) (core-iter-range-impl-core-iter-traits-iterator-iterator-for-core-ops-range-range-usize-next-usize- iter)))
+  (b* (((ok v2_2) (core-ops-range-range-next iter)))
   (b* ((acl2tmp3 v2_2)
      (v4_4 (car acl2tmp3))
      (iter_5 (cdr acl2tmp3)))
   (b* ((acl2tmp6 v4_4))
-  (core-option-option-usize--case acl2tmp6
+  (core-option-option-case acl2tmp6
     :none (ok (unit))
     :some (b* (((ok x_7) (i32-add x 1)))
   (iterators-scalar-iter-loop0 n_1 iter_5 x_7)))))))))
 
 (defun iterators-scalar-iter (n n-1)
-  (b* (((ok iter_8) (core-iter-traits-collect-impl-core-iter-traits-collect-intoiterator-for-core-ops-range-range-usize-into-iter-core-ops-range-range-usize- (make-core-ops-range-range-usize- :start 0 :end n-1))))
-  (iterators-scalar-iter-loop0 n iter_8 0)))
+  (iterators-scalar-iter-loop0 n (core-ops-range-range 0 n-1) 0))
 
 ;; END OF GENERATED FILE

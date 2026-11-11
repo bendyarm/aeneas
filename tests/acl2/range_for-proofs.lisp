@@ -9,9 +9,9 @@
 
 ;; Long generated names, abbreviated locally.
 (defmacro rnext (r)
-  `(core-iter-range-impl-core-iter-traits-iterator-iterator-for-core-ops-range-range-usize-next-usize-
+  `(core-ops-range-range-next
     ,r))
-(defmacro rng (i e) `(core-ops-range-range-usize- ,i ,e))
+(defmacro rng (i e) `(core-ops-range-range ,i ,e))
 
 ;; ---- execution vectors: the extracted loops run correctly ----
 (assert-event (equal (range-for-sum-to 20 10) (ok 45)))     ; 0+1+...+9
@@ -26,8 +26,8 @@
 (defthm rnext-on-range
   (equal (rnext (rng i e))
          (if (< i e)
-             (ok (cons (core-option-option-usize--some i) (rng (+ i 1) e)))
-           (ok (cons (core-option-option-usize--none) (rng i e))))))
+             (ok (cons (core-option-option-some i) (rng (+ i 1) e)))
+           (ok (cons (core-option-option-none) (rng i e))))))
 
 ;; Fold spec: wrapping-sum of the indices [i, e), threaded through s.
 (defun sum-spec (i e s)
@@ -79,7 +79,7 @@
                   :in-theory (e/d (sum-spec)
                                   (range-for-sum-to-loop0 rnext-on-range
                                    (:executable-counterpart
-                                    core-ops-range-range-usize-))))))
+                                    core-ops-range-range))))))
 
 ;; Top level: sum_to n == fold over [0, n).
 (defthm sum-to-is-spec

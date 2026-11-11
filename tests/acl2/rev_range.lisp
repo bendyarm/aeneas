@@ -7,70 +7,64 @@
 (set-ignore-ok t)
 (set-irrelevant-formals-ok t)
 
-;; opaque type core-iter-adapters-rev-rev-core-ops-range-range-usize- (skipped)
-
-(fty::deftagsum core-option-option-usize-
+(fty::deftagsum core-option-option
   (:none ())
   (:some ((f0 acl2::any-p)))
-  :xvar the-core-option-option-usize-)
+  :xvar the-core-option-option)
 
-(fty::defprod core-ops-range-range-usize-
+;; opaque type core-iter-adapters-rev-rev (skipped)
+
+(fty::defprod core-ops-range-range
   ((start acl2::any-p) (end acl2::any-p))
-  :xvar the-core-ops-range-range-usize-)
+  :xvar the-core-ops-range-range)
 
-(defun core-iter-adapters-rev-impl-core-iter-traits-iterator-iterator-for-core-iter-adapters-rev-rev-core-ops-range-range-usize-next-core-ops-range-range-usize- (self)
-  (b* ((s (core-ops-range-range-usize-->start self))
-       (e (core-ops-range-range-usize-->end self)))
+(defun core-iter-traits-iterator-iterator-rev (self) (ok self))
+
+(defun core-iter-adapters-rev-rev-next (self)
+  (b* ((s (core-ops-range-range->start self))
+       (e (core-ops-range-range->end self)))
   (if (< s e)
-      (ok (cons (core-option-option-usize--some (- e 1)) (core-ops-range-range-usize- s (- e 1))))
-    (ok (cons (core-option-option-usize--none) self)))))
-
-(defun core-iter-traits-collect-impl-core-iter-traits-collect-intoiterator-for-core-iter-adapters-rev-rev-core-ops-range-range-usize-into-iter-core-iter-adapters-rev-rev-core-ops-range-range-usize- (self) (ok self))
-
-;; SKIPPED trait/mixed declaration group (run with --monomorphize)
-
-(defun core-iter-traits-iterator-iterator-rev-core-ops-range-range-usize- (self) (ok self))
+      (ok (cons (core-option-option-some (- e 1)) (core-ops-range-range s (- e 1))))
+    (ok (cons (core-option-option-none) self)))))
 
 (defun rev-range-sum-rev-loop0 (n iter a acc)
   (declare (xargs :measure (nfix n)
                   :hints (("Goal" :in-theory (theory 'ground-zero)))))
   (if (zp n) (result-fail (err-out-of-fuel)) (b* ((n_1 (1- n)))
-  (b* (((ok v2_2) (core-iter-adapters-rev-impl-core-iter-traits-iterator-iterator-for-core-iter-adapters-rev-rev-core-ops-range-range-usize-next-core-ops-range-range-usize- iter)))
+  (b* (((ok v2_2) (core-iter-adapters-rev-rev-next iter)))
   (b* ((acl2tmp3 v2_2)
      (v4_4 (car acl2tmp3))
      (iter_5 (cdr acl2tmp3)))
   (b* ((acl2tmp6 v4_4))
-  (core-option-option-usize--case acl2tmp6
+  (core-option-option-case acl2tmp6
     :none (ok acc)
-    :some (b* ((i_7 (core-option-option-usize--some->f0 acl2tmp6))) (b* (((ok v8_8) (array-index a i_7)))
+    :some (b* ((i_7 (core-option-option-some->f0 acl2tmp6))) (b* (((ok v8_8) (array-index a i_7)))
   (b* (((ok acc_9) (u32-wrapping-add acc v8_8)))
   (rev-range-sum-rev-loop0 n_1 iter_5 a acc_9)))))))))))
 
 (defun rev-range-sum-rev (n a)
-  (b* (((ok v10_10) (core-iter-traits-iterator-iterator-rev-core-ops-range-range-usize- (make-core-ops-range-range-usize- :start 0 :end 8))))
-  (b* (((ok iter_11) (core-iter-traits-collect-impl-core-iter-traits-collect-intoiterator-for-core-iter-adapters-rev-rev-core-ops-range-range-usize-into-iter-core-iter-adapters-rev-rev-core-ops-range-range-usize- v10_10)))
-  (rev-range-sum-rev-loop0 n iter_11 a 0))))
+  (b* (((ok iter_1) (core-iter-traits-iterator-iterator-rev (core-ops-range-range 0 8))))
+  (rev-range-sum-rev-loop0 n iter_1 a 0)))
 
 (defun rev-range-shift-up-loop0 (n iter buf)
   (declare (xargs :measure (nfix n)
                   :hints (("Goal" :in-theory (theory 'ground-zero)))))
-  (if (zp n) (result-fail (err-out-of-fuel)) (b* ((n_12 (1- n)))
-  (b* (((ok v13_13) (core-iter-adapters-rev-impl-core-iter-traits-iterator-iterator-for-core-iter-adapters-rev-rev-core-ops-range-range-usize-next-core-ops-range-range-usize- iter)))
-  (b* ((acl2tmp14 v13_13)
-     (v15_15 (car acl2tmp14))
-     (iter_16 (cdr acl2tmp14)))
-  (b* ((acl2tmp17 v15_15))
-  (core-option-option-usize--case acl2tmp17
+  (if (zp n) (result-fail (err-out-of-fuel)) (b* ((n_1 (1- n)))
+  (b* (((ok v2_2) (core-iter-adapters-rev-rev-next iter)))
+  (b* ((acl2tmp3 v2_2)
+     (v4_4 (car acl2tmp3))
+     (iter_5 (cdr acl2tmp3)))
+  (b* ((acl2tmp6 v4_4))
+  (core-option-option-case acl2tmp6
     :none (ok buf)
-    :some (b* ((i_18 (core-option-option-usize--some->f0 acl2tmp17))) (b* (((ok v19_19) (array-index buf i_18)))
-  (b* (((ok v20_20) (usize-add i_18 8)))
-  (b* (((ok v21_21) (array-update buf v20_20 v19_19)))
-  (rev-range-shift-up-loop0 n_12 iter_16 v21_21))))))))))))
+    :some (b* ((i_7 (core-option-option-some->f0 acl2tmp6))) (b* (((ok v8_8) (array-index buf i_7)))
+  (b* (((ok v9_9) (usize-add i_7 8)))
+  (b* (((ok v10_10) (array-update buf v9_9 v8_8)))
+  (rev-range-shift-up-loop0 n_1 iter_5 v10_10))))))))))))
 
 (defun rev-range-shift-up (n buf start)
-  (b* (((ok v22_22) (usize-add start 8)))
-  (b* (((ok v23_23) (core-iter-traits-iterator-iterator-rev-core-ops-range-range-usize- (make-core-ops-range-range-usize- :start start :end v22_22))))
-  (b* (((ok iter_24) (core-iter-traits-collect-impl-core-iter-traits-collect-intoiterator-for-core-iter-adapters-rev-rev-core-ops-range-range-usize-into-iter-core-iter-adapters-rev-rev-core-ops-range-range-usize- v23_23)))
-  (rev-range-shift-up-loop0 n iter_24 buf)))))
+  (b* (((ok v1_1) (usize-add start 8)))
+  (b* (((ok iter_2) (core-iter-traits-iterator-iterator-rev (core-ops-range-range start v1_1))))
+  (rev-range-shift-up-loop0 n iter_2 buf))))
 
 ;; END OF GENERATED FILE

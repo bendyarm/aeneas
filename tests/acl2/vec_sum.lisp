@@ -7,13 +7,11 @@
 (set-ignore-ok t)
 (set-irrelevant-formals-ok t)
 
-;; opaque type alloc-vec-vec-u32- (skipped)
-
 (defun vec-sum-sum-loop0 (n v s i)
   (declare (xargs :measure (nfix n)
                   :hints (("Goal" :in-theory (theory 'ground-zero)))))
   (if (zp n) (result-fail (err-out-of-fuel)) (b* ((n_1 (1- n)))
-  (b* (((ok v2_2) (vec-len v)))
+  (b* ((v2_2 (len v)))
   (if (< i v2_2) (b* (((ok v3_3) (array-index v i)))
   (b* (((ok s_4) (u32-wrapping-add s v3_3)))
   (b* (((ok i_5) (usize-add i 1)))
@@ -23,12 +21,12 @@
   (vec-sum-sum-loop0 n v 0 0))
 
 (defun vec-sum-double-first (v)
-  (b* (((ok v6_6) (vec-len v)))
-  (if (> v6_6 0) (b* (((ok v7_7) (array-index v 0)))
-  (b* (((ok v8_8) (u32-wrapping-add v7_7 v7_7)))
-  (b* ((acl2tmp9 v)
-     (acl2tmp10 0)
-     ((ok acl2tmp11) (array-index acl2tmp9 acl2tmp10)))
-  (ok (update-nth acl2tmp10 v8_8 acl2tmp9))))) (ok v))))
+  (b* ((v1_1 (len v)))
+  (if (> v1_1 0) (b* (((ok v2_2) (array-index v 0)))
+  (b* (((ok v3_3) (u32-wrapping-add v2_2 v2_2)))
+  (b* ((acl2tmp4 v)
+     (acl2tmp5 0)
+     ((ok acl2tmp6) (array-index acl2tmp4 acl2tmp5)))
+  (ok (update-nth acl2tmp5 v3_3 acl2tmp4))))) (ok v))))
 
 ;; END OF GENERATED FILE

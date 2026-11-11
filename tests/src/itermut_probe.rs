@@ -1,25 +1,22 @@
 //@ skip
 // Roadmap item 8: slice iterator extraction (iter / iter_mut / zip), the
 // last structural de-sugar class in aes_fixslice_encrypt.rs.  (The skip
-// directive keeps this out of the default runners: it needs charon's carved
-// pipeline, not the runners' flags.  The generated book and its proofs ARE
-// part of the certified suite: tests/acl2/itermut_probe{,-proofs}.lisp.)
+// directive keeps this out of the default runners; the generated book and
+// its proofs ARE part of the certified suite:
+// tests/acl2/itermut_probe{,-proofs}.lisp.)
 //
-// Pipeline (the mono carve-out, charon fork):
-//   charon rustc --preset=aeneas --monomorphize --monomorphize-mut=except-types \
-//     --remove-adt-clauses --lift-associated-types='*' \
-//     --dest-file=itermut_probe.llbc -- --edition=2021 --crate-type=rlib ...
+// Pipeline (stock charon):
+//   charon rustc --preset=aeneas --dest-file=itermut_probe.llbc \
+//     -- --edition=2021 --crate-type=rlib ...
 //   aeneas -backend acl2 -use-fuel -loops-to-rec itermut_probe.llbc
 //
-// Under plain --monomorphize, charon bakes region-erased borrow-carrying
-// decls (Option<&'_ mut u32>, Iter<'_, u32>, ...) that Aeneas's decl-level
-// region analysis rejects.  The carve-out keeps exactly those
-// instantiations polymorphic (baking would erase unrecoverable regions), so
-// Aeneas core translates all four shapes: IterMut::next comes back as the
-// triple (elem option, advanced iter, next_back), loops thread a composed
-// write-back continuation, iter_mut/zip return (iterator, backward) pairs.
+// The iterator types carry borrows (Option<&'a mut u32>, Iter<'a, u32>,
+// ...).  In polymorphic LLBC their regions are intact, so Aeneas translates
+// all four shapes: IterMut::next comes back as the triple (elem option,
+// advanced iter, next_back), loops thread a composed write-back
+// continuation, iter_mut/zip return (iterator, backward) pairs.
 //
-// The ACL2 printer then models the opaque iterators first-order --
+// The ACL2 printer models the opaque iterators first-order --
 // Iter/IterMut as {lst, pos} defprods, Zip as {a, b} -- synthesizes the
 // ctors/next methods against those models, and DEFUNCTIONALIZES the loop
 // back-continuations: the arrow-typed loop formal becomes a list of pending

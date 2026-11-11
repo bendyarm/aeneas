@@ -1,7 +1,6 @@
-; Known-answer checks for range_both.rs -- the naming-collision regression
-; crate (Range<usize> and Range<i32> instantiated together).  Certifying
-; this book proves both monomorphized iterator instances extract, admit,
-; and execute.
+; Known-answer checks for range_both.rs (Range<usize> and Range<i32> used
+; together).  One Range model serves both instantiations; certifying this
+; book shows loops over each extract, admit, and execute.
 (in-package "ACL2")
 (include-book "range_both")
 

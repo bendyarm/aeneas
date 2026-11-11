@@ -7,62 +7,58 @@
 (set-ignore-ok t)
 (set-irrelevant-formals-ok t)
 
-(fty::deftagsum core-option-option-usize-
+(fty::deftagsum core-option-option
   (:none ())
   (:some ((f0 acl2::any-p)))
-  :xvar the-core-option-option-usize-)
+  :xvar the-core-option-option)
 
-(fty::defprod core-ops-range-range-usize-
+(fty::defprod core-ops-range-range
   ((start acl2::any-p) (end acl2::any-p))
-  :xvar the-core-ops-range-range-usize-)
+  :xvar the-core-ops-range-range)
 
-(defun core-iter-range-impl-core-iter-traits-iterator-iterator-for-core-ops-range-range-usize-next-usize- (self)
-  (b* ((s (core-ops-range-range-usize-->start self))
-       (e (core-ops-range-range-usize-->end self)))
+(defun core-ops-range-range-next (self)
+  (b* ((s (core-ops-range-range->start self))
+       (e (core-ops-range-range->end self)))
   (if (< s e)
-      (ok (cons (core-option-option-usize--some s) (core-ops-range-range-usize- (+ s 1) e)))
-    (ok (cons (core-option-option-usize--none) self)))))
-
-(defun core-iter-traits-collect-impl-core-iter-traits-collect-intoiterator-for-core-ops-range-range-usize-into-iter-core-ops-range-range-usize- (self) (ok self))
+      (ok (cons (core-option-option-some s) (core-ops-range-range (+ s 1) e)))
+    (ok (cons (core-option-option-none) self)))))
 
 (defun range-for-add-rk-loop0 (n iter state-var rk)
   (declare (xargs :measure (nfix n)
                   :hints (("Goal" :in-theory (theory 'ground-zero)))))
   (if (zp n) (result-fail (err-out-of-fuel)) (b* ((n_1 (1- n)))
-  (b* (((ok v2_2) (core-iter-range-impl-core-iter-traits-iterator-iterator-for-core-ops-range-range-usize-next-usize- iter)))
+  (b* (((ok v2_2) (core-ops-range-range-next iter)))
   (b* ((acl2tmp3 v2_2)
      (v4_4 (car acl2tmp3))
      (iter_5 (cdr acl2tmp3)))
   (b* ((acl2tmp6 v4_4))
-  (core-option-option-usize--case acl2tmp6
+  (core-option-option-case acl2tmp6
     :none (ok state-var)
-    :some (b* ((i_7 (core-option-option-usize--some->f0 acl2tmp6))) (b* (((ok v8_8) (array-index rk i_7)))
+    :some (b* ((i_7 (core-option-option-some->f0 acl2tmp6))) (b* (((ok v8_8) (array-index rk i_7)))
   (b* (((ok v9_9) (array-index state-var i_7)))
   (b* ((v10_10 (u32-xor v9_9 v8_8)))
   (b* (((ok v11_11) (array-update state-var i_7 v10_10)))
   (range-for-add-rk-loop0 n_1 iter_5 v11_11 rk)))))))))))))
 
 (defun range-for-add-rk (n state-var rk)
-  (b* (((ok iter_12) (core-iter-traits-collect-impl-core-iter-traits-collect-intoiterator-for-core-ops-range-range-usize-into-iter-core-ops-range-range-usize- (make-core-ops-range-range-usize- :start 0 :end 8))))
-  (range-for-add-rk-loop0 n iter_12 state-var rk)))
+  (range-for-add-rk-loop0 n (core-ops-range-range 0 8) state-var rk))
 
 (defun range-for-sum-to-loop0 (n iter s)
   (declare (xargs :measure (nfix n)
                   :hints (("Goal" :in-theory (theory 'ground-zero)))))
-  (if (zp n) (result-fail (err-out-of-fuel)) (b* ((n_13 (1- n)))
-  (b* (((ok v14_14) (core-iter-range-impl-core-iter-traits-iterator-iterator-for-core-ops-range-range-usize-next-usize- iter)))
-  (b* ((acl2tmp15 v14_14)
-     (v16_16 (car acl2tmp15))
-     (iter_17 (cdr acl2tmp15)))
-  (b* ((acl2tmp18 v16_16))
-  (core-option-option-usize--case acl2tmp18
+  (if (zp n) (result-fail (err-out-of-fuel)) (b* ((n_1 (1- n)))
+  (b* (((ok v2_2) (core-ops-range-range-next iter)))
+  (b* ((acl2tmp3 v2_2)
+     (v4_4 (car acl2tmp3))
+     (iter_5 (cdr acl2tmp3)))
+  (b* ((acl2tmp6 v4_4))
+  (core-option-option-case acl2tmp6
     :none (ok s)
-    :some (b* ((i_19 (core-option-option-usize--some->f0 acl2tmp18))) (b* (((ok v20_20) (u32-cast i_19)))
-  (b* (((ok s_21) (u32-wrapping-add s v20_20)))
-  (range-for-sum-to-loop0 n_13 iter_17 s_21)))))))))))
+    :some (b* ((i_7 (core-option-option-some->f0 acl2tmp6))) (b* (((ok v8_8) (u32-cast i_7)))
+  (b* (((ok s_9) (u32-wrapping-add s v8_8)))
+  (range-for-sum-to-loop0 n_1 iter_5 s_9)))))))))))
 
 (defun range-for-sum-to (n n-1)
-  (b* (((ok iter_22) (core-iter-traits-collect-impl-core-iter-traits-collect-intoiterator-for-core-ops-range-range-usize-into-iter-core-ops-range-range-usize- (make-core-ops-range-range-usize- :start 0 :end n-1))))
-  (range-for-sum-to-loop0 n iter_22 0)))
+  (range-for-sum-to-loop0 n (core-ops-range-range 0 n-1) 0))
 
 ;; END OF GENERATED FILE

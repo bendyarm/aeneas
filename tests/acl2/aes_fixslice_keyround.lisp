@@ -207,7 +207,7 @@
                             aes-fixslice-encrypt-add-round-constant-bit
                             vec-index-range vec-update-range
                             w8-spec ms-spec xc-spec rd8 nth wstatep
-                            (:executable-counterpart core-ops-range-range-usize-))))))
+                            (:executable-counterpart core-ops-range-range))))))
 
 ;; ---------------------------------------------------------------------------
 ;; kround's readers (all length-only; the specs stay closed).
